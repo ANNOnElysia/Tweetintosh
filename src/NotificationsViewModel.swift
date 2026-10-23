@@ -70,7 +70,7 @@ enum NotificationType: String, Codable, Hashable {
     }
 }
 
-struct NotificationItem: Identifiable, Hashable {
+struct NotificationItem: Identifiable, Hashable, Codable {
     var id: String
     var type: NotificationType
     var actors: [TweetUser]
@@ -102,6 +102,9 @@ final class NotificationsViewModel: ObservableObject {
     @Published var isRefreshing: Bool = false
     @Published var isLoadingMore: Bool = false
     
+    private var topCursor: String?
+    private var bottomCursor: String?
+    
     var filteredItems: [NotificationItem] {
         switch selectedFilter {
         case .all:
@@ -111,12 +114,24 @@ final class NotificationsViewModel: ObservableObject {
         case .comments:
             return items.filter { $0.type == .reply }
         case .mentions:
-            return items.filter { $0.type == .mention }
+            return items.filter { $0.type == .mention || $0.type == .follow }
         }
     }
     
     private init() {
-        loadMockNotifications()
+        loadInitialData()
+    }
+    
+    private func loadInitialData() {
+        // 1. Load cached snapshot from disk if available
+        if let snapshot = NotificationCacheManager.shared.loadCachedSnapshot(), !snapshot.items.isEmpty {
+            self.items = snapshot.items
+            self.topCursor = snapshot.topCursor
+            self.bottomCursor = snapshot.bottomCursor
+        }
+        
+        // 2. Refresh live notifications from network
+        refresh(silently: !self.items.isEmpty)
     }
     
     func selectFilter(_ filter: NotificationFilter) {
@@ -145,17 +160,60 @@ final class NotificationsViewModel: ObservableObject {
         if !silently {
             isRefreshing = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            self.loadMockNotifications()
-            self.isRefreshing = false
+        
+        APIClient.shared.fetchNotifications { [weak self] result in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.isRefreshing = false
+                switch result {
+                case .success(let data):
+                    if !data.items.isEmpty {
+                        self.items = data.items
+                        self.topCursor = data.topCursor
+                        self.bottomCursor = data.bottomCursor
+                        NotificationCacheManager.shared.saveSnapshot(
+                            items: data.items,
+                            topCursor: data.topCursor,
+                            bottomCursor: data.bottomCursor
+                        )
+                    } else if self.items.isEmpty {
+                        self.loadMockNotifications()
+                    }
+                case .failure:
+                    if self.items.isEmpty {
+                        self.loadMockNotifications()
+                    }
+                }
+            }
         }
     }
     
     func loadMore() {
-        guard !isLoadingMore else { return }
+        guard !isLoadingMore, let cursor = bottomCursor else { return }
         isLoadingMore = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-            self.isLoadingMore = false
+        
+        APIClient.shared.fetchNotifications(cursor: cursor) { [weak self] result in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.isLoadingMore = false
+                if case .success(let data) = result {
+                    var current = self.items
+                    var seen = Set(current.map { $0.id })
+                    for item in data.items {
+                        if !seen.contains(item.id) {
+                            seen.insert(item.id)
+                            current.append(item)
+                        }
+                    }
+                    self.items = current
+                    self.bottomCursor = data.bottomCursor
+                    NotificationCacheManager.shared.saveSnapshot(
+                        items: current,
+                        topCursor: self.topCursor,
+                        bottomCursor: self.bottomCursor
+                    )
+                }
+            }
         }
     }
     

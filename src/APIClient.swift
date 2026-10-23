@@ -115,6 +115,260 @@ final class APIClient {
         task.resume()
     }
     
+    // MARK: - Fetch Notifications Timeline
+    func fetchNotifications(
+        cursor: String? = nil,
+        completion: @escaping (Result<(items: [NotificationItem], topCursor: String?, bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        var urlComponents = URLComponents(string: "https://x.com/i/api/2/notifications/all.json")!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "count", value: "35"),
+            URLQueryItem(name: "include_profile_interstitial_type", value: "1"),
+            URLQueryItem(name: "include_blocking", value: "1"),
+            URLQueryItem(name: "include_blocked_by", value: "1"),
+            URLQueryItem(name: "include_followed_by", value: "1"),
+            URLQueryItem(name: "include_want_retweets", value: "1"),
+            URLQueryItem(name: "include_mute_edge", value: "1"),
+            URLQueryItem(name: "include_can_dm", value: "1"),
+            URLQueryItem(name: "include_can_media_tag", value: "1"),
+            URLQueryItem(name: "include_ext_has_nft_avatar", value: "1"),
+            URLQueryItem(name: "include_ext_is_blue_verified", value: "1"),
+            URLQueryItem(name: "include_ext_verified_type", value: "1"),
+            URLQueryItem(name: "skip_status", value: "1"),
+            URLQueryItem(name: "cards_platform", value: "Web-12"),
+            URLQueryItem(name: "include_cards", value: "1"),
+            URLQueryItem(name: "include_ext_alt_text", value: "true"),
+            URLQueryItem(name: "include_ext_limited_action_results", value: "true"),
+            URLQueryItem(name: "include_quote_count", value: "true"),
+            URLQueryItem(name: "include_reply_count", value: "1"),
+            URLQueryItem(name: "tweet_mode", value: "extended"),
+            URLQueryItem(name: "include_ext_views", value: "true"),
+            URLQueryItem(name: "include_entities", value: "true")
+        ]
+        
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        urlComponents.queryItems = queryItems
+        
+        guard let requestURL = urlComponents.url else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue("en", forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                  let data = data else {
+                completion(.failure(.invalidResponse))
+                return
+            }
+            
+            do {
+                let parsed = try self.parseNotificationsJSON(data)
+                completion(.success(parsed))
+            } catch {
+                completion(.failure(.parseError))
+            }
+        }
+        task.resume()
+    }
+    
+    // MARK: - Parse Notifications JSON
+    private func parseNotificationsJSON(_ data: Data) throws -> (items: [NotificationItem], topCursor: String?, bottomCursor: String?) {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let globalObjects = json["globalObjects"] as? [String: Any],
+              let notifsDict = globalObjects["notifications"] as? [String: [String: Any]] else {
+            throw APIError.parseError
+        }
+        
+        let tweetsDict = (globalObjects["tweets"] as? [String: [String: Any]]) ?? [:]
+        let usersDict = (globalObjects["users"] as? [String: [String: Any]]) ?? [:]
+        
+        let timeline = json["timeline"] as? [String: Any]
+        let instructions = (timeline?["instructions"] as? [[String: Any]]) ?? []
+        
+        var orderedItems: [NotificationItem] = []
+        var seenIds = Set<String>()
+        var topCursor: String?
+        var bottomCursor: String?
+        
+        for inst in instructions {
+            guard let addEntries = inst["addEntries"] as? [String: Any],
+                  let entries = addEntries["entries"] as? [[String: Any]] else {
+                continue
+            }
+            
+            for entry in entries {
+                let entryId = entry["entryId"] as? String ?? ""
+                
+                if entryId.hasPrefix("cursor-top-") {
+                    if let content = entry["content"] as? [String: Any],
+                       let op = content["operation"] as? [String: Any],
+                       let cursorObj = op["cursor"] as? [String: Any],
+                       let val = cursorObj["value"] as? String {
+                        topCursor = val
+                    }
+                } else if entryId.hasPrefix("cursor-bottom-") {
+                    if let content = entry["content"] as? [String: Any],
+                       let op = content["operation"] as? [String: Any],
+                       let cursorObj = op["cursor"] as? [String: Any],
+                       let val = cursorObj["value"] as? String {
+                        bottomCursor = val
+                    }
+                } else if entryId.hasPrefix("notification-") {
+                    let nid = entryId.replacingOccurrences(of: "notification-", with: "")
+                    if let item = self.buildNotificationItem(nid: nid, entry: entry, notifsDict: notifsDict, tweetsDict: tweetsDict, usersDict: usersDict) {
+                        if !seenIds.contains(item.id) {
+                            seenIds.insert(item.id)
+                            orderedItems.append(item)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: if addEntries had no notification items, parse notifsDict directly
+        if orderedItems.isEmpty {
+            for (nid, _) in notifsDict {
+                if let item = self.buildNotificationItem(nid: nid, entry: [:], notifsDict: notifsDict, tweetsDict: tweetsDict, usersDict: usersDict) {
+                    if !seenIds.contains(item.id) {
+                        seenIds.insert(item.id)
+                        orderedItems.append(item)
+                    }
+                }
+            }
+            orderedItems.sort { $0.createdAt > $1.createdAt }
+        }
+        
+        return (orderedItems, topCursor, bottomCursor)
+    }
+    
+    private func buildNotificationItem(
+        nid: String,
+        entry: [String: Any],
+        notifsDict: [String: [String: Any]],
+        tweetsDict: [String: [String: Any]],
+        usersDict: [String: [String: Any]]
+    ) -> NotificationItem? {
+        guard let notif = notifsDict[nid] else { return nil }
+        
+        let iconDict = notif["icon"] as? [String: Any]
+        let iconId = iconDict?["id"] as? String ?? ""
+        let msgDict = notif["message"] as? [String: Any]
+        let actionSummary = msgDict?["text"] as? String ?? ""
+        
+        let timestampMs = (notif["timestampMs"] as? String).flatMap { Double($0) }
+            ?? (entry["sortIndex"] as? String).flatMap { Double($0) }
+            ?? (Date().timeIntervalSince1970 * 1000.0)
+        let createdAt = Date(timeIntervalSince1970: timestampMs / 1000.0)
+        
+        // Notification Type
+        let notifType: NotificationType
+        switch iconId {
+        case "heart_icon":
+            notifType = .like
+        case "retweet_icon":
+            notifType = .retweet
+        case "reply_icon":
+            notifType = .reply
+        case "person_icon":
+            notifType = .follow
+        default:
+            if actionSummary.localizedCaseInsensitiveContains("liked") {
+                notifType = .like
+            } else if actionSummary.localizedCaseInsensitiveContains("reposted") || actionSummary.localizedCaseInsensitiveContains("retweeted") {
+                notifType = .retweet
+            } else if actionSummary.localizedCaseInsensitiveContains("replied") {
+                notifType = .reply
+            } else if actionSummary.localizedCaseInsensitiveContains("followed") {
+                notifType = .follow
+            } else {
+                notifType = .mention
+            }
+        }
+        
+        // Extract Actors
+        var actors: [TweetUser] = []
+        let template = notif["template"] as? [String: Any]
+        let actions = template?["aggregateUserActionsV1"] as? [String: Any]
+        
+        if let fromUsers = actions?["fromUsers"] as? [[String: Any]] {
+            for fu in fromUsers {
+                if let userObj = fu["user"] as? [String: Any],
+                   let uid = userObj["id"] as? String,
+                   let u = usersDict[uid] {
+                    let name = u["name"] as? String ?? ""
+                    let screenName = u["screen_name"] as? String ?? ""
+                    let avatarUrl = (u["profile_image_url_https"] as? String)?
+                        .replacingOccurrences(of: "_normal", with: "_bigger")
+                    let isVerified = (u["verified"] as? Bool) ?? (u["is_blue_verified"] as? Bool) ?? false
+                    actors.append(TweetUser(id: uid, name: name, screenName: screenName, avatarUrl: avatarUrl, isVerified: isVerified))
+                }
+            }
+        }
+        
+        if actors.isEmpty, let entities = msgDict?["entities"] as? [[String: Any]] {
+            for ent in entities {
+                if let ref = ent["ref"] as? [String: Any],
+                   let userRef = ref["user"] as? [String: Any],
+                   let uid = userRef["id"] as? String,
+                   let u = usersDict[uid] {
+                    let name = u["name"] as? String ?? ""
+                    let screenName = u["screen_name"] as? String ?? ""
+                    let avatarUrl = (u["profile_image_url_https"] as? String)?
+                        .replacingOccurrences(of: "_normal", with: "_bigger")
+                    let isVerified = (u["verified"] as? Bool) ?? (u["is_blue_verified"] as? Bool) ?? false
+                    actors.append(TweetUser(id: uid, name: name, screenName: screenName, avatarUrl: avatarUrl, isVerified: isVerified))
+                }
+            }
+        }
+        
+        // Target Tweet Snippet
+        var targetTweetSnippet: String?
+        if let targetObjects = actions?["targetObjects"] as? [[String: Any]] {
+            for to in targetObjects {
+                if let tweetObj = to["tweet"] as? [String: Any],
+                   let tid = tweetObj["id"] as? String,
+                   let tweet = tweetsDict[tid] {
+                    targetTweetSnippet = tweet["full_text"] as? String
+                    break
+                }
+            }
+        }
+        
+        return NotificationItem(
+            id: nid,
+            type: notifType,
+            actors: actors,
+            actionSummary: actionSummary,
+            targetTweetSnippet: targetTweetSnippet,
+            replyBody: nil,
+            createdAt: createdAt
+        )
+    }
+    
     // MARK: - JSON Parser (URT v2 Timeline)
     private func parseTimelineV2JSON(_ data: Data) throws -> (tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],

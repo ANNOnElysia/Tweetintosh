@@ -277,20 +277,27 @@ private struct NotificationRowView: View {
             VStack(alignment: .leading, spacing: 6) {
                 // Actor Avatar(s) & Timestamp
                 HStack(alignment: .center, spacing: 8) {
-                    // Small circular user avatar icon
-                    Circle()
-                        .fill(Color(white: 0.16))
-                        .frame(width: 24, height: 24)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(Color.white.opacity(0.7))
-                        )
+                    if let firstActor = item.actors.first, let avatarUrl = firstActor.avatarUrl, !avatarUrl.isEmpty {
+                        CachedAsyncImage(urlString: avatarUrl)
+                            .frame(width: 26, height: 26)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
+                    } else {
+                        Circle()
+                            .fill(Color(white: 0.16))
+                            .frame(width: 26, height: 26)
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.white.opacity(0.7))
+                            )
+                    }
                     
-                    // Summary text (e.g. "Lumine and Amber liked your post")
+                    // Summary text
                     Text(item.actionSummary)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Color.white.opacity(0.92))
+                        .lineLimit(2)
                     
                     Spacer()
                     
