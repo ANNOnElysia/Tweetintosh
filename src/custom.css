@@ -1,0 +1,162 @@
+/* MaX: Ultra-lightweight macOS X Client Stylesheet */
+
+/* 1. Global Background & Color Scheme: Pure OLED Black to eliminate white flashes */
+html, body {
+    background-color: #000000 !important;
+    color-scheme: dark !important;
+}
+
+/* 2. Window Drag Region & Top Safe Area for macOS FullSizeContentView Traffic Lights */
+header[role="banner"] {
+    padding-top: 36px !important;
+}
+
+/* Draggable area at top for seamless macOS window dragging */
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 38px;
+    -webkit-app-region: drag;
+    z-index: 99999;
+    pointer-events: none;
+}
+
+/* Prevent drag interference on interactive elements inside top area if any */
+header[role="banner"] nav,
+header[role="banner"] a,
+header[role="banner"] button {
+    -webkit-app-region: no-drag;
+}
+
+/* 3. Typography: Japanese Mincho + System Serif Hybrid for high-class magazine layout */
+* {
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", "Songti SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+/* Tweet text body formatting: enhanced line height and readability */
+[data-testid="tweetText"] {
+    font-size: 15.5px !important;
+    line-height: 1.68 !important;
+    letter-spacing: 0.02em !important;
+    font-weight: 400 !important;
+    -webkit-font-smoothing: antialiased !important;
+    text-rendering: optimizeLegibility !important;
+}
+
+/* Headings and user names: keep crisp and legible */
+[data-testid="User-Name"] {
+    letter-spacing: 0.01em !important;
+}
+
+/* 4. Elimination of Loading Spinners & Laggy Jitter */
+/* Hide default SVG spinning wheel that chokes main thread */
+div[role="progressbar"] svg,
+div[aria-label="Loading…"] svg,
+div[aria-label="正在加载…"] svg,
+div[aria-label="読み込み中…"] svg {
+    display: none !important;
+}
+
+/* 120Hz Hardware-accelerated Shimmer Skeleton */
+div[role="progressbar"] {
+    position: relative !important;
+    overflow: hidden !important;
+    height: 3px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-radius: 3px !important;
+    margin: 8px auto !important;
+    will-change: transform, opacity !important;
+    transform: translateZ(0) !important;
+    -webkit-transform: translateZ(0) !important;
+}
+
+div[role="progressbar"]::after {
+    content: "" !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -100% !important;
+    width: 200% !important;
+    height: 100% !important;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(29, 155, 240, 0.15) 25%,
+        rgba(29, 155, 240, 0.85) 50%,
+        rgba(29, 155, 240, 0.15) 75%,
+        transparent 100%
+    ) !important;
+    animation: maxShimmer 1.1s cubic-bezier(0.4, 0.0, 0.2, 1) infinite !important;
+    will-change: transform !important;
+}
+
+@keyframes maxShimmer {
+    0% {
+        transform: translate3d(-50%, 0, 0);
+    }
+    100% {
+        transform: translate3d(50%, 0, 0);
+    }
+}
+
+/* Top bar progress animation if present */
+#loading-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: #1d9bf0;
+    z-index: 100000;
+    transition: width 0.2s ease;
+}
+
+/* 5. Clean Layout: Promoted Content, Ads & Superfluous Banners Purge */
+/* Promoted tweets & tracking */
+[data-testid="placementTracking"],
+article:has([data-testid="promotedIndicator"]),
+article:has(svg + span:contains("Ad")),
+article:has(svg + span:contains("Promoted")),
+div[data-testid="cellInnerDiv"]:has(svg path[d*="M19.498 3h-15c-1.381 0-2.5 1.12-2.5 2.5v13c0 1.38 1.119 2.5 2.5 2.5h15c1.38 0 2.5-1.12 2.5-2.5v-13c0-1.38-1.12-2.5-2.5-2.5zm-3.502 12h-2v-3.75c0-.965-.69-1.25-1.25-1.25s-1.25.285-1.25 1.25V15h-2V9h2v1.07c.483-.69 1.25-1.07 2.25-1.07 1.657 0 2.25 1.164 2.25 2.75V15z"]) {
+    display: none !important;
+}
+
+/* Verified / Premium Upsell Cards & Banners */
+aside[role="complementary"] [data-testid="superFollowsUpsellBanner"],
+aside[role="complementary"] div:has(> a[href*="/i/premium_sign_up"]),
+aside[role="complementary"] div:has(> a[href*="/i/verified-orgs-signup"]),
+aside[role="complementary"] aside[aria-label*="Subscribe to Premium"],
+aside[role="complementary"] aside[aria-label*="订阅 Premium"],
+a[href*="/i/premium_sign_up"],
+a[href*="/i/verified-orgs-signup"],
+div[data-testid="PremiumUpsell"] {
+    display: none !important;
+}
+
+/* Grok promotional popups or floating upgrades */
+div[data-testid="GrokDrawer"],
+div[data-testid="FloatingActionButtons"] a[href*="premium"] {
+    display: none !important;
+}
+
+/* Hide intrusive bottom sticky login / cookie bars when navigating */
+#layers div[data-testid="BottomBar"] {
+    display: none !important;
+}
+
+/* 6. Smooth Native Scrollbars */
+::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border-radius: 4px !important;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35) !important;
+}

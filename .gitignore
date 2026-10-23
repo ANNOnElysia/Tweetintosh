@@ -1,0 +1,18 @@
+# macOS System Files
+.DS_Store
+.Trashes
+._*
+
+# SPM & Swift Build Artifacts
+.build/
+*.dSYM/
+*.dia
+
+# Compiled Application Bundle (Rebuildable via ./build.sh)
+MaX.app/
+
+# Editor & Temporary Files
+*.swp
+*~
+.idea/
+.vscode/
