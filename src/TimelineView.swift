@@ -172,7 +172,7 @@ final class TrackpadPullCoordinator {
 }
 
 struct MainTimelineView: View {
-    @StateObject private var viewModel = TimelineViewModel()
+    @ObservedObject var viewModel = TimelineViewModel.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var nav = NavigationManager.shared
@@ -195,6 +195,13 @@ struct MainTimelineView: View {
                 emptyStateView
             } else {
                 timelineContent
+            }
+            
+            // Secondary Floating Capsule: Home Feed Filter (For You / Following)
+            if viewModel.isAuthenticated {
+                HomeFeedCapsuleBar()
+                    .padding(.top, nav.sidebarExpanded ? 16 : 62)
+                    .zIndex(50)
             }
             
             // Native Full-Resolution Lightbox Overlay
@@ -230,7 +237,9 @@ struct MainTimelineView: View {
             TrackpadPullCoordinator.shared.stopMonitoring(owner: "Timeline")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MaX_RefreshTimeline"))) { _ in
-            viewModel.refresh(silently: false)
+            if nav.currentTab == .home {
+                viewModel.refresh(silently: false)
+            }
         }
     }
     
@@ -251,7 +260,7 @@ struct MainTimelineView: View {
                     
                     // Top subtle spacing under native navigation (capsule vs sidebar)
                     Color.clear
-                        .frame(height: nav.sidebarExpanded ? 36 : 62)
+                        .frame(height: nav.sidebarExpanded ? 72 : 118)
                     
                     // Pull-to-Refresh SVG Dynamic Handwriting Indicator Area (Edge-to-Edge)
                     if viewModel.isRefreshing || scrollState.pullDistance > 2 {
@@ -291,8 +300,6 @@ struct MainTimelineView: View {
                         guard !viewModel.isRefreshing, scrollState.isAtTop, val.translation.height > 0 else { return }
                         let rawHeight = val.translation.height
                         let threshold: CGFloat = 52.0
-                        // Progressive damping for mouse drag:
-                        // Starts light and responsive, becomes progressively stiffer towards 52pt
                         let dist: CGFloat
                         if rawHeight <= 60 {
                             dist = rawHeight * 0.62 - (rawHeight * rawHeight) * 0.0025
@@ -321,7 +328,6 @@ struct MainTimelineView: View {
                             }
                             viewModel.refresh(silently: false)
                         } else {
-                            // Cancelled before reaching bottom -> smooth rewind animation!
                             scrollState.hasTriggeredHaptic = false
                             withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                                 scrollState.pullDistance = 0
@@ -364,7 +370,7 @@ struct MainTimelineView: View {
     private var skeletonLoadingView: some View {
         ScrollView {
             VStack(spacing: 0) {
-                Color.clear.frame(height: 44)
+                Color.clear.frame(height: nav.sidebarExpanded ? 72 : 118)
                 ForEach(0..<6, id: \.self) { _ in
                     TweetSkeletonRow()
                 }
@@ -402,7 +408,8 @@ struct MainTimelineView: View {
     // MARK: - Empty State View
     private var emptyStateView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "bubble.left.and.bubble.right")
+            Color.clear.frame(height: nav.sidebarExpanded ? 72 : 118)
+            Image(systemName: viewModel.selectedFeed.iconName)
                 .font(.system(size: 40))
                 .foregroundColor(ThemeManager.tertiaryText)
             
@@ -418,5 +425,98 @@ struct MainTimelineView: View {
             .buttonStyle(PlainButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Secondary Floating Home Feed Capsule Bar (Dual-Mode Liquid Glass)
+private struct HomeFeedCapsuleBar: View {
+    @ObservedObject var viewModel = TimelineViewModel.shared
+    @ObservedObject var nav = NavigationManager.shared
+    @ObservedObject var loc = LocalizationManager.shared
+    @ObservedObject var theme = ThemeManager.shared
+    @Namespace private var feedTabNamespace
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(HomeFeedType.allCases) { feed in
+                let isSelected = viewModel.selectedFeed == feed
+                Button {
+                    viewModel.selectFeed(feed)
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: feed.iconName)
+                            .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                        
+                        Text(loc.t(feed.titleKey))
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                        
+                        if nav.showShortcutBadges {
+                            // Shortcut Indicator (⌥Q, ⌥W)
+                            Text(feed.shortcutLetter)
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3.5)
+                                        .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                )
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
+                    }
+                    .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.70))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background {
+                        if isSelected {
+                            activeFeedBackground
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3.5)
+        .modifier(
+            AdaptiveGlassModifier(
+                isLiquid: theme.useLiquidGlass,
+                shape: Capsule()
+            )
+        )
+        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
+        .fixedSize()
+    }
+    
+    @ViewBuilder
+    private var activeFeedBackground: some View {
+        if theme.useLiquidGlass {
+            if #available(macOS 26.0, *) {
+                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : Color.white
+                let tabGlass: Glass = theme.useLiquidGlassTint
+                    ? .regular.tint(ThemeManager.accent.opacity(0.20))
+                    : .regular
+                Capsule()
+                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? 0.22 : 0.14))
+                    .glassEffect(tabGlass, in: Capsule())
+                    .matchedGeometryEffect(id: "home-active-feed", in: feedTabNamespace)
+            } else {
+                defaultActiveBackground
+            }
+        } else {
+            defaultActiveBackground
+        }
+    }
+    
+    private var defaultActiveBackground: some View {
+        Capsule()
+            .fill(ThemeManager.accent.opacity(0.26))
+            .overlay(
+                Capsule()
+                    .strokeBorder(ThemeManager.accent.opacity(0.50), lineWidth: 0.8)
+            )
+            .shadow(color: ThemeManager.accent.opacity(0.25), radius: 6, x: 0, y: 2)
+            .matchedGeometryEffect(id: "home-active-feed", in: feedTabNamespace)
     }
 }

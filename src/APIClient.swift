@@ -35,7 +35,267 @@ final class APIClient {
         self.session = URLSession(configuration: config)
     }
     
-    // MARK: - Fetch Home Timeline
+    // MARK: - Fetch GraphQL Home Timeline (For You & Following)
+    func fetchGraphQLHomeTimeline(
+        feedType: HomeFeedType,
+        cursor: String? = nil,
+        seenTweetIds: [String] = [],
+        completion: @escaping (Result<(tweets: [Tweet], topCursor: String?, bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        let queryId: String
+        let endpoint: String
+        var variables: [String: Any] = [
+            "count": 20,
+            "includePromotedContent": false,
+            "requestContext": "launch",
+            "seenTweetIds": seenTweetIds
+        ]
+        
+        switch feedType {
+        case .forYou:
+            queryId = "-SBRQaLiRjWvTFD5SI403A"
+            endpoint = "https://x.com/i/api/graphql/\(queryId)/HomeTimeline"
+            variables["withCommunity"] = true
+        case .following:
+            queryId = "hB-6CNtJdReMJny7IPMoQQ"
+            endpoint = "https://x.com/i/api/graphql/\(queryId)/HomeLatestTimeline"
+            variables["enableRanking"] = false
+        }
+        
+        if let cursor = cursor {
+            variables["cursor"] = cursor
+        }
+        
+        let features: [String: Any] = [
+            "responsive_web_graphql_timeline_navigation_enabled": true,
+            "creator_subscriptions_tweet_preview_api_enabled": true,
+            "responsive_web_edit_tweet_api_enabled": true,
+            "articles_preview_enabled": true,
+            "view_counts_everywhere_api_enabled": true,
+            "longform_notetweets_consumption_enabled": true,
+            "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+            "responsive_web_twitter_article_tweet_consumption_enabled": true,
+            "communities_web_enable_tweet_community_results_fetch": true,
+            "c9s_tweet_anatomy_moderator_badge_enabled": true
+        ]
+        
+        guard let requestURL = URL(string: endpoint) else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "POST"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let payload: [String: Any] = [
+            "variables": variables,
+            "features": features,
+            "queryId": queryId
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                  let data = data else {
+                // Fall back to REST timeline if GraphQL fails
+                self.fetchHomeTimeline(cursor: cursor, completion: completion)
+                return
+            }
+            
+            do {
+                let parsed = try self.parseGraphQLTimeline(data)
+                if parsed.tweets.isEmpty && cursor == nil {
+                    // Fall back to REST timeline if empty
+                    self.fetchHomeTimeline(cursor: cursor, completion: completion)
+                } else {
+                    completion(.success(parsed))
+                }
+            } catch {
+                self.fetchHomeTimeline(cursor: cursor, completion: completion)
+            }
+        }
+        task.resume()
+    }
+    
+    // MARK: - Parse GraphQL Timeline URT JSON
+    func parseGraphQLTimeline(_ data: Data) throws -> (tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataDict = json["data"] as? [String: Any],
+              let home = dataDict["home"] as? [String: Any],
+              let timeline = home["home_timeline_urt"] as? [String: Any],
+              let instructions = timeline["instructions"] as? [[String: Any]] else {
+            throw APIError.parseError
+        }
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+        
+        var orderedTweets: [Tweet] = []
+        var seenIds = Set<String>()
+        var topCursor: String?
+        var bottomCursor: String?
+        
+        for inst in instructions {
+            let entries = (inst["entries"] as? [[String: Any]]) ?? []
+            for e in entries {
+                let eid = e["entryId"] as? String ?? ""
+                
+                if eid.hasPrefix("cursor-top-") {
+                    if let content = e["content"] as? [String: Any],
+                       let val = content["value"] as? String {
+                        topCursor = val
+                    }
+                } else if eid.hasPrefix("cursor-bottom-") {
+                    if let content = e["content"] as? [String: Any],
+                       let val = content["value"] as? String {
+                        bottomCursor = val
+                    }
+                } else if eid.hasPrefix("tweet-") {
+                    if let tweet = self.buildGraphQLTweet(entry: e, dateFormatter: dateFormatter) {
+                        if !seenIds.contains(tweet.id) {
+                            seenIds.insert(tweet.id)
+                            orderedTweets.append(tweet)
+                        }
+                    }
+                }
+            }
+        }
+        
+        return (orderedTweets, topCursor, bottomCursor)
+    }
+    
+    private func buildGraphQLTweet(entry: [String: Any], dateFormatter: DateFormatter) -> Tweet? {
+        guard let content = entry["content"] as? [String: Any],
+              let itemContent = content["itemContent"] as? [String: Any],
+              let tweetResults = itemContent["tweet_results"] as? [String: Any],
+              var result = tweetResults["result"] as? [String: Any] else {
+            return nil
+        }
+        
+        // Unwrap TweetWithVisibilityResults
+        if let inner = result["tweet"] as? [String: Any] {
+            result = inner
+        }
+        
+        guard let restId = result["rest_id"] as? String,
+              var legacy = result["legacy"] as? [String: Any] else {
+            return nil
+        }
+        
+        var isRetweet = false
+        var retweetedBy: String?
+        
+        // Handle Retweet in GraphQL
+        if let rtResult = legacy["retweeted_status_result"] as? [String: Any],
+           var original = rtResult["result"] as? [String: Any] {
+            isRetweet = true
+            if let innerRt = original["tweet"] as? [String: Any] {
+                original = innerRt
+            }
+            if let rtLegacy = original["legacy"] as? [String: Any] {
+                let curCore = (result["core"] as? [String: Any]) ?? [:]
+                let curUserRes = (curCore["user_results"] as? [String: Any]) ?? [:]
+                let curUser = (curUserRes["result"] as? [String: Any]) ?? [:]
+                let curUCore = (curUser["core"] as? [String: Any]) ?? [:]
+                let curULegacy = (curUser["legacy"] as? [String: Any]) ?? [:]
+                retweetedBy = (curUCore["name"] as? String) ?? (curULegacy["name"] as? String)
+                
+                legacy = rtLegacy
+                result = original
+            }
+        }
+        
+        let fullText = (legacy["full_text"] as? String) ?? (legacy["text"] as? String) ?? ""
+        let createdAtStr = legacy["created_at"] as? String ?? ""
+        let createdAt = dateFormatter.date(from: createdAtStr) ?? Date()
+        
+        // Author extraction
+        let core = (result["core"] as? [String: Any]) ?? [:]
+        let userResults = (core["user_results"] as? [String: Any]) ?? [:]
+        let userResult = (userResults["result"] as? [String: Any]) ?? [:]
+        let ucore = (userResult["core"] as? [String: Any]) ?? [:]
+        let ulegacy = (userResult["legacy"] as? [String: Any]) ?? [:]
+        let uavatar = (userResult["avatar"] as? [String: Any]) ?? [:]
+        
+        let userName = (ucore["name"] as? String) ?? (ulegacy["name"] as? String) ?? "User"
+        let screenName = (ucore["screen_name"] as? String) ?? (ulegacy["screen_name"] as? String) ?? ""
+        let rawAvatar = (uavatar["image_url"] as? String) ?? (ulegacy["profile_image_url_https"] as? String)
+        let avatarUrl = rawAvatar?.replacingOccurrences(of: "_normal", with: "_bigger")
+        let isVerified = (userResult["is_blue_verified"] as? Bool) ?? (ulegacy["verified"] as? Bool) ?? false
+        let authorId = (userResult["rest_id"] as? String) ?? (userResult["id"] as? String) ?? ""
+        
+        let author = TweetUser(
+            id: authorId,
+            name: userName,
+            screenName: screenName,
+            avatarUrl: avatarUrl,
+            isVerified: isVerified
+        )
+        
+        // Media extraction
+        var mediaList: [TweetMedia] = []
+        if let extendedEntities = legacy["extended_entities"] as? [String: Any],
+           let mediaItems = extendedEntities["media"] as? [[String: Any]] {
+            for m in mediaItems {
+                if let mId = m["id_str"] as? String,
+                   let mType = m["type"] as? String,
+                   let mUrl = m["media_url_https"] as? String {
+                    let sizes = m["sizes"] as? [String: Any]
+                    let large = sizes?["large"] as? [String: Any]
+                    let width = (large?["w"] as? Int) ?? 800
+                    let height = (large?["h"] as? Int) ?? 600
+                    
+                    mediaList.append(TweetMedia(
+                        id: mId,
+                        type: mType,
+                        mediaUrl: mUrl,
+                        previewUrl: mUrl,
+                        width: width,
+                        height: height
+                    ))
+                }
+            }
+        }
+        
+        let replyCount = (legacy["reply_count"] as? Int) ?? 0
+        let retweetCount = (legacy["retweet_count"] as? Int) ?? 0
+        let favoriteCount = (legacy["favorite_count"] as? Int) ?? 0
+        
+        return Tweet(
+            id: restId,
+            text: fullText,
+            createdAt: createdAt,
+            author: author,
+            media: mediaList,
+            replyCount: replyCount,
+            retweetCount: retweetCount,
+            favoriteCount: favoriteCount,
+            isRetweet: isRetweet,
+            retweetedBy: retweetedBy
+        )
+    }
+    
+    // MARK: - Legacy Fetch Home Timeline
     func fetchHomeTimeline(
         cursor: String? = nil,
         completion: @escaping (Result<(tweets: [Tweet], topCursor: String?, bottomCursor: String?), APIError>) -> Void

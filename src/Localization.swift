@@ -361,6 +361,20 @@ final class LocalizationManager: ObservableObject {
                 .korean: "검색 닫기 (Esc / ⌥S)",
                 .simplifiedChinese: "退出搜索 (Esc / ⌥S)",
                 .traditionalChinese: "退出搜尋 (Esc / ⌥S)"
+            ],
+            "feed_for_you": [
+                .english: "For You",
+                .japanese: "おすすめ",
+                .korean: "추천",
+                .simplifiedChinese: "为你推荐",
+                .traditionalChinese: "為你推薦"
+            ],
+            "feed_following": [
+                .english: "Following",
+                .japanese: "フォロー中",
+                .korean: "팔로잉",
+                .simplifiedChinese: "正在关注",
+                .traditionalChinese: "正在關注"
             ]
         ]
         

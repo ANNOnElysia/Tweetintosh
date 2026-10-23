@@ -63,7 +63,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         let interval = now.timeIntervalSince(createdAt)
         
         if interval < 60 {
-            return "just now"
+            return LocalizationManager.shared.t("time_just_now")
         } else if interval < 3600 {
             return "\(Int(interval / 60))m"
         } else if interval < 86400 {
@@ -74,6 +74,41 @@ struct Tweet: Codable, Hashable, Identifiable {
             let formatter = DateFormatter()
             formatter.dateFormat = "MMM d"
             return formatter.string(from: createdAt)
+        }
+    }
+}
+
+enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
+    case forYou = "for_you"
+    case following = "following"
+    
+    var id: String { rawValue }
+    
+    var titleKey: String {
+        switch self {
+        case .forYou: return "feed_for_you"
+        case .following: return "feed_following"
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .forYou: return "sparkles"
+        case .following: return "person.2.fill"
+        }
+    }
+    
+    var shortcutKey: String {
+        switch self {
+        case .forYou: return "⌥Q"
+        case .following: return "⌥W"
+        }
+    }
+    
+    var shortcutLetter: String {
+        switch self {
+        case .forYou: return "Q"
+        case .following: return "W"
         }
     }
 }

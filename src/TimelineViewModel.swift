@@ -7,7 +7,19 @@ import SwiftUI
 import Combine
 
 final class TimelineViewModel: ObservableObject {
+    static let shared = TimelineViewModel()
+    
+    @Published var selectedFeed: HomeFeedType = .forYou {
+        didSet {
+            updateActiveTweets()
+        }
+    }
+    
     @Published var tweets: [Tweet] = []
+    
+    // Independent storage for each feed
+    @Published var forYouTweets: [Tweet] = []
+    @Published var followingTweets: [Tweet] = []
     
     @Published var isLoadingInitial = true
     @Published var isRefreshing = false
@@ -15,9 +27,38 @@ final class TimelineViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var errorMessage: String?
     
-    private var topCursor: String?
-    private var bottomCursor: String?
+    private var forYouTopCursor: String?
+    private var forYouBottomCursor: String?
+    
+    private var followingTopCursor: String?
+    private var followingBottomCursor: String?
+    
+    // Track seen tweet IDs for the algorithmic "For You" feed
+    private var seenTweetIds: [String] = []
+    
     private var timer: Timer?
+    
+    var topCursor: String? {
+        get { selectedFeed == .forYou ? forYouTopCursor : followingTopCursor }
+        set {
+            if selectedFeed == .forYou {
+                forYouTopCursor = newValue
+            } else {
+                followingTopCursor = newValue
+            }
+        }
+    }
+    
+    var bottomCursor: String? {
+        get { selectedFeed == .forYou ? forYouBottomCursor : followingBottomCursor }
+        set {
+            if selectedFeed == .forYou {
+                forYouBottomCursor = newValue
+            } else {
+                followingBottomCursor = newValue
+            }
+        }
+    }
     
     init() {
         checkAuth()
@@ -42,13 +83,25 @@ final class TimelineViewModel: ObservableObject {
     }
     
     func loadTimeline() {
-        // 1. Immediately load local cache for instantaneous 0ms display
-        if let cached = TimelineCacheManager.shared.loadCachedSnapshot(), !cached.tweets.isEmpty {
-            self.tweets = cached.tweets
-            self.topCursor = cached.topCursor
-            self.bottomCursor = cached.bottomCursor
+        // 1. Immediately load local caches for instantaneous 0ms display
+        if let cachedForYou = TimelineCacheManager.shared.loadCachedSnapshot(feed: .forYou), !cachedForYou.tweets.isEmpty {
+            self.forYouTweets = cachedForYou.tweets
+            self.forYouTopCursor = cachedForYou.topCursor
+            self.forYouBottomCursor = cachedForYou.bottomCursor
+            self.seenTweetIds = Array(cachedForYou.tweets.prefix(40).map { $0.id })
+            self.prefetchMedia(for: cachedForYou.tweets)
+        }
+        
+        if let cachedFollowing = TimelineCacheManager.shared.loadCachedSnapshot(feed: .following), !cachedFollowing.tweets.isEmpty {
+            self.followingTweets = cachedFollowing.tweets
+            self.followingTopCursor = cachedFollowing.topCursor
+            self.followingBottomCursor = cachedFollowing.bottomCursor
+            self.prefetchMedia(for: cachedFollowing.tweets)
+        }
+        
+        updateActiveTweets()
+        if !tweets.isEmpty {
             self.isLoadingInitial = false
-            prefetchMedia(for: cached.tweets)
         }
         
         // 2. Fetch fresh posts from GraphQL API
@@ -58,14 +111,54 @@ final class TimelineViewModel: ObservableObject {
         startPollTimer()
     }
     
+    private func updateActiveTweets() {
+        let currentList = (selectedFeed == .forYou) ? forYouTweets : followingTweets
+        self.tweets = currentList
+    }
+    
+    // MARK: - Feed Switching
+    func selectFeed(_ feed: HomeFeedType) {
+        guard selectedFeed != feed else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            selectedFeed = feed
+        }
+        
+        if tweets.isEmpty {
+            refresh(silently: false)
+        }
+    }
+    
+    func nextFeed() {
+        let all = HomeFeedType.allCases
+        if let idx = all.firstIndex(of: selectedFeed) {
+            let nextIdx = (idx + 1) % all.count
+            selectFeed(all[nextIdx])
+        }
+    }
+    
+    func prevFeed() {
+        let all = HomeFeedType.allCases
+        if let idx = all.firstIndex(of: selectedFeed) {
+            let prevIdx = (idx - 1 + all.count) % all.count
+            selectFeed(all[prevIdx])
+        }
+    }
+    
     // MARK: - Refresh (Pull or Initial)
     func refresh(silently: Bool = false) {
         if !silently {
             isRefreshing = true
         }
         
+        let currentFeed = selectedFeed
+        let seenIdsToSend = (currentFeed == .forYou) ? seenTweetIds : []
         let startTime = Date()
-        APIClient.shared.fetchHomeTimeline(cursor: nil) { [weak self] result in
+        
+        APIClient.shared.fetchGraphQLHomeTimeline(
+            feedType: currentFeed,
+            cursor: nil,
+            seenTweetIds: seenIdsToSend
+        ) { [weak self] result in
             let elapsed = Date().timeIntervalSince(startTime)
             let remainingDelay = max(0.0, 1.2 - elapsed)
             
@@ -79,36 +172,70 @@ final class TimelineViewModel: ObservableObject {
                 switch result {
                 case .success(let payload):
                     self.errorMessage = nil
-                    if self.tweets.isEmpty {
-                        // First load
-                        self.tweets = payload.tweets
-                        self.topCursor = payload.topCursor
-                        self.bottomCursor = payload.bottomCursor
+                    let existingIds = Set(self.currentFeedTweets(currentFeed).map { $0.id })
+                    let newOnes = payload.tweets.filter { !existingIds.contains($0.id) }
+                    
+                    if self.currentFeedTweets(currentFeed).isEmpty {
+                        // First load for this feed
+                        self.setFeedTweets(payload.tweets, for: currentFeed)
+                        if currentFeed == .forYou {
+                            self.forYouTopCursor = payload.topCursor
+                            self.forYouBottomCursor = payload.bottomCursor
+                            self.seenTweetIds = Array(payload.tweets.prefix(40).map { $0.id })
+                        } else {
+                            self.followingTopCursor = payload.topCursor
+                            self.followingBottomCursor = payload.bottomCursor
+                        }
+                        
                         TimelineCacheManager.shared.saveSnapshot(
-                            tweets: self.tweets,
+                            feed: currentFeed,
+                            tweets: payload.tweets,
+                            topCursor: payload.topCursor,
+                            bottomCursor: payload.bottomCursor
+                        )
+                        self.prefetchMedia(for: payload.tweets)
+                    } else if !newOnes.isEmpty {
+                        // Prepend newly discovered tweets
+                        var updated = self.currentFeedTweets(currentFeed)
+                        updated.insert(contentsOf: newOnes, at: 0)
+                        self.setFeedTweets(updated, for: currentFeed)
+                        
+                        if currentFeed == .forYou {
+                            if let newTop = payload.topCursor {
+                                self.forYouTopCursor = newTop
+                            }
+                            // Append to seen IDs pool (capped at 60)
+                            let newIds = newOnes.map { $0.id }
+                            self.seenTweetIds = Array(Set(newIds + self.seenTweetIds).prefix(60))
+                        } else {
+                            if let newTop = payload.topCursor {
+                                self.followingTopCursor = newTop
+                            }
+                        }
+                        
+                        TimelineCacheManager.shared.saveSnapshot(
+                            feed: currentFeed,
+                            tweets: updated,
                             topCursor: self.topCursor,
                             bottomCursor: self.bottomCursor
                         )
-                        self.prefetchMedia(for: self.tweets)
-                    } else {
-                        // Incremental diff: find tweets not already in list
-                        let existingIds = Set(self.tweets.map { $0.id })
-                        let newOnes = payload.tweets.filter { !existingIds.contains($0.id) }
-                        
-                        if !newOnes.isEmpty {
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
-                                self.tweets.insert(contentsOf: newOnes, at: 0)
-                            }
-                            if let newTop = payload.topCursor {
-                                self.topCursor = newTop
-                            }
-                            TimelineCacheManager.shared.saveSnapshot(
-                                tweets: self.tweets,
-                                topCursor: self.topCursor,
-                                bottomCursor: self.bottomCursor
-                            )
-                            self.prefetchMedia(for: newOnes)
-                        }
+                        self.prefetchMedia(for: newOnes)
+                    } else if currentFeed == .forYou && !payload.tweets.isEmpty {
+                        // In For You mode, if all was filtered out, still inject the freshest candidate batch
+                        self.setFeedTweets(payload.tweets, for: currentFeed)
+                        self.forYouTopCursor = payload.topCursor
+                        self.forYouBottomCursor = payload.bottomCursor
+                        self.seenTweetIds = Array(payload.tweets.prefix(40).map { $0.id })
+                        TimelineCacheManager.shared.saveSnapshot(
+                            feed: currentFeed,
+                            tweets: payload.tweets,
+                            topCursor: payload.topCursor,
+                            bottomCursor: payload.bottomCursor
+                        )
+                    }
+                    
+                    if self.selectedFeed == currentFeed {
+                        self.updateActiveTweets()
                     }
                     
                 case .failure(let err):
@@ -127,22 +254,39 @@ final class TimelineViewModel: ObservableObject {
     func loadMore() {
         guard !isLoadingMore, let cursor = bottomCursor else { return }
         isLoadingMore = true
+        let currentFeed = selectedFeed
         
-        APIClient.shared.fetchHomeTimeline(cursor: cursor) { [weak self] result in
+        APIClient.shared.fetchGraphQLHomeTimeline(
+            feedType: currentFeed,
+            cursor: cursor,
+            seenTweetIds: currentFeed == .forYou ? seenTweetIds : []
+        ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isLoadingMore = false
                 
                 switch result {
                 case .success(let payload):
-                    let existingIds = Set(self.tweets.map { $0.id })
+                    let existingIds = Set(self.currentFeedTweets(currentFeed).map { $0.id })
                     let olderOnes = payload.tweets.filter { !existingIds.contains($0.id) }
                     
-                    self.tweets.append(contentsOf: olderOnes)
-                    self.bottomCursor = payload.bottomCursor
+                    var updated = self.currentFeedTweets(currentFeed)
+                    updated.append(contentsOf: olderOnes)
+                    self.setFeedTweets(updated, for: currentFeed)
+                    
+                    if currentFeed == .forYou {
+                        self.forYouBottomCursor = payload.bottomCursor
+                    } else {
+                        self.followingBottomCursor = payload.bottomCursor
+                    }
+                    
+                    if self.selectedFeed == currentFeed {
+                        self.updateActiveTweets()
+                    }
                     
                     TimelineCacheManager.shared.saveSnapshot(
-                        tweets: self.tweets,
+                        feed: currentFeed,
+                        tweets: updated,
                         topCursor: self.topCursor,
                         bottomCursor: self.bottomCursor
                     )
@@ -151,6 +295,18 @@ final class TimelineViewModel: ObservableObject {
                     print("Failed to load more: \(err.localizedDescription)")
                 }
             }
+        }
+    }
+    
+    private func currentFeedTweets(_ feed: HomeFeedType) -> [Tweet] {
+        return (feed == .forYou) ? forYouTweets : followingTweets
+    }
+    
+    private func setFeedTweets(_ list: [Tweet], for feed: HomeFeedType) {
+        if feed == .forYou {
+            forYouTweets = list
+        } else {
+            followingTweets = list
         }
     }
     
@@ -163,16 +319,26 @@ final class TimelineViewModel: ObservableObject {
     
     private func checkNewPostsSilently() {
         guard isAuthenticated, !tweets.isEmpty else { return }
+        let currentFeed = selectedFeed
         
-        APIClient.shared.fetchHomeTimeline(cursor: topCursor) { [weak self] result in
+        APIClient.shared.fetchGraphQLHomeTimeline(
+            feedType: currentFeed,
+            cursor: topCursor,
+            seenTweetIds: currentFeed == .forYou ? seenTweetIds : []
+        ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if case .success(let payload) = result {
-                    let existingIds = Set(self.tweets.map { $0.id })
+                    let existingIds = Set(self.currentFeedTweets(currentFeed).map { $0.id })
                     let fresh = payload.tweets.filter { !existingIds.contains($0.id) }
                     if !fresh.isEmpty {
-                        withAnimation(.spring()) {
-                            self.tweets.insert(contentsOf: fresh, at: 0)
+                        var updated = self.currentFeedTweets(currentFeed)
+                        updated.insert(contentsOf: fresh, at: 0)
+                        self.setFeedTweets(updated, for: currentFeed)
+                        if self.selectedFeed == currentFeed {
+                            withAnimation(.spring()) {
+                                self.updateActiveTweets()
+                            }
                         }
                     }
                 }

@@ -159,12 +159,18 @@ final class NavigationManager: ObservableObject {
                 // Option + Command + Left/Right Arrow -> Secondary Filter Horizontal Navigation
                 if hasOption && hasCmd && !hasCtrl {
                     if keyCode == 123 { // Left Arrow
-                        if self.currentTab == .notifications {
+                        if self.currentTab == .home {
+                            TimelineViewModel.shared.prevFeed()
+                            return nil
+                        } else if self.currentTab == .notifications {
                             NotificationsViewModel.shared.prevFilter()
                             return nil
                         }
                     } else if keyCode == 124 { // Right Arrow
-                        if self.currentTab == .notifications {
+                        if self.currentTab == .home {
+                            TimelineViewModel.shared.nextFeed()
+                            return nil
+                        } else if self.currentTab == .notifications {
                             NotificationsViewModel.shared.nextFilter()
                             return nil
                         }
@@ -202,13 +208,19 @@ final class NavigationManager: ObservableObject {
                 // Secondary Filter Direct Shortcuts: Option + Q, W, E, R (strictly Option, NOT Cmd to preserve Cmd+Q quit)
                 if hasOption && !hasCmd && !hasCtrl {
                     switch keyCode {
-                    case 12: // Key Q -> All
-                        if self.currentTab == .notifications {
+                    case 12: // Key Q -> Home: For You; Notifications: All
+                        if self.currentTab == .home {
+                            TimelineViewModel.shared.selectFeed(.forYou)
+                            return nil
+                        } else if self.currentTab == .notifications {
                             NotificationsViewModel.shared.selectFilter(.all)
                             return nil
                         }
-                    case 13: // Key W -> Likes & Reposts
-                        if self.currentTab == .notifications {
+                    case 13: // Key W -> Home: Following; Notifications: Likes & Reposts
+                        if self.currentTab == .home {
+                            TimelineViewModel.shared.selectFeed(.following)
+                            return nil
+                        } else if self.currentTab == .notifications {
                             NotificationsViewModel.shared.selectFilter(.likesAndReposts)
                             return nil
                         }
