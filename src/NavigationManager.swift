@@ -169,6 +169,35 @@ final class NavigationManager: ObservableObject {
                         self.selectTab(.messages)
                         return nil
                         
+                    // Secondary Notifications Filter: Option + Q, W, E, R (under 1, 2, 3, 4)
+                    case 12: // Key Q -> All
+                        if self.currentTab == .notifications {
+                            self.hideHUD()
+                            NotificationsViewModel.shared.selectFilter(.all)
+                            return nil
+                        }
+                        
+                    case 13: // Key W -> Likes & Reposts
+                        if self.currentTab == .notifications {
+                            self.hideHUD()
+                            NotificationsViewModel.shared.selectFilter(.likesAndReposts)
+                            return nil
+                        }
+                        
+                    case 14: // Key E -> Comments
+                        if self.currentTab == .notifications {
+                            self.hideHUD()
+                            NotificationsViewModel.shared.selectFilter(.comments)
+                            return nil
+                        }
+                        
+                    case 15: // Key R -> Mentions
+                        if self.currentTab == .notifications {
+                            self.hideHUD()
+                            NotificationsViewModel.shared.selectFilter(.mentions)
+                            return nil
+                        }
+                        
                     case 1:  // S -> Search
                         self.hideHUD()
                         self.toggleSearch()

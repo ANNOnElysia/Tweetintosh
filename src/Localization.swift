@@ -89,6 +89,41 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "搜索",
                 .traditionalChinese: "搜尋"
             ],
+            "notif_filter_all": [
+                .english: "All",
+                .japanese: "すべて",
+                .korean: "전체",
+                .simplifiedChinese: "全部",
+                .traditionalChinese: "全部"
+            ],
+            "notif_filter_likes_reposts": [
+                .english: "Likes & Reposts",
+                .japanese: "いいねとリポスト",
+                .korean: "좋아요 및 재게시",
+                .simplifiedChinese: "赞与转推",
+                .traditionalChinese: "讚與轉推"
+            ],
+            "notif_filter_comments": [
+                .english: "Comments",
+                .japanese: "返信・コメント",
+                .korean: "답글",
+                .simplifiedChinese: "评论",
+                .traditionalChinese: "留言"
+            ],
+            "notif_filter_mentions": [
+                .english: "Mentions",
+                .japanese: "メンション",
+                .korean: "멘션",
+                .simplifiedChinese: "提及",
+                .traditionalChinese: "提及"
+            ],
+            "empty_notifications": [
+                .english: "No notifications in this filter",
+                .japanese: "このフィルターの通知はありません",
+                .korean: "이 필터의 알림이 없습니다",
+                .simplifiedChinese: "该筛选下暂无新通知",
+                .traditionalChinese: "該篩選下暫無新通知"
+            ],
             "search_placeholder": [
                 .english: "Search…",
                 .japanese: "検索…",

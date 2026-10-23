@@ -160,7 +160,7 @@ struct AppRootView: View {
             }
         case .notifications:
             NavigationStack {
-                NewDestinationPlaceholderView(title: "Notifications", icon: "bell.fill")
+                NotificationsView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
             }
         case .messages:
             NavigationStack {
