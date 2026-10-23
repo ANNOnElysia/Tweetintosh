@@ -164,6 +164,7 @@ struct NotificationsView: View {
 // MARK: - Secondary Floating Filter Capsule Bar (Dual-Mode Liquid Glass)
 private struct NotificationFilterCapsuleBar: View {
     @ObservedObject var viewModel = NotificationsViewModel.shared
+    @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @Namespace private var filterTabNamespace
@@ -182,16 +183,19 @@ private struct NotificationFilterCapsuleBar: View {
                         Text(loc.t(filter.titleKey))
                             .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
                         
-                        // Shortcut Indicator (⌥Q, ⌥W, ⌥E, ⌥R)
-                        Text(filter.shortcutKey)
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.35))
-                            .padding(.horizontal, 3.5)
-                            .padding(.vertical, 1.5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3.5)
-                                    .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
-                            )
+                        if nav.showShortcutBadges {
+                            // Shortcut Indicator (⌥Q, ⌥W, ⌥E, ⌥R)
+                            Text(filter.shortcutKey)
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3.5)
+                                        .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                )
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
                     }
                     .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.70))
                     .padding(.horizontal, 10)
@@ -214,6 +218,7 @@ private struct NotificationFilterCapsuleBar: View {
                 shape: Capsule()
             )
         )
+        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
         .fixedSize()
     }
     

@@ -127,6 +127,20 @@ final class NotificationsViewModel: ObservableObject {
         }
     }
     
+    func nextFilter() {
+        let all = NotificationFilter.allCases
+        if let idx = all.firstIndex(of: selectedFilter), idx < all.count - 1 {
+            selectFilter(all[idx + 1])
+        }
+    }
+    
+    func prevFilter() {
+        let all = NotificationFilter.allCases
+        if let idx = all.firstIndex(of: selectedFilter), idx > 0 {
+            selectFilter(all[idx - 1])
+        }
+    }
+    
     func refresh(silently: Bool = false) {
         if !silently {
             isRefreshing = true

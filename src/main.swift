@@ -217,8 +217,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         reloadItem.keyEquivalentModifierMask = .command
         viewMenu.addItem(reloadItem)
         
-        let toggleSidebarItem = NSMenuItem(title: "Toggle Sidebar", action: #selector(toggleSidebarAction), keyEquivalent: "s")
-        toggleSidebarItem.keyEquivalentModifierMask = [.command, .control]
+        let toggleSidebarItem = NSMenuItem(title: "Toggle Sidebar", action: #selector(toggleSidebarAction), keyEquivalent: "`")
+        toggleSidebarItem.keyEquivalentModifierMask = .option
         toggleSidebarItem.target = self
         viewMenu.addItem(toggleSidebarItem)
         

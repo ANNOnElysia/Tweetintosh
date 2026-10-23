@@ -184,19 +184,35 @@ private struct LiquidGlassCapsule: View {
         HStack(spacing: 0) {
             // 1. Leftmost: Sidebar Toggle Button [|]
             Button(action: onToggleSidebar) {
-                Image(systemName: "sidebar.left")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.88))
-                    .frame(width: 32, height: 32)
-                    .background(
-                        Circle()
-                            .fill(Color.white.opacity(0.08))
-                    )
-                    .contentShape(Circle())
+                HStack(spacing: 3) {
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.88))
+                    
+                    if nav.showShortcutBadges {
+                        Text("⌥`")
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.85))
+                            .padding(.horizontal, 3.5)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3.5)
+                                    .fill(Color.white.opacity(0.12))
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
+                }
+                .frame(height: 32)
+                .padding(.horizontal, nav.showShortcutBadges ? 8 : 8)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                )
+                .contentShape(Capsule())
             }
             .buttonStyle(PlainButtonStyle())
             .padding(.leading, 6)
-            .help("Show Sidebar (⌃⌘S)")
+            .help("Toggle Sidebar (⌥`)")
             
             // Subtle vertical divider
             Rectangle()
@@ -217,14 +233,27 @@ private struct LiquidGlassCapsule: View {
                                     nav.isSearchActive = false
                                 }
                             } label: {
-                                HStack(spacing: 6) {
+                                HStack(spacing: 5) {
                                     Image(systemName: tab.iconName)
                                         .font(.system(size: 12, weight: isSelected ? .bold : .medium))
                                     Text(tabTitle(tab))
                                         .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
+                                    
+                                    if nav.showShortcutBadges {
+                                        Text(tabShortcut(tab))
+                                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                            .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                            .padding(.horizontal, 3.5)
+                                            .padding(.vertical, 1.5)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 3.5)
+                                                    .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                            )
+                                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                                    }
                                 }
                                 .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.70))
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
                                 .background {
                                     if isSelected {
@@ -303,16 +332,34 @@ private struct LiquidGlassCapsule: View {
             Button(action: {
                 nav.toggleSearch()
             }) {
-                Image(systemName: nav.isSearchActive ? "xmark" : "magnifyingglass")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(nav.isSearchActive ? ThemeManager.accent : Color.white.opacity(0.85))
-                    .frame(width: 32, height: 32)
-                    .background {
-                        if nav.isSearchActive {
-                            Circle().fill(Color.white.opacity(0.20))
-                        }
+                HStack(spacing: 3) {
+                    Image(systemName: nav.isSearchActive ? "xmark" : "magnifyingglass")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(nav.isSearchActive ? ThemeManager.accent : Color.white.opacity(0.85))
+                    
+                    if nav.showShortcutBadges {
+                        Text("⌥S")
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(nav.isSearchActive ? ThemeManager.accent : Color.white.opacity(0.85))
+                            .padding(.horizontal, 3.5)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3.5)
+                                    .fill(nav.isSearchActive ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.12))
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
-                    .contentShape(Circle())
+                }
+                .frame(height: 32)
+                .padding(.horizontal, nav.showShortcutBadges ? 8 : 8)
+                .background {
+                    if nav.isSearchActive {
+                        Capsule().fill(Color.white.opacity(0.20))
+                    } else {
+                        Capsule().fill(Color.white.opacity(0.08))
+                    }
+                }
+                .contentShape(Capsule())
             }
             .buttonStyle(PlainButtonStyle())
             .padding(.trailing, 6)
@@ -320,6 +367,7 @@ private struct LiquidGlassCapsule: View {
         }
         .padding(.vertical, 4)
         .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
+        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
         .fixedSize()
     }
     
@@ -414,6 +462,14 @@ private struct LiquidGlassCapsule: View {
             return t.isEmpty ? "Messages" : t
         }
     }
+    
+    private func tabShortcut(_ tab: AppTab) -> String {
+        switch tab {
+        case .home: return "⌥1"
+        case .notifications: return "⌥2"
+        case .messages: return "⌥3"
+        }
+    }
 }
 
 // MARK: - Floating Vertical Sidebar Droplet (Dual-Mode: Floating Liquid Glass vs Frosted Glass)
@@ -421,6 +477,7 @@ private struct LiquidGlassSidebar: View {
     @Binding var selection: AppTab
     @Binding var isExpanded: Bool
     var onOpenSettings: () -> Void
+    @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @Namespace private var selectionNamespace
     
@@ -440,18 +497,34 @@ private struct LiquidGlassSidebar: View {
                         isExpanded = false
                     }
                 } label: {
-                    Image(systemName: "sidebar.left")
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundColor(ThemeManager.accent)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.08))
-                        )
-                        .contentShape(Circle())
+                    HStack(spacing: 3) {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundColor(ThemeManager.accent)
+                        
+                        if nav.showShortcutBadges {
+                            Text("⌥`")
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundColor(ThemeManager.accent.opacity(0.85))
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3.5)
+                                        .fill(ThemeManager.accent.opacity(0.15))
+                                )
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
+                    }
+                    .frame(height: 28)
+                    .padding(.horizontal, nav.showShortcutBadges ? 6 : 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.08))
+                    )
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .help("Hide Sidebar (⌃⌘S)")
+                .help("Toggle Sidebar (⌥`)")
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
@@ -476,6 +549,19 @@ private struct LiquidGlassSidebar: View {
                             .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.75))
                         
                         Spacer()
+                        
+                        if nav.showShortcutBadges {
+                            Text(tabShortcut(tab))
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3.5)
+                                        .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                )
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
                     }
                     .padding(.horizontal, 11)
                     .padding(.vertical, 8)
@@ -502,7 +588,21 @@ private struct LiquidGlassSidebar: View {
                     Text("Settings")
                         .font(.system(size: 12.5))
                         .foregroundColor(Color.white.opacity(0.70))
+                    
                     Spacer()
+                    
+                    if nav.showShortcutBadges {
+                        Text("⌘,")
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.40))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3.5)
+                                    .fill(Color.white.opacity(0.06))
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
                 }
                 .padding(.horizontal, 11)
                 .padding(.vertical, 8)
@@ -522,6 +622,15 @@ private struct LiquidGlassSidebar: View {
                 shape: RoundedRectangle(cornerRadius: 22, style: .continuous)
             )
         )
+        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
+    }
+    
+    private func tabShortcut(_ tab: AppTab) -> String {
+        switch tab {
+        case .home: return "⌥1"
+        case .notifications: return "⌥2"
+        case .messages: return "⌥3"
+        }
     }
     
     @ViewBuilder

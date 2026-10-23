@@ -46,10 +46,10 @@ final class NavigationManager: ObservableObject {
         }
     }
     
-    // Shortcut HUD state (triggered by holding Option or Command)
-    @Published var showShortcutHUD: Bool = false
-    private var modHoldTimer: Timer?
-    private var isModifierDown: Bool = false
+    // Shortcut badges visibility (revealed when holding Command for > 1.5s without any keystroke)
+    @Published var showShortcutBadges: Bool = false
+    private var cmdHoldTimer: Timer?
+    private var isCmdDown: Bool = false
     
     private var eventMonitor: Any?
     
@@ -61,7 +61,7 @@ final class NavigationManager: ObservableObject {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
         }
-        modHoldTimer?.invalidate()
+        cmdHoldTimer?.invalidate()
     }
     
     func selectTab(_ tab: AppTab) {
@@ -98,42 +98,45 @@ final class NavigationManager: ObservableObject {
         }
     }
     
-    // MARK: - Global Shortcut & Option/Command Long-Press Engine
+    // MARK: - Global Shortcut & Command Long-Press Engine
     private func setupKeyboardMonitoring() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
             guard let self = self else { return event }
             
             // Only handle if main window is active and lightbox is not presented
             guard !LightboxManager.shared.isPresented else {
-                self.hideHUD()
+                self.hideShortcutBadges()
                 return event
             }
             
-            // 1. Detect Option or Command key hold / release for Cheat Sheet HUD
+            // 1. Detect Command key hold / release for revealing shortcut hints
             if event.type == .flagsChanged {
-                let isModPressed = event.modifierFlags.contains(.option) || event.modifierFlags.contains(.command)
+                let hasCmd = event.modifierFlags.contains(.command)
                 
-                if isModPressed && !self.isModifierDown {
-                    self.isModifierDown = true
-                    self.modHoldTimer?.invalidate()
-                    // Schedule HUD appearance if held for > 0.70s
-                    self.modHoldTimer = Timer.scheduledTimer(withTimeInterval: 0.70, repeats: false) { [weak self] _ in
-                        guard let self = self, self.isModifierDown else { return }
+                if hasCmd && !self.isCmdDown {
+                    self.isCmdDown = true
+                    self.cmdHoldTimer?.invalidate()
+                    // If Command is held for > 1.5s without any keystroke, reveal shortcut badges
+                    self.cmdHoldTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+                        guard let self = self, self.isCmdDown else { return }
                         DispatchQueue.main.async {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                self.showShortcutHUD = true
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                                self.showShortcutBadges = true
                             }
                         }
                     }
-                } else if !isModPressed && self.isModifierDown {
-                    self.isModifierDown = false
-                    self.hideHUD()
+                } else if !hasCmd && self.isCmdDown {
+                    self.isCmdDown = false
+                    self.hideShortcutBadges()
                 }
                 return event
             }
             
-            // 2. Handle KeyDown events with Option (or Command fallback)
+            // 2. Handle KeyDown events
             if event.type == .keyDown {
+                // Any keystroke cancels the timer and dismisses shortcut badges immediately
+                self.hideShortcutBadges()
+                
                 let hasOption = event.modifierFlags.contains(.option)
                 let hasCmd = event.modifierFlags.contains(.command)
                 let hasCtrl = event.modifierFlags.contains(.control)
@@ -145,74 +148,83 @@ final class NavigationManager: ObservableObject {
                         self.toggleSearch()
                         return nil
                     }
-                    if self.showShortcutHUD {
-                        self.hideHUD()
+                }
+                
+                // Option + ` (keyCode 50, key immediately to the left of 1) -> Toggle Sidebar
+                if hasOption && !hasCmd && !hasCtrl && keyCode == 50 {
+                    self.toggleSidebar()
+                    return nil
+                }
+                
+                // Option + Command + Left/Right Arrow -> Secondary Filter Horizontal Navigation
+                if hasOption && hasCmd && !hasCtrl {
+                    if keyCode == 123 { // Left Arrow
+                        if self.currentTab == .notifications {
+                            NotificationsViewModel.shared.prevFilter()
+                            return nil
+                        }
+                    } else if keyCode == 124 { // Right Arrow
+                        if self.currentTab == .notifications {
+                            NotificationsViewModel.shared.nextFilter()
+                            return nil
+                        }
+                    }
+                }
+                
+                // Option + Left/Right Arrow -> Primary Tabs Navigation
+                if hasOption && !hasCmd && !hasCtrl {
+                    if keyCode == 123 { // Left Arrow
+                        self.prevTab()
+                        return nil
+                    } else if keyCode == 124 { // Right Arrow
+                        self.nextTab()
                         return nil
                     }
                 }
                 
-                // Option + 1, 2, 3 / S / Left & Right Arrow (excluding Cmd+Ctrl combos)
-                if hasOption || (hasCmd && !hasCtrl) {
+                // Option + 1, 2, 3 (or Cmd + 1, 2, 3) -> Primary Tab Switching
+                if (hasOption || hasCmd) && !hasCtrl {
                     switch keyCode {
                     case 18: // Key 1 -> Home
-                        self.hideHUD()
                         self.selectTab(.home)
                         return nil
-                        
                     case 19: // Key 2 -> Notifications
-                        self.hideHUD()
                         self.selectTab(.notifications)
                         return nil
-                        
                     case 20: // Key 3 -> Messages
-                        self.hideHUD()
                         self.selectTab(.messages)
                         return nil
-                        
-                    // Secondary Notifications Filter: Option + Q, W, E, R (under 1, 2, 3, 4)
+                    default:
+                        break
+                    }
+                }
+                
+                // Secondary Filter Direct Shortcuts: Option + Q, W, E, R (strictly Option, NOT Cmd to preserve Cmd+Q quit)
+                if hasOption && !hasCmd && !hasCtrl {
+                    switch keyCode {
                     case 12: // Key Q -> All
                         if self.currentTab == .notifications {
-                            self.hideHUD()
                             NotificationsViewModel.shared.selectFilter(.all)
                             return nil
                         }
-                        
                     case 13: // Key W -> Likes & Reposts
                         if self.currentTab == .notifications {
-                            self.hideHUD()
                             NotificationsViewModel.shared.selectFilter(.likesAndReposts)
                             return nil
                         }
-                        
                     case 14: // Key E -> Comments
                         if self.currentTab == .notifications {
-                            self.hideHUD()
                             NotificationsViewModel.shared.selectFilter(.comments)
                             return nil
                         }
-                        
                     case 15: // Key R -> Mentions
                         if self.currentTab == .notifications {
-                            self.hideHUD()
                             NotificationsViewModel.shared.selectFilter(.mentions)
                             return nil
                         }
-                        
-                    case 1:  // S -> Search
-                        self.hideHUD()
+                    case 1: // Key S -> Toggle Search
                         self.toggleSearch()
                         return nil
-                        
-                    case 123: // Left Arrow -> Slide to previous tab
-                        self.hideHUD()
-                        self.prevTab()
-                        return nil
-                        
-                    case 124: // Right Arrow -> Slide to next tab
-                        self.hideHUD()
-                        self.nextTab()
-                        return nil
-                        
                     default:
                         break
                     }
@@ -223,13 +235,13 @@ final class NavigationManager: ObservableObject {
         }
     }
     
-    private func hideHUD() {
-        modHoldTimer?.invalidate()
-        modHoldTimer = nil
-        if showShortcutHUD {
+    func hideShortcutBadges() {
+        cmdHoldTimer?.invalidate()
+        cmdHoldTimer = nil
+        if showShortcutBadges {
             DispatchQueue.main.async {
                 withAnimation(.spring(response: 0.24, dampingFraction: 0.88)) {
-                    self.showShortcutHUD = false
+                    self.showShortcutBadges = false
                 }
             }
         }
