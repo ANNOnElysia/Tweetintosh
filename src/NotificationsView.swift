@@ -31,6 +31,12 @@ struct NotificationsView: View {
                 .zIndex(50)
         }
         .onAppear {
+            TrackpadPullCoordinator.shared.onPullProgress = { distance in
+                DispatchQueue.main.async {
+                    scrollState.pullDistance = distance
+                    scrollState.isPullThresholdExceeded = (distance >= 52.0)
+                }
+            }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
                 DispatchQueue.main.async {
                     scrollState.isPullThresholdExceeded = false
@@ -48,10 +54,15 @@ struct NotificationsView: View {
                     }
                 }
             }
-            TrackpadPullCoordinator.shared.startMonitoring()
+            TrackpadPullCoordinator.shared.startMonitoring(owner: "Notifications")
         }
         .onDisappear {
-            TrackpadPullCoordinator.shared.stopMonitoring()
+            TrackpadPullCoordinator.shared.stopMonitoring(owner: "Notifications")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MaX_RefreshTimeline"))) { _ in
+            if nav.currentTab == .notifications {
+                viewModel.refresh(silently: false)
+            }
         }
     }
     

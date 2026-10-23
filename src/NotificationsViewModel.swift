@@ -82,7 +82,7 @@ struct NotificationItem: Identifiable, Hashable, Codable {
     var relativeTime: String {
         let interval = Date().timeIntervalSince(createdAt)
         if interval < 60 {
-            return "just now"
+            return LocalizationManager.shared.t("time_just_now")
         } else if interval < 3600 {
             return "\(Int(interval / 60))m"
         } else if interval < 86400 {
@@ -161,10 +161,16 @@ final class NotificationsViewModel: ObservableObject {
             isRefreshing = true
         }
         
+        let startTime = Date()
         APIClient.shared.fetchNotifications { [weak self] result in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.isRefreshing = false
+            let elapsed = Date().timeIntervalSince(startTime)
+            let remainingDelay = max(0.0, 1.2 - elapsed)
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + (silently ? 0 : remainingDelay)) {
+                guard let self = self else { return }
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
+                    self.isRefreshing = false
+                }
                 switch result {
                 case .success(let data):
                     if !data.items.isEmpty {

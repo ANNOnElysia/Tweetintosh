@@ -28,6 +28,7 @@ final class TrackpadPullCoordinator {
     private var eventMonitor: Any?
     private var wheelReleaseTimer: Timer?
     private let threshold: CGFloat = 52.0
+    private var activeOwner: String?
     
     var onPullProgress: ((CGFloat) -> Void)?
     var onTriggerRefresh: (() -> Void)?
@@ -39,7 +40,8 @@ final class TrackpadPullCoordinator {
     private var accumulatedPull: CGFloat = 0.0
     private var hasTriggeredHaptic: Bool = false
     
-    func startMonitoring() {
+    func startMonitoring(owner: String = "default") {
+        activeOwner = owner
         guard eventMonitor == nil else { return }
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self = self else { return event }
@@ -48,13 +50,18 @@ final class TrackpadPullCoordinator {
         }
     }
     
-    func stopMonitoring() {
-        if let m = eventMonitor {
-            NSEvent.removeMonitor(m)
-            eventMonitor = nil
+    func stopMonitoring(owner: String = "default") {
+        if activeOwner == owner {
+            activeOwner = nil
+            if let m = eventMonitor {
+                NSEvent.removeMonitor(m)
+                eventMonitor = nil
+            }
+            wheelReleaseTimer?.invalidate()
+            wheelReleaseTimer = nil
+            accumulatedPull = 0
+            hasTriggeredHaptic = false
         }
-        wheelReleaseTimer?.invalidate()
-        wheelReleaseTimer = nil
     }
     
     // Progressive Damping Curve (阻尼感递增：从一开始到加载条到loading部分阻力越来越大)
@@ -110,16 +117,19 @@ final class TrackpadPullCoordinator {
                 if accumulatedPull >= threshold {
                     accumulatedPull = 0
                     hasTriggeredHaptic = false
+                    onPullProgress?(0)
                     onTriggerRefresh?()
                 } else if accumulatedPull > 0 {
                     // Pull didn't reach the end -> rewind animation, do not execute refresh!
                     accumulatedPull = 0
                     hasTriggeredHaptic = false
+                    onPullProgress?(0)
                     onCancelPull?()
                 }
             } else if event.phase == .cancelled || event.momentumPhase == .cancelled {
                 accumulatedPull = 0
                 hasTriggeredHaptic = false
+                onPullProgress?(0)
                 onCancelPull?()
             } else if event.phase.isEmpty {
                 // Notched mouse wheel support
@@ -134,24 +144,27 @@ final class TrackpadPullCoordinator {
                     onPullProgress?(accumulatedPull)
                     
                     wheelReleaseTimer?.invalidate()
-                    wheelReleaseTimer = Timer.scheduledTimer(withTimeInterval: 0.22, repeats: false) { [weak self] _ in
+                    let timer = Timer(timeInterval: 0.22, repeats: false) { [weak self] _ in
                         guard let self = self else { return }
-                        if self.accumulatedPull >= self.threshold {
-                            self.accumulatedPull = 0
-                            self.hasTriggeredHaptic = false
+                        let didReachThreshold = self.accumulatedPull >= self.threshold
+                        self.accumulatedPull = 0
+                        self.hasTriggeredHaptic = false
+                        self.onPullProgress?(0)
+                        if didReachThreshold {
                             self.onTriggerRefresh?()
                         } else {
-                            self.accumulatedPull = 0
-                            self.hasTriggeredHaptic = false
                             self.onCancelPull?()
                         }
                     }
+                    RunLoop.main.add(timer, forMode: .common)
+                    self.wheelReleaseTimer = timer
                 }
             }
         } else {
             if accumulatedPull > 0 {
                 accumulatedPull = 0
                 hasTriggeredHaptic = false
+                onPullProgress?(0)
                 onCancelPull?()
             }
         }
@@ -211,10 +224,10 @@ struct MainTimelineView: View {
                     }
                 }
             }
-            TrackpadPullCoordinator.shared.startMonitoring()
+            TrackpadPullCoordinator.shared.startMonitoring(owner: "Timeline")
         }
         .onDisappear {
-            TrackpadPullCoordinator.shared.stopMonitoring()
+            TrackpadPullCoordinator.shared.stopMonitoring(owner: "Timeline")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MaX_RefreshTimeline"))) { _ in
             viewModel.refresh(silently: false)

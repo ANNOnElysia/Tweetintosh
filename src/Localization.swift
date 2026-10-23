@@ -333,6 +333,34 @@ final class LocalizationManager: ObservableObject {
                 .korean: "틴트 색상 (Tint)",
                 .simplifiedChinese: "色调着色 (Tint Colour)",
                 .traditionalChinese: "色調著色 (Tint Colour)"
+            ],
+            "time_just_now": [
+                .english: "just now",
+                .japanese: "今",
+                .korean: "방금",
+                .simplifiedChinese: "刚刚",
+                .traditionalChinese: "剛剛"
+            ],
+            "tooltip_toggle_sidebar": [
+                .english: "Toggle Sidebar (⌥`)",
+                .japanese: "サイドバーの切り替え (⌥`)",
+                .korean: "사이드바 전환 (⌥`)",
+                .simplifiedChinese: "切换侧边栏 (⌥`)",
+                .traditionalChinese: "切換側邊欄 (⌥`)"
+            ],
+            "tooltip_search": [
+                .english: "Search (⌥S)",
+                .japanese: "検索 (⌥S)",
+                .korean: "검색 (⌥S)",
+                .simplifiedChinese: "搜索 (⌥S)",
+                .traditionalChinese: "搜尋 (⌥S)"
+            ],
+            "tooltip_close_search": [
+                .english: "Close Search (Esc / ⌥S)",
+                .japanese: "検索を閉じる (Esc / ⌥S)",
+                .korean: "검색 닫기 (Esc / ⌥S)",
+                .simplifiedChinese: "退出搜索 (Esc / ⌥S)",
+                .traditionalChinese: "退出搜尋 (Esc / ⌥S)"
             ]
         ]
         
