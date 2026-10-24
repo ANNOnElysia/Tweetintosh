@@ -187,12 +187,9 @@ private struct NotificationFilterCapsuleBar: View {
                 Button {
                     viewModel.selectFilter(filter)
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: filter.iconName)
-                            .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                        
-                        Text(loc.t(filter.titleKey))
-                            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                            .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
                         
                         if nav.showShortcutBadges {
                             // Shortcut Indicator (⌥Q, ⌥W, ⌥E, ⌥R)
@@ -209,8 +206,9 @@ private struct NotificationFilterCapsuleBar: View {
                         }
                     }
                     .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.68) : Color.white.opacity(0.70)))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
+                    .frame(height: 26)
+                    .frame(minWidth: nav.showShortcutBadges ? 46 : 32)
+                    .padding(.horizontal, nav.showShortcutBadges ? 6 : 4)
                     .background {
                         if isSelected {
                             activeFilterBackground
@@ -219,6 +217,7 @@ private struct NotificationFilterCapsuleBar: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(PlainButtonStyle())
+                .help(loc.t(filter.titleKey))
             }
         }
         .padding(.horizontal, 4)

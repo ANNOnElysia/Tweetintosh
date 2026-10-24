@@ -75,6 +75,10 @@ final class APIClient {
             queryId = "hB-6CNtJdReMJny7IPMoQQ"
             endpoint = "https://x.com/i/api/graphql/\(queryId)/HomeLatestTimeline"
             variables["enableRanking"] = false
+        case .list:
+            queryId = "wXzyuxwo9Ke0gHgw28Yj5A"
+            endpoint = "https://x.com/i/api/graphql/\(queryId)/ListLatestTweetsTimeline"
+            variables["listId"] = TimelineViewModel.shared.selectedListId
         }
         
         if let cursor = cursor {

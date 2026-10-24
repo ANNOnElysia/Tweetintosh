@@ -81,6 +81,7 @@ struct Tweet: Codable, Hashable, Identifiable {
 enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
     case forYou = "for_you"
     case following = "following"
+    case list = "list"
     
     var id: String { rawValue }
     
@@ -88,6 +89,7 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "feed_for_you"
         case .following: return "feed_following"
+        case .list: return "feed_list"
         }
     }
     
@@ -95,6 +97,7 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "sparkles"
         case .following: return "person.2.fill"
+        case .list: return "list.bullet.rectangle.portrait"
         }
     }
     
@@ -102,6 +105,7 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "⌥Q"
         case .following: return "⌥W"
+        case .list: return "⌥E"
         }
     }
     
@@ -109,8 +113,36 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "Q"
         case .following: return "W"
+        case .list: return "E"
         }
     }
+}
+
+struct TwitterList: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var iconName: String
+    var isCustom: Bool = false
+    
+    var localizedName: String {
+        let loc = LocalizationManager.shared
+        switch id {
+        case "list_tech": return loc.t("list_tech")
+        case "list_dev": return loc.t("list_dev")
+        case "list_design": return loc.t("list_design")
+        case "list_news": return loc.t("list_news")
+        case "list_acg": return loc.t("list_acg")
+        default: return name
+        }
+    }
+    
+    static let defaultLists: [TwitterList] = [
+        TwitterList(id: "list_tech", name: "Tech News", iconName: "cpu"),
+        TwitterList(id: "list_dev", name: "Developers", iconName: "chevron.left.forwardslash.chevron.right"),
+        TwitterList(id: "list_design", name: "Design & UI", iconName: "paintpalette.fill"),
+        TwitterList(id: "list_news", name: "Headlines", iconName: "newspaper.fill"),
+        TwitterList(id: "list_acg", name: "ACG & Art", iconName: "sparkles")
+    ]
 }
 
 struct TimelineSnapshot: Codable {

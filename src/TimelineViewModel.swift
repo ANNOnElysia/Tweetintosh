@@ -17,13 +17,26 @@ final class TimelineViewModel: ObservableObject {
     
     @Published var tweets: [Tweet] = []
     
+    // Available Lists
+    @Published var availableLists: [TwitterList] = TwitterList.defaultLists
+    @Published var selectedListId: String = "list_tech"
+    @Published var showAddCustomListPopover: Bool = false
+    @Published var customListName: String = ""
+    @Published var customListId: String = ""
+    
+    var selectedList: TwitterList? {
+        availableLists.first { $0.id == selectedListId } ?? availableLists.first
+    }
+    
     // Independent storage for each feed
     @Published var forYouTweets: [Tweet] = []
     @Published var followingTweets: [Tweet] = []
+    @Published var listTweets: [String: [Tweet]] = [:]
     
     // Pending new tweets buffer (holds background/auto-fetched tweets so user reading is never disrupted or pushed down)
     @Published var forYouPendingTweets: [Tweet] = []
     @Published var followingPendingTweets: [Tweet] = []
+    @Published var listPendingTweets: [String: [Tweet]] = [:]
     
     @Published var isLoadingInitial = true
     @Published var isRefreshing = false
@@ -37,35 +50,134 @@ final class TimelineViewModel: ObservableObject {
     private var followingTopCursor: String?
     private var followingBottomCursor: String?
     
+    private var listTopCursors: [String: String] = [:]
+    private var listBottomCursors: [String: String] = [:]
+    
     // Track seen tweet IDs for the algorithmic "For You" feed
     private var seenTweetIds: [String] = []
     
     private var timer: Timer?
     
     var topCursor: String? {
-        get { selectedFeed == .forYou ? forYouTopCursor : followingTopCursor }
+        get {
+            switch selectedFeed {
+            case .forYou: return forYouTopCursor
+            case .following: return followingTopCursor
+            case .list: return listTopCursors[selectedListId]
+            }
+        }
         set {
-            if selectedFeed == .forYou {
-                forYouTopCursor = newValue
-            } else {
-                followingTopCursor = newValue
+            switch selectedFeed {
+            case .forYou: forYouTopCursor = newValue
+            case .following: followingTopCursor = newValue
+            case .list: listTopCursors[selectedListId] = newValue
             }
         }
     }
     
     var bottomCursor: String? {
-        get { selectedFeed == .forYou ? forYouBottomCursor : followingBottomCursor }
+        get {
+            switch selectedFeed {
+            case .forYou: return forYouBottomCursor
+            case .following: return followingBottomCursor
+            case .list: return listBottomCursors[selectedListId]
+            }
+        }
         set {
-            if selectedFeed == .forYou {
-                forYouBottomCursor = newValue
-            } else {
-                followingBottomCursor = newValue
+            switch selectedFeed {
+            case .forYou: forYouBottomCursor = newValue
+            case .following: followingBottomCursor = newValue
+            case .list: listBottomCursors[selectedListId] = newValue
             }
         }
     }
     
     init() {
+        loadCustomLists()
         checkAuth()
+    }
+    
+    func loadCustomLists() {
+        if let data = UserDefaults.standard.data(forKey: "MaX_CustomTwitterLists"),
+           let saved = try? JSONDecoder().decode([TwitterList].self, from: data), !saved.isEmpty {
+            self.availableLists = saved
+        } else {
+            self.availableLists = TwitterList.defaultLists
+        }
+    }
+    
+    func saveCustomLists() {
+        if let data = try? JSONEncoder().encode(availableLists) {
+            UserDefaults.standard.set(data, forKey: "MaX_CustomTwitterLists")
+        }
+    }
+    
+    func addCustomList(name: String, listId: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedId = listId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !trimmedId.isEmpty else { return }
+        let newList = TwitterList(id: trimmedId, name: trimmedName, iconName: "list.bullet", isCustom: true)
+        availableLists.append(newList)
+        saveCustomLists()
+        selectList(newList)
+    }
+    
+    func selectList(_ list: TwitterList) {
+        selectedListId = list.id
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            selectedFeed = .list
+        }
+        if (listTweets[list.id] ?? []).isEmpty {
+            populateDefaultListTweetsIfNeeded(for: list)
+        }
+        updateActiveTweets()
+        if (listTweets[list.id] ?? []).isEmpty {
+            refresh(silently: false, isUserInitiated: false)
+        }
+    }
+    
+    private func populateDefaultListTweetsIfNeeded(for list: TwitterList) {
+        let sourcePool = forYouTweets.isEmpty ? followingTweets : forYouTweets
+        guard !sourcePool.isEmpty else { return }
+        var curated: [Tweet] = []
+        switch list.id {
+        case "list_tech":
+            curated = sourcePool.filter {
+                let lower = $0.text.lowercased()
+                return lower.contains("ai") || lower.contains("tech") || lower.contains("apple") || lower.contains("mac") || $0.text.contains("科技")
+            }
+        case "list_dev":
+            curated = sourcePool.filter {
+                let lower = $0.text.lowercased()
+                return lower.contains("code") || lower.contains("swift") || lower.contains("github") || lower.contains("dev") || $0.text.contains("开发")
+            }
+        case "list_design":
+            curated = sourcePool.filter {
+                let lower = $0.text.lowercased()
+                return lower.contains("design") || lower.contains("ui") || lower.contains("ux") || $0.text.contains("设计") || $0.text.contains("美")
+            }
+        case "list_news":
+            curated = Array(sourcePool.prefix(15))
+        case "list_acg":
+            curated = sourcePool.filter {
+                let lower = $0.text.lowercased()
+                return lower.contains("anime") || lower.contains("art") || $0.text.contains("アニメ") || $0.text.contains("画") || $0.text.contains("漫画")
+            }
+        default:
+            curated = Array(sourcePool.prefix(15))
+        }
+        if curated.isEmpty {
+            let offset = abs(list.id.hashValue) % max(1, sourcePool.count / 2)
+            curated = Array(sourcePool.dropFirst(offset).prefix(20))
+        }
+        self.listTweets[list.id] = curated
+        TimelineCacheManager.shared.saveSnapshot(
+            feed: .list,
+            listId: list.id,
+            tweets: curated,
+            topCursor: nil,
+            bottomCursor: nil
+        )
     }
     
     func checkAuth() {
@@ -103,6 +215,13 @@ final class TimelineViewModel: ObservableObject {
             self.prefetchMedia(for: cachedFollowing.tweets)
         }
         
+        if let cachedList = TimelineCacheManager.shared.loadCachedSnapshot(feed: .list, listId: selectedListId), !cachedList.tweets.isEmpty {
+            self.listTweets[selectedListId] = cachedList.tweets
+            self.listTopCursors[selectedListId] = cachedList.topCursor
+            self.listBottomCursors[selectedListId] = cachedList.bottomCursor
+            self.prefetchMedia(for: cachedList.tweets)
+        }
+        
         updateActiveTweets()
         if !tweets.isEmpty {
             self.isLoadingInitial = false
@@ -116,44 +235,70 @@ final class TimelineViewModel: ObservableObject {
     }
     
     private func updateActiveTweets() {
-        let currentList = (selectedFeed == .forYou) ? forYouTweets : followingTweets
-        self.tweets = currentList
+        switch selectedFeed {
+        case .forYou:
+            self.tweets = forYouTweets
+        case .following:
+            self.tweets = followingTweets
+        case .list:
+            self.tweets = listTweets[selectedListId] ?? []
+        }
     }
     
     func pendingCount(for feed: HomeFeedType) -> Int {
-        feed == .forYou ? forYouPendingTweets.count : followingPendingTweets.count
+        switch feed {
+        case .forYou: return forYouPendingTweets.count
+        case .following: return followingPendingTweets.count
+        case .list: return listPendingTweets[selectedListId]?.count ?? 0
+        }
     }
     
     func enqueuePendingTweets(_ newTweets: [Tweet], for feed: HomeFeedType) {
-        if feed == .forYou {
+        switch feed {
+        case .forYou:
             let existingPendingIds = Set(forYouPendingTweets.map { $0.id })
             let trulyNew = newTweets.filter { !existingPendingIds.contains($0.id) }
             forYouPendingTweets.insert(contentsOf: trulyNew, at: 0)
-        } else {
+        case .following:
             let existingPendingIds = Set(followingPendingTweets.map { $0.id })
             let trulyNew = newTweets.filter { !existingPendingIds.contains($0.id) }
             followingPendingTweets.insert(contentsOf: trulyNew, at: 0)
+        case .list:
+            var currentPending = listPendingTweets[selectedListId] ?? []
+            let existingPendingIds = Set(currentPending.map { $0.id })
+            let trulyNew = newTweets.filter { !existingPendingIds.contains($0.id) }
+            currentPending.insert(contentsOf: trulyNew, at: 0)
+            listPendingTweets[selectedListId] = currentPending
         }
     }
     
     func applyPendingTweets(for feed: HomeFeedType) {
-        let pending = (feed == .forYou) ? forYouPendingTweets : followingPendingTweets
+        let pending: [Tweet]
+        switch feed {
+        case .forYou: pending = forYouPendingTweets
+        case .following: pending = followingPendingTweets
+        case .list: pending = listPendingTweets[selectedListId] ?? []
+        }
         guard !pending.isEmpty else { return }
         
         var updated = self.currentFeedTweets(feed)
         updated.insert(contentsOf: pending, at: 0)
         self.setFeedTweets(updated, for: feed)
         
-        if feed == .forYou {
+        switch feed {
+        case .forYou:
             forYouPendingTweets = []
             let newIds = pending.map { $0.id }
             self.seenTweetIds = Array(Set(newIds + self.seenTweetIds).prefix(60))
-        } else {
+        case .following:
             followingPendingTweets = []
+        case .list:
+            listPendingTweets[selectedListId] = []
         }
         
         TimelineCacheManager.shared.saveSnapshot(
             feed: feed,
+            listId: (feed == .list) ? selectedListId : nil,
             tweets: updated,
             topCursor: self.topCursor,
             bottomCursor: self.bottomCursor
@@ -232,13 +377,17 @@ final class TimelineViewModel: ObservableObject {
                             self.forYouTopCursor = payload.topCursor
                             self.forYouBottomCursor = payload.bottomCursor
                             self.seenTweetIds = Array(payload.tweets.prefix(40).map { $0.id })
-                        } else {
+                        } else if currentFeed == .following {
                             self.followingTopCursor = payload.topCursor
                             self.followingBottomCursor = payload.bottomCursor
+                        } else {
+                            self.listTopCursors[self.selectedListId] = payload.topCursor
+                            self.listBottomCursors[self.selectedListId] = payload.bottomCursor
                         }
                         
                         TimelineCacheManager.shared.saveSnapshot(
                             feed: currentFeed,
+                            listId: (currentFeed == .list) ? self.selectedListId : nil,
                             tweets: payload.tweets,
                             topCursor: payload.topCursor,
                             bottomCursor: payload.bottomCursor
@@ -257,14 +406,19 @@ final class TimelineViewModel: ObservableObject {
                                 }
                                 let newIds = newOnes.map { $0.id }
                                 self.seenTweetIds = Array(Set(newIds + self.seenTweetIds).prefix(60))
-                            } else {
+                            } else if currentFeed == .following {
                                 if let newTop = payload.topCursor {
                                     self.followingTopCursor = newTop
+                                }
+                            } else {
+                                if let newTop = payload.topCursor {
+                                    self.listTopCursors[self.selectedListId] = newTop
                                 }
                             }
                             
                             TimelineCacheManager.shared.saveSnapshot(
                                 feed: currentFeed,
+                                listId: (currentFeed == .list) ? self.selectedListId : nil,
                                 tweets: updated,
                                 topCursor: self.topCursor,
                                 bottomCursor: self.bottomCursor
@@ -292,9 +446,12 @@ final class TimelineViewModel: ObservableObject {
                         if currentFeed == .forYou {
                             if let newTop = payload.topCursor { self.forYouTopCursor = newTop }
                             if let newBottom = payload.bottomCursor { self.forYouBottomCursor = newBottom }
-                        } else {
+                        } else if currentFeed == .following {
                             if let newTop = payload.topCursor { self.followingTopCursor = newTop }
                             if let newBottom = payload.bottomCursor { self.followingBottomCursor = newBottom }
+                        } else {
+                            if let newTop = payload.topCursor { self.listTopCursors[self.selectedListId] = newTop }
+                            if let newBottom = payload.bottomCursor { self.listBottomCursors[self.selectedListId] = newBottom }
                         }
                     }
                     
@@ -340,8 +497,10 @@ final class TimelineViewModel: ObservableObject {
                     
                     if currentFeed == .forYou {
                         self.forYouBottomCursor = payload.bottomCursor
-                    } else {
+                    } else if currentFeed == .following {
                         self.followingBottomCursor = payload.bottomCursor
+                    } else {
+                        self.listBottomCursors[self.selectedListId] = payload.bottomCursor
                     }
                     
                     if self.selectedFeed == currentFeed {
@@ -350,6 +509,7 @@ final class TimelineViewModel: ObservableObject {
                     
                     TimelineCacheManager.shared.saveSnapshot(
                         feed: currentFeed,
+                        listId: (currentFeed == .list) ? self.selectedListId : nil,
                         tweets: updated,
                         topCursor: self.topCursor,
                         bottomCursor: self.bottomCursor
@@ -363,14 +523,21 @@ final class TimelineViewModel: ObservableObject {
     }
     
     private func currentFeedTweets(_ feed: HomeFeedType) -> [Tweet] {
-        return (feed == .forYou) ? forYouTweets : followingTweets
+        switch feed {
+        case .forYou: return forYouTweets
+        case .following: return followingTweets
+        case .list: return listTweets[selectedListId] ?? []
+        }
     }
     
     private func setFeedTweets(_ list: [Tweet], for feed: HomeFeedType) {
-        if feed == .forYou {
+        switch feed {
+        case .forYou:
             forYouTweets = list
-        } else {
+        case .following:
             followingTweets = list
+        case .list:
+            listTweets[selectedListId] = list
         }
     }
     

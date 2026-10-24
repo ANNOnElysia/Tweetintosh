@@ -224,8 +224,11 @@ final class NavigationManager: ObservableObject {
                             NotificationsViewModel.shared.selectFilter(.likesAndReposts)
                             return nil
                         }
-                    case 14: // Key E -> Comments
-                        if self.currentTab == .notifications {
+                    case 14: // Key E -> Home: List; Notifications: Comments
+                        if self.currentTab == .home {
+                            TimelineViewModel.shared.selectFeed(.list)
+                            return nil
+                        } else if self.currentTab == .notifications {
                             NotificationsViewModel.shared.selectFilter(.comments)
                             return nil
                         }

@@ -367,15 +367,85 @@ final class LocalizationManager: ObservableObject {
                 .english: "For You",
                 .japanese: "おすすめ",
                 .korean: "추천",
-                .simplifiedChinese: "为你推荐",
-                .traditionalChinese: "為你推薦"
+                .simplifiedChinese: "推荐",
+                .traditionalChinese: "推薦"
             ],
             "feed_following": [
                 .english: "Following",
                 .japanese: "フォロー中",
                 .korean: "팔로잉",
-                .simplifiedChinese: "正在关注",
-                .traditionalChinese: "正在關注"
+                .simplifiedChinese: "关注中",
+                .traditionalChinese: "關注中"
+            ],
+            "feed_list": [
+                .english: "Lists",
+                .japanese: "リスト",
+                .korean: "목록",
+                .simplifiedChinese: "列表",
+                .traditionalChinese: "清單"
+            ],
+            "select_list": [
+                .english: "Select List",
+                .japanese: "リストを選択",
+                .korean: "목록 선택",
+                .simplifiedChinese: "选择列表",
+                .traditionalChinese: "選擇清單"
+            ],
+            "switch_list": [
+                .english: "Switch",
+                .japanese: "切替",
+                .korean: "전환",
+                .simplifiedChinese: "切换",
+                .traditionalChinese: "切換"
+            ],
+            "add_custom_list": [
+                .english: "Add Custom List...",
+                .japanese: "カスタムリストを追加...",
+                .korean: "사용자 지정 목록 추가...",
+                .simplifiedChinese: "添加自定义列表...",
+                .traditionalChinese: "新增自訂清單..."
+            ],
+            "current_list": [
+                .english: "Current:",
+                .japanese: "現在のリスト:",
+                .korean: "현재:",
+                .simplifiedChinese: "当前列表:",
+                .traditionalChinese: "目前清單:"
+            ],
+            "list_tech": [
+                .english: "Tech News",
+                .japanese: "テクノロジー",
+                .korean: "테크 뉴스",
+                .simplifiedChinese: "科技资讯",
+                .traditionalChinese: "科技資訊"
+            ],
+            "list_dev": [
+                .english: "Developers",
+                .japanese: "開発者",
+                .korean: "개발자",
+                .simplifiedChinese: "开发者社区",
+                .traditionalChinese: "開發者社群"
+            ],
+            "list_design": [
+                .english: "Design & UI",
+                .japanese: "デザイン",
+                .korean: "디자인",
+                .simplifiedChinese: "设计灵感",
+                .traditionalChinese: "設計靈感"
+            ],
+            "list_news": [
+                .english: "Headlines",
+                .japanese: "総合ニュース",
+                .korean: "종합 뉴스",
+                .simplifiedChinese: "综合新闻",
+                .traditionalChinese: "綜合新聞"
+            ],
+            "list_acg": [
+                .english: "ACG & Art",
+                .japanese: "アニメ・アート",
+                .korean: "애니메이션・아트",
+                .simplifiedChinese: "动漫与艺术",
+                .traditionalChinese: "動漫與藝術"
             ],
             // Notification Action Summaries (Likes, Follows, Reposts, Replies, Mentions)
             "notif_liked_single": [

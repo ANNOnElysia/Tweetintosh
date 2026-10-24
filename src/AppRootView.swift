@@ -135,7 +135,7 @@ struct AppRootView: View {
                         isExpanded: $nav.sidebarExpanded,
                         onOpenSettings: onOpenSettings
                     )
-                    .frame(width: 206)
+                    .frame(width: 216)
                     .padding(.leading, 12)
                     .padding(.top, 42) // Leaves clean space for macOS traffic lights above
                     .padding(.bottom, 12)
@@ -609,6 +609,14 @@ private struct LiquidGlassSidebar: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, 8)
+                
+                // Parallel Feed Selector under Home (推荐 / 关注中 / 列表)
+                if tab == .home {
+                    SidebarHomeFeedSection(selection: $selection)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 2)
+                        .padding(.bottom, 4)
+                }
             }
             
             Spacer()
@@ -711,6 +719,283 @@ private struct LiquidGlassSidebar: View {
                     .allowsHitTesting(false)
             )
             .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)
+    }
+}
+
+// MARK: - Sidebar Home Feed Section (Parallel Feeds under Home: 推荐, 关注中, 列表)
+private struct SidebarHomeFeedSection: View {
+    @Binding var selection: AppTab
+    @ObservedObject var timelineVM = TimelineViewModel.shared
+    @ObservedObject var nav = NavigationManager.shared
+    @ObservedObject var loc = LocalizationManager.shared
+    @ObservedObject var theme = ThemeManager.shared
+    @Namespace private var feedNamespace
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            // Three parallel choices: 推荐 (For You), 关注中 (Following), 列表 (List)
+            HStack(spacing: 2) {
+                // 1. 推荐 (For You)
+                feedButton(type: .forYou)
+                
+                // 2. 关注中 (Following)
+                feedButton(type: .following)
+                
+                // 3. 列表 (List with dropdown menu)
+                listFeedButton
+            }
+            .padding(2.5)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08), lineWidth: 0.6)
+                    )
+            )
+            
+            // If List is currently selected, show the active list banner with switcher
+            if timelineVM.selectedFeed == .list {
+                HStack(spacing: 6) {
+                    Image(systemName: timelineVM.selectedList?.iconName ?? "list.bullet")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(ThemeManager.accent)
+                    
+                    Text(timelineVM.selectedList?.localizedName ?? loc.t("feed_list"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.9) : Color.white.opacity(0.88))
+                        .lineLimit(1)
+                    
+                    Spacer()
+                    
+                    listPickerMenu
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(ThemeManager.accent.opacity(theme.isLight ? 0.09 : 0.14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(ThemeManager.accent.opacity(theme.isLight ? 0.25 : 0.35), lineWidth: 0.6)
+                        )
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
+        .popover(isPresented: $timelineVM.showAddCustomListPopover, arrowEdge: .trailing) {
+            addCustomListView
+        }
+    }
+    
+    // Regular feed button (For You / Following)
+    private func feedButton(type: HomeFeedType) -> some View {
+        let isSelected = (selection == .home && timelineVM.selectedFeed == type)
+        return Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                selection = .home
+                timelineVM.selectFeed(type)
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: type.iconName)
+                    .font(.system(size: 9.5, weight: isSelected ? .bold : .medium))
+                
+                Text(loc.t(type.titleKey))
+                    .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                
+                if nav.showShortcutBadges {
+                    Text(type.shortcutLetter)
+                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(isSelected ? ThemeManager.accent : ThemeManager.tertiaryText)
+                        .padding(.horizontal, 2.5)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(isSelected ? ThemeManager.accent.opacity(0.15) : Color.black.opacity(0.05))
+                        )
+                }
+            }
+            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
+            .frame(maxWidth: .infinity)
+            .frame(height: 24)
+            .background {
+                if isSelected {
+                    feedActiveBackground
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    // List feed button with dropdown menu
+    private var listFeedButton: some View {
+        let isSelected = (selection == .home && timelineVM.selectedFeed == .list)
+        return Menu {
+            Section(loc.t("select_list")) {
+                ForEach(timelineVM.availableLists) { list in
+                    Button {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                            selection = .home
+                            timelineVM.selectList(list)
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: list.iconName)
+                            Text(list.localizedName)
+                            if timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button {
+                timelineVM.showAddCustomListPopover = true
+            } label: {
+                Label(loc.t("add_custom_list"), systemImage: "plus")
+            }
+        } label: {
+            HStack(spacing: 2.5) {
+                Image(systemName: HomeFeedType.list.iconName)
+                    .font(.system(size: 9.5, weight: isSelected ? .bold : .medium))
+                
+                Text(loc.t("feed_list"))
+                    .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .bold))
+                    .opacity(0.7)
+            }
+            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
+            .frame(maxWidth: .infinity)
+            .frame(height: 24)
+            .background {
+                if isSelected {
+                    feedActiveBackground
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .menuStyle(BorderlessButtonMenuStyle())
+    }
+    
+    // Quick switcher menu inside the active list banner
+    private var listPickerMenu: some View {
+        Menu {
+            ForEach(timelineVM.availableLists) { list in
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                        timelineVM.selectList(list)
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: list.iconName)
+                        Text(list.localizedName)
+                        if timelineVM.selectedListId == list.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button {
+                timelineVM.showAddCustomListPopover = true
+            } label: {
+                Label(loc.t("add_custom_list"), systemImage: "plus")
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Text(loc.t("switch_list"))
+                    .font(.system(size: 10, weight: .semibold))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8))
+            }
+            .foregroundColor(ThemeManager.accent)
+        }
+        .menuStyle(BorderlessButtonMenuStyle())
+    }
+    
+    @ViewBuilder
+    private var feedActiveBackground: some View {
+        if theme.useLiquidGlass {
+            if #available(macOS 26.0, *) {
+                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
+                let tabGlass: Glass = theme.useLiquidGlassTint
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.22))
+                    : .regular
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
+                    .glassEffect(tabGlass, in: .rect(cornerRadius: 6))
+                    .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
+            } else {
+                defaultFeedActiveBackground
+            }
+        } else {
+            defaultFeedActiveBackground
+        }
+    }
+    
+    private var defaultFeedActiveBackground: some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.24))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 0.6)
+            )
+            .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
+    }
+    
+    // Add custom list popover dialog
+    private var addCustomListView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(loc.t("add_custom_list"))
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(ThemeManager.primaryText)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("List Name")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(ThemeManager.secondaryText)
+                TextField("e.g. AI Pioneers", text: $timelineVM.customListName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("List ID or Slug")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(ThemeManager.secondaryText)
+                TextField("e.g. 1589123456789", text: $timelineVM.customListId)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+            
+            HStack {
+                Button("Cancel") {
+                    timelineVM.showAddCustomListPopover = false
+                }
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(ThemeManager.secondaryText)
+                
+                Spacer()
+                
+                Button("Add") {
+                    timelineVM.addCustomList(name: timelineVM.customListName, listId: timelineVM.customListId)
+                    timelineVM.customListName = ""
+                    timelineVM.customListId = ""
+                    timelineVM.showAddCustomListPopover = false
+                }
+                .buttonStyle(BorderedProminentButtonStyle())
+                .disabled(timelineVM.customListName.trimmingCharacters(in: .whitespaces).isEmpty || timelineVM.customListId.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(14)
+        .frame(width: 240)
     }
 }
 

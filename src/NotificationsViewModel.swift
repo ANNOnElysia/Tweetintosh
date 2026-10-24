@@ -25,9 +25,9 @@ enum NotificationFilter: Int, CaseIterable, Identifiable {
     
     var iconName: String {
         switch self {
-        case .all: return "tray.full.fill"
-        case .likesAndReposts: return "heart.and.arrow.trianglehead.2.clockwise"
-        case .comments: return "bubble.left.and.text.bubble.right.fill"
+        case .all: return "tray.fill"
+        case .likesAndReposts: return "heart.fill"
+        case .comments: return "bubble.left.and.bubble.right.fill"
         case .mentions: return "at"
         }
     }
