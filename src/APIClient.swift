@@ -738,7 +738,8 @@ final class APIClient {
             actionSummary: actionSummary,
             targetTweetSnippet: targetTweetSnippet,
             replyBody: nil,
-            createdAt: createdAt
+            createdAt: createdAt,
+            iconId: iconId.isEmpty ? nil : iconId
         )
     }
     

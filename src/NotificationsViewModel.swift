@@ -78,6 +78,7 @@ struct NotificationItem: Identifiable, Hashable, Codable {
     var targetTweetSnippet: String?
     var replyBody: String?
     var createdAt: Date
+    var iconId: String? = nil
     
     var relativeTime: String {
         let interval = Date().timeIntervalSince(createdAt)
@@ -93,12 +94,15 @@ struct NotificationItem: Identifiable, Hashable, Codable {
     }
     
     var isRecentPost: Bool {
+        if iconId == "recommendation_icon" {
+            return true
+        }
         let lowerSummary = actionSummary.lowercased()
-        return (type == .mention) && (
-            lowerSummary.contains("recent post") ||
+        let matchesRecentPostKeywords = lowerSummary.contains("recent post") ||
             lowerSummary.contains("recent tweet") ||
             lowerSummary.contains("new post") ||
             lowerSummary.contains("new tweet") ||
+            lowerSummary.contains("posted a new") ||
             actionSummary.contains("最新帖子") ||
             actionSummary.contains("最新推文") ||
             actionSummary.contains("最新貼文") ||
@@ -106,14 +110,22 @@ struct NotificationItem: Identifiable, Hashable, Codable {
             actionSummary.contains("發布了新貼文") ||
             actionSummary.contains("发布了新帖子") ||
             actionSummary.contains("發布了新帖子") ||
+            actionSummary.contains("最新のポスト") ||
             actionSummary.contains("最新の投稿") ||
+            actionSummary.contains("新しいポスト") ||
             actionSummary.contains("新しい投稿") ||
             actionSummary.contains("新しいツイート") ||
             actionSummary.contains("최근 게시물") ||
+            actionSummary.contains("최근 포스트") ||
+            actionSummary.contains("새로운 게시물") ||
+            actionSummary.contains("새로운 포스트") ||
             actionSummary.contains("새로운 트윗") ||
-            (actionSummary.contains("来自 ") && (actionSummary.contains("帖子") || actionSummary.contains("推文"))) ||
-            (actionSummary.contains("來自 ") && (actionSummary.contains("貼文") || actionSummary.contains("推文")))
-        )
+            (actionSummary.contains("来自 ") && (actionSummary.contains("帖子") || actionSummary.contains("推文") || actionSummary.contains("最新"))) ||
+            (actionSummary.contains("來自 ") && (actionSummary.contains("貼文") || actionSummary.contains("推文") || actionSummary.contains("最新"))) ||
+            actionSummary.contains("からの最新") ||
+            actionSummary.contains("さんの最新")
+        
+        return matchesRecentPostKeywords && (type == .mention || iconId == nil)
     }
     
     var localizedActionSummary: String {
@@ -162,8 +174,15 @@ struct NotificationItem: Identifiable, Hashable, Codable {
                 .replacingOccurrences(of: " 的最新帖子", with: "")
                 .replacingOccurrences(of: " 的最新推文", with: "")
                 .replacingOccurrences(of: " 的最新貼文", with: "")
+                .replacingOccurrences(of: "さんからの最新のポスト", with: "")
+                .replacingOccurrences(of: "さんの最新のポスト", with: "")
+                .replacingOccurrences(of: "からの最新のポスト", with: "")
+                .replacingOccurrences(of: "の最新のポスト", with: "")
                 .replacingOccurrences(of: "さんの最新の投稿", with: "")
+                .replacingOccurrences(of: "さんの最新", with: "")
+                .replacingOccurrences(of: "さんの新しい投稿", with: "")
                 .replacingOccurrences(of: "님의 최근 게시물", with: "")
+                .replacingOccurrences(of: "님의 최근 포스트", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
@@ -221,7 +240,7 @@ final class NotificationsViewModel: ObservableObject {
         case .comments:
             return items.filter { $0.type == .reply }
         case .mentions:
-            return items.filter { $0.type == .mention || $0.type == .follow }
+            return items.filter { ($0.type == .mention || $0.type == .follow) && !$0.isRecentPost }
         }
     }
     
