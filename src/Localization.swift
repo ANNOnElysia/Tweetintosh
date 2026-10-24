@@ -923,6 +923,34 @@ final class LocalizationManager: ObservableObject {
                 .korean: "공유...",
                 .simplifiedChinese: "分享...",
                 .traditionalChinese: "分享..."
+            ],
+            "content_settings": [
+                .english: "Content & Filter",
+                .japanese: "コンテンツとフィルター",
+                .korean: "콘텐츠 및 필터",
+                .simplifiedChinese: "内容与展示",
+                .traditionalChinese: "內容與展示"
+            ],
+            "show_promoted_posts": [
+                .english: "Show Promoted Posts",
+                .japanese: "プロモーション（広告）を表示",
+                .korean: "프로모션 게시물(광고) 표시",
+                .simplifiedChinese: "显示推广推文（广告）",
+                .traditionalChinese: "顯示推廣推文（廣告）"
+            ],
+            "show_promoted_posts_desc": [
+                .english: "Include promoted ads in timeline and replies with an Ad badge. Disabled by default.",
+                .japanese: "タイムラインと返信に広告バッジ付きでプロモーションを表示します（デフォルトは非表示）。",
+                .korean: "타임라인과 답글에 광고 배지가 부착된 프로모션 게시물을 표시합니다(기본값은 숨김).",
+                .simplifiedChinese: "在时间线与评论回复中展示推广内容并附带 Ad 角标，默认关闭。",
+                .traditionalChinese: "在時間線與評論回覆中展示推廣內容並附帶 Ad 角標，預設關閉。"
+            ],
+            "ad_badge": [
+                .english: "Ad",
+                .japanese: "広告",
+                .korean: "광고",
+                .simplifiedChinese: "广告",
+                .traditionalChinese: "廣告"
             ]
         ]
         

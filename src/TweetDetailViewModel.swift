@@ -25,6 +25,20 @@ final class TweetDetailViewModel: ObservableObject {
     init(focalTweet: Tweet, apiClient: APIClient = .shared) {
         self.focalTweet = focalTweet
         self.apiClient = apiClient
+        
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("MaX_PromotedPostsSettingDidChange"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            if !ThemeManager.shared.showPromotedPosts {
+                self.replies.removeAll { $0.isPromoted }
+                self.ancestors.removeAll { $0.isPromoted }
+            } else {
+                self.loadDetail()
+            }
+        }
     }
     
     // MARK: - Load Tweet Detail & Conversation Thread

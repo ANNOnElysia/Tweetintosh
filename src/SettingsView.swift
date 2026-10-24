@@ -415,7 +415,33 @@ struct SettingsView: View {
             .padding(12)
             .background(cardBackground)
             
-            // 4. Data & Account Management
+            // 4. Content & Display (内容与展示)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(loc.t("content_settings"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ThemeManager.secondaryText)
+                
+                if theme.useLiquidGlass {
+                    Toggle(loc.t("show_promoted_posts"), isOn: $theme.showPromotedPosts.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                        .toggleStyle(GlassCapsuleToggleStyle())
+                        .foregroundColor(ThemeManager.primaryText)
+                } else {
+                    Toggle(loc.t("show_promoted_posts"), isOn: $theme.showPromotedPosts.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                        .toggleStyle(.switch)
+                        .tint(ThemeManager.accent)
+                        .foregroundColor(ThemeManager.primaryText)
+                }
+                
+                Text(loc.t("show_promoted_posts_desc"))
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeManager.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 2)
+            }
+            .padding(12)
+            .background(cardBackground)
+            
+            // 5. Data & Account Management
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Button(action: onClearCache) {
@@ -500,7 +526,7 @@ struct SettingsView: View {
         .padding(.horizontal, 18)
         .padding(.top, 16)
         .padding(.bottom, 14)
-        .frame(width: 480, height: 535)
+        .frame(width: 480, height: 660)
         .background(ThemeManager.background)
     }
     

@@ -96,6 +96,24 @@ final class TimelineViewModel: ObservableObject {
         }
         checkAuth()
         fetchUserLists()
+        
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("MaX_PromotedPostsSettingDidChange"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            if !ThemeManager.shared.showPromotedPosts {
+                self.forYouTweets.removeAll { $0.isPromoted }
+                self.followingTweets.removeAll { $0.isPromoted }
+                for (key, list) in self.listTweets {
+                    self.listTweets[key] = list.filter { !$0.isPromoted }
+                }
+                self.updateActiveTweets()
+            } else {
+                self.refresh(silently: false, isUserInitiated: true)
+            }
+        }
     }
     
     func fetchUserLists(completion: (() -> Void)? = nil) {

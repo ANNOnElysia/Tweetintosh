@@ -80,6 +80,10 @@ struct TweetRowView: View {
                                 .foregroundColor(ThemeManager.secondaryText)
                             
                             Spacer()
+                            
+                            if tweet.isPromoted {
+                                AdBadgeView()
+                            }
                         }
                         
                         // Reply Context Subheader (Consistent with official X logic)

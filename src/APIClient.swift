@@ -63,7 +63,7 @@ final class APIClient {
         let endpoint: String
         var variables: [String: Any] = [
             "count": 20,
-            "includePromotedContent": false,
+            "includePromotedContent": ThemeManager.shared.showPromotedPosts,
             "requestContext": "launch",
             "seenTweetIds": seenTweetIds
         ]
@@ -265,7 +265,7 @@ final class APIClient {
                        let val = content["value"] as? String {
                         bottomCursor = val
                     }
-                } else if eid.hasPrefix("tweet-") {
+                } else if eid.hasPrefix("tweet-") || (ThemeManager.shared.showPromotedPosts && (eid.hasPrefix("promoted-tweet-") || eid.hasPrefix("promotedTweet-") || eid.lowercased().contains("promoted"))) {
                     if let tweet = self.buildGraphQLTweet(entry: e, dateFormatter: dateFormatter) {
                         if !seenIds.contains(tweet.id) {
                             seenIds.insert(tweet.id)
@@ -279,14 +279,58 @@ final class APIClient {
         return (orderedTweets, topCursor, bottomCursor)
     }
     
+    private func isPromotedEntry(
+        entryId: String,
+        itemContent: [String: Any]? = nil,
+        itemObj: [String: Any]? = nil,
+        resultObj: [String: Any]? = nil
+    ) -> Bool {
+        if entryId.lowercased().contains("promoted") {
+            return true
+        }
+        if let itemContent = itemContent {
+            if itemContent["promotedMetadata"] != nil { return true }
+            if let type = itemContent["itemContentType"] as? String, type.lowercased().contains("promoted") {
+                return true
+            }
+        }
+        if let itemObj = itemObj {
+            if let clientEvent = itemObj["clientEventInfo"] as? [String: Any],
+               let comp = clientEvent["component"] as? String,
+               comp.lowercased().contains("promoted") {
+                return true
+            }
+        }
+        if let resultObj = resultObj {
+            if resultObj["promoted_metadata"] != nil || resultObj["promotedMetadata"] != nil {
+                return true
+            }
+            if let typename = resultObj["__typename"] as? String, typename.lowercased().contains("promoted") {
+                return true
+            }
+        }
+        return false
+    }
+    
     private func buildGraphQLTweet(entry: [String: Any], dateFormatter: DateFormatter) -> Tweet? {
+        let eid = (entry["entryId"] as? String) ?? ""
         guard let content = entry["content"] as? [String: Any],
               let itemContent = content["itemContent"] as? [String: Any],
               let tweetResults = itemContent["tweet_results"] as? [String: Any],
               let result = tweetResults["result"] as? [String: Any] else {
             return nil
         }
-        return parseGraphQLTweetResult(result, dateFormatter: dateFormatter)
+        let isPromoted = self.isPromotedEntry(entryId: eid, itemContent: itemContent, itemObj: content, resultObj: result)
+        if isPromoted && !ThemeManager.shared.showPromotedPosts {
+            return nil
+        }
+        guard var tweet = parseGraphQLTweetResult(result, dateFormatter: dateFormatter) else {
+            return nil
+        }
+        if isPromoted {
+            tweet.isPromoted = true
+        }
+        return tweet
     }
     
     func parseGraphQLTweetResult(_ rawResult: [String: Any], dateFormatter: DateFormatter, parseQuoted: Bool = true) -> Tweet? {
@@ -1470,7 +1514,7 @@ final class APIClient {
             "focalTweetId": tweetId,
             "with_rux_injections": false,
             "rankingMode": "Relevance",
-            "includePromotedContent": false,
+            "includePromotedContent": ThemeManager.shared.showPromotedPosts,
             "withCommunity": true,
             "withQuickPromoteEligibility": false,
             "withBirdwatchNotes": true,
@@ -1598,7 +1642,15 @@ final class APIClient {
                                           let res = tweetResults["result"] as? [String: Any] else {
                                         continue
                                     }
-                                    if let replyTweet = self.parseGraphQLTweetResult(res, dateFormatter: dateFormatter) {
+                                    let itemEntryId = (it["entryId"] as? String) ?? ""
+                                    let isPromoted = self.isPromotedEntry(entryId: itemEntryId, itemContent: itemContent, itemObj: itemObj, resultObj: res)
+                                    if isPromoted && !ThemeManager.shared.showPromotedPosts {
+                                        continue
+                                    }
+                                    if var replyTweet = self.parseGraphQLTweetResult(res, dateFormatter: dateFormatter) {
+                                        if isPromoted {
+                                            replyTweet.isPromoted = true
+                                        }
                                         replies.append(replyTweet)
                                     }
                                 }

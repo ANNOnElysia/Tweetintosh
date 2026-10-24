@@ -334,6 +334,10 @@ struct TweetDetailView: View {
                 }
                 
                 Spacer()
+                
+                if viewModel.focalTweet.isPromoted {
+                    AdBadgeView()
+                }
             }
             
             // Reply Context Subheader (Consistent with official X logic)
@@ -540,6 +544,10 @@ struct TweetDetailView: View {
                         .foregroundColor(ThemeManager.secondaryText)
                     
                     Spacer()
+                    
+                    if tweet.isPromoted {
+                        AdBadgeView()
+                    }
                 }
                 
                 if let replyContext = tweet.replyContextText {
@@ -591,6 +599,10 @@ struct TweetDetailView: View {
                             .foregroundColor(ThemeManager.secondaryText)
                         
                         Spacer()
+                        
+                        if tweet.isPromoted {
+                            AdBadgeView()
+                        }
                     }
                     
                     // Reply Context Subheader (Consistent with official X logic)

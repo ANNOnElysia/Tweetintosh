@@ -160,6 +160,13 @@ final class ThemeManager: ObservableObject {
         }
     }
     
+    @Published var showPromotedPosts: Bool {
+        didSet {
+            UserDefaults.standard.set(showPromotedPosts, forKey: "MaX_ShowPromotedPosts")
+            NotificationCenter.default.post(name: NSNotification.Name("MaX_PromotedPostsSettingDidChange"), object: nil)
+        }
+    }
+    
     var refreshColor: AppThemeColor {
         get { themeColor }
         set { themeColor = newValue }
@@ -221,6 +228,12 @@ final class ThemeManager: ObservableObject {
             self.themeColor = tc
         } else {
             self.themeColor = .blue
+        }
+        
+        if UserDefaults.standard.object(forKey: "MaX_ShowPromotedPosts") != nil {
+            self.showPromotedPosts = UserDefaults.standard.bool(forKey: "MaX_ShowPromotedPosts")
+        } else {
+            self.showPromotedPosts = false
         }
         
         applyAppearance()

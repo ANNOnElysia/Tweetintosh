@@ -118,6 +118,7 @@ struct Tweet: Codable, Hashable, Identifiable {
     var quotedTweet: QuotedTweetBox? = nil
     var inReplyToScreenName: String? = nil
     var inReplyToStatusId: String? = nil
+    var isPromoted: Bool = false
     
     var quoted: Tweet? {
         quotedTweet?.tweet
@@ -130,6 +131,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         case isFavorited, isRetweeted, isBookmarked, bookmarkCount
         case quotedTweet
         case inReplyToScreenName, inReplyToStatusId
+        case isPromoted
     }
     
     init(
@@ -149,7 +151,8 @@ struct Tweet: Codable, Hashable, Identifiable {
         bookmarkCount: Int = 0,
         quotedTweet: QuotedTweetBox? = nil,
         inReplyToScreenName: String? = nil,
-        inReplyToStatusId: String? = nil
+        inReplyToStatusId: String? = nil,
+        isPromoted: Bool = false
     ) {
         self.id = id
         self.text = text
@@ -168,6 +171,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         self.quotedTweet = quotedTweet
         self.inReplyToScreenName = inReplyToScreenName
         self.inReplyToStatusId = inReplyToStatusId
+        self.isPromoted = isPromoted
     }
     
     init(from decoder: Decoder) throws {
@@ -189,6 +193,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         quotedTweet = try container.decodeIfPresent(QuotedTweetBox.self, forKey: .quotedTweet)
         inReplyToScreenName = try container.decodeIfPresent(String.self, forKey: .inReplyToScreenName)
         inReplyToStatusId = try container.decodeIfPresent(String.self, forKey: .inReplyToStatusId)
+        isPromoted = try container.decodeIfPresent(Bool.self, forKey: .isPromoted) ?? false
     }
     
     // Clean text breakdown: strips trailing media t.co URLs and extracts leading reply mentions
