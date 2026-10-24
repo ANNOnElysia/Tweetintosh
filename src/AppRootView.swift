@@ -119,7 +119,6 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 // MARK: - AppRootView (Adaptive Shell)
 struct AppRootView: View {
     @ObservedObject private var nav = NavigationManager.shared
-    @Namespace private var imageZoomNamespace
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
 
@@ -198,7 +197,6 @@ struct AppRootView: View {
             VideoLightboxOverlay()
                 .zIndex(1000)
         }
-        .environment(\.imageZoomNamespace, imageZoomNamespace)
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
         .sheet(isPresented: $nav.isShowingCompose) {
             TweetComposerSheet(quotedTweet: nav.composeQuotedTweet)

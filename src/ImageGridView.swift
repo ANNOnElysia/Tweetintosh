@@ -172,15 +172,6 @@ struct ImageGridView: View {
     var tweet: Tweet? = nil
     @ObservedObject var layout = TimelineLayoutState.shared
     @ObservedObject var theme = ThemeManager.shared
-    @ObservedObject var nav = NavigationManager.shared
-    @Environment(\.imageZoomNamespace) private var imageZoomNamespace
-    
-    private var isSourceActive: Bool {
-        if nav.selectedTweetDetail != nil {
-            return tweet?.id == nav.selectedTweetDetail?.id
-        }
-        return true
-    }
     
     private func thumbUrl(_ original: String) -> String {
         if original.contains("pbs.twimg.com/media") {
@@ -227,27 +218,27 @@ struct ImageGridView: View {
                 .stroke(ThemeManager.border, lineWidth: 0.6)
         )
         .contentShape(Rectangle())
+        .overlay(
+            GeometryReader { proxy in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if media.isVideo, let tweet = tweet {
+                            VideoLightboxManager.shared.present(tweet: tweet, media: media)
+                        } else {
+                            let rect = proxy.frame(in: .global)
+                            LightboxManager.shared.present(
+                                mediaList: [media],
+                                initialIndex: 0,
+                                sourceRect: rect
+                            )
+                        }
+                    }
+            }
+        )
         
         return HStack {
-            Group {
-                if let ns = imageZoomNamespace, !media.isVideo {
-                    card
-                        .matchedGeometryEffect(id: media.id, in: ns, properties: .frame, isSource: isSourceActive)
-                } else {
-                    card
-                }
-            }
-            .onTapGesture {
-                if media.isVideo, let tweet = tweet {
-                    VideoLightboxManager.shared.present(tweet: tweet, media: media)
-                } else {
-                    LightboxManager.shared.present(
-                        mediaList: [media],
-                        initialIndex: 0
-                    )
-                }
-            }
-            
+            card
             Spacer(minLength: 0)
         }
         .frame(height: dims.height)
@@ -309,6 +300,20 @@ struct ImageGridView: View {
                 .stroke(ThemeManager.border, lineWidth: 0.6)
         )
         .contentShape(Rectangle())
+        .overlay(
+            GeometryReader { proxy in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if items[0].isVideo, let tweet = tweet {
+                            VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
+                        } else {
+                            let rect = proxy.frame(in: .global)
+                            LightboxManager.shared.present(mediaList: items, initialIndex: 0, sourceRect: rect)
+                        }
+                    }
+            }
+        )
         
         let card1 = ZStack {
             CachedAsyncImage(urlString: thumbUrl(items[1].mediaUrl), contentMode: .fill)
@@ -325,39 +330,24 @@ struct ImageGridView: View {
                 .stroke(ThemeManager.border, lineWidth: 0.6)
         )
         .contentShape(Rectangle())
+        .overlay(
+            GeometryReader { proxy in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if items[1].isVideo, let tweet = tweet {
+                            VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
+                        } else {
+                            let rect = proxy.frame(in: .global)
+                            LightboxManager.shared.present(mediaList: items, initialIndex: 1, sourceRect: rect)
+                        }
+                    }
+            }
+        )
         
         return HStack(spacing: spacing) {
-            Group {
-                if let ns = imageZoomNamespace, !items[0].isVideo {
-                    card0
-                        .matchedGeometryEffect(id: items[0].id, in: ns, properties: .frame, isSource: isSourceActive)
-                } else {
-                    card0
-                }
-            }
-            .onTapGesture {
-                if items[0].isVideo, let tweet = tweet {
-                    VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
-                } else {
-                    LightboxManager.shared.present(mediaList: items, initialIndex: 0)
-                }
-            }
-            
-            Group {
-                if let ns = imageZoomNamespace, !items[1].isVideo {
-                    card1
-                        .matchedGeometryEffect(id: items[1].id, in: ns, properties: .frame, isSource: isSourceActive)
-                } else {
-                    card1
-                }
-            }
-            .onTapGesture {
-                if items[1].isVideo, let tweet = tweet {
-                    VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
-                } else {
-                    LightboxManager.shared.present(mediaList: items, initialIndex: 1)
-                }
-            }
+            card0
+            card1
         }
         .frame(width: availableWidth, height: height)
     }
@@ -394,22 +384,22 @@ struct ImageGridView: View {
                             .stroke(ThemeManager.border, lineWidth: 0.6)
                     )
                     .contentShape(Rectangle())
+                    .overlay(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if media.isVideo, let tweet = tweet {
+                                        VideoLightboxManager.shared.present(tweet: tweet, media: media)
+                                    } else {
+                                        let rect = proxy.frame(in: .global)
+                                        LightboxManager.shared.present(mediaList: items, initialIndex: idx, sourceRect: rect)
+                                    }
+                                }
+                        }
+                    )
                     
-                    Group {
-                        if let ns = imageZoomNamespace, !media.isVideo {
-                            card
-                                .matchedGeometryEffect(id: media.id, in: ns, properties: .frame, isSource: isSourceActive)
-                        } else {
-                            card
-                        }
-                    }
-                    .onTapGesture {
-                        if media.isVideo, let tweet = tweet {
-                            VideoLightboxManager.shared.present(tweet: tweet, media: media)
-                        } else {
-                            LightboxManager.shared.present(mediaList: items, initialIndex: idx)
-                        }
-                    }
+                    card
                 }
             }
         }

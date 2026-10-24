@@ -6,18 +6,6 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Image Zoom Namespace Environment Key
-struct ImageZoomNamespaceKey: EnvironmentKey {
-    static let defaultValue: Namespace.ID? = nil
-}
-
-extension EnvironmentValues {
-    var imageZoomNamespace: Namespace.ID? {
-        get { self[ImageZoomNamespaceKey.self] }
-        set { self[ImageZoomNamespaceKey.self] = newValue }
-    }
-}
-
 // MARK: - Lightbox State Manager
 final class LightboxManager: ObservableObject {
     static let shared = LightboxManager()
@@ -26,6 +14,8 @@ final class LightboxManager: ObservableObject {
     @Published var mediaList: [TweetMedia] = []
     @Published var currentIndex: Int = 0
     @Published var isAnimatingOut: Bool = false
+    @Published var sourceRect: CGRect = .zero
+    @Published var isZoomExpanded: Bool = false
     
     // Zoom & Pan State
     @Published var zoomScale: CGFloat = 1.0
@@ -51,15 +41,17 @@ final class LightboxManager: ObservableObject {
         guard !mediaList.isEmpty, initialIndex >= 0, initialIndex < mediaList.count else { return }
         self.mediaList = mediaList
         self.currentIndex = initialIndex
+        self.sourceRect = sourceRect
         self.isAnimatingOut = false
+        self.isZoomExpanded = false
         
         // Ensure all gesture and transform states are cleanly reset to default
         resetTransforms()
-        
         setupEventMonitors()
         
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            self.isPresented = true
+        self.isPresented = true
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            self.isZoomExpanded = true
         }
     }
     
@@ -74,13 +66,15 @@ final class LightboxManager: ObservableObject {
     
     func dismiss() {
         removeEventMonitors()
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            self.isPresented = false
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+            self.isZoomExpanded = false
             self.dragOffset = .zero
             self.zoomScale = 1.0
             self.panOffset = .zero
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
+            self.isPresented = false
+            self.sourceRect = .zero
             self.isAnimatingOut = false
             self.mediaList = []
             self.currentIndex = 0
@@ -237,7 +231,6 @@ final class LightboxManager: ObservableObject {
 // MARK: - Lightbox Overlay View
 struct ImageLightboxOverlay: View {
     @ObservedObject var manager = LightboxManager.shared
-    @Environment(\.imageZoomNamespace) private var imageZoomNamespace
     @GestureState private var pinchScale: CGFloat = 1.0
     
     var body: some View {
@@ -247,15 +240,25 @@ struct ImageLightboxOverlay: View {
                 // 3/4 box dimensions requested by user
                 let boxWidth = windowSize.width * 0.75
                 let boxHeight = windowSize.height * 0.75
+                let windowCenter = CGPoint(x: windowSize.width / 2.0, y: windowSize.height / 2.0)
                 
-                let effectiveScale = manager.zoomScale * pinchScale
+                // Pure rect-tracking zoom: calculate offset and scale from sourceRect
+                let hasSourceRect = manager.sourceRect != .zero
+                let sourceScale: CGFloat = hasSourceRect ? max(0.08, min(manager.sourceRect.width / boxWidth, manager.sourceRect.height / boxHeight)) : 0.85
+                let sourceOffsetX: CGFloat = hasSourceRect ? (manager.sourceRect.midX - windowCenter.x) : 0
+                let sourceOffsetY: CGFloat = hasSourceRect ? (manager.sourceRect.midY - windowCenter.y) : 0
+                
+                let animScale: CGFloat = manager.isZoomExpanded ? 1.0 : sourceScale
+                let animOffsetX: CGFloat = manager.isZoomExpanded ? 0 : sourceOffsetX
+                let animOffsetY: CGFloat = manager.isZoomExpanded ? 0 : sourceOffsetY
+                
+                let effectiveScale = manager.zoomScale * pinchScale * animScale
                 
                 ZStack {
                     // 1. Dark Backdrop with interactive opacity
                     Color.black
-                        .opacity(backdropOpacity)
+                        .opacity((manager.isZoomExpanded ? backdropOpacity : 0.0) * (manager.isAnimatingOut ? 0.0 : 1.0))
                         .ignoresSafeArea()
-                        .transition(.opacity)
                         .onTapGesture {
                             if manager.zoomScale > 1.05 {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
@@ -270,27 +273,18 @@ struct ImageLightboxOverlay: View {
                     // 2. The 3/4 Bounding Box: matching longest edge of current image
                     ZStack {
                         if let currentMedia = manager.currentMedia {
-                            let imgCard = CachedAsyncImage(
+                            CachedAsyncImage(
                                 urlString: originalUrl(currentMedia.mediaUrl),
                                 placeholderColor: Color(white: 0.08),
                                 contentMode: .fit
                             )
                             .frame(maxWidth: boxWidth, maxHeight: boxHeight)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .shadow(color: Color.black.opacity(0.50), radius: 24, x: 0, y: 8)
-                            
-                            Group {
-                                if let ns = imageZoomNamespace {
-                                    imgCard
-                                        .matchedGeometryEffect(id: currentMedia.id, in: ns, properties: .frame, isSource: true)
-                                } else {
-                                    imgCard
-                                }
-                            }
+                            .clipShape(RoundedRectangle(cornerRadius: manager.isZoomExpanded ? 8 : 16, style: .continuous))
+                            .shadow(color: Color.black.opacity(manager.isZoomExpanded ? 0.50 : 0.0), radius: 24, x: 0, y: 8)
                             .scaleEffect(effectiveScale * verticalScale)
                             .offset(
-                                x: manager.zoomScale > 1.05 ? manager.panOffset.width : manager.dragOffset.width,
-                                y: manager.zoomScale > 1.05 ? manager.panOffset.height : manager.dragOffset.height
+                                x: (manager.zoomScale > 1.05 ? manager.panOffset.width : manager.dragOffset.width) + animOffsetX,
+                                y: (manager.zoomScale > 1.05 ? manager.panOffset.height : manager.dragOffset.height) + animOffsetY
                             )
                             .animation(.spring(response: 0.30, dampingFraction: 0.86), value: manager.currentIndex)
                             .id(manager.currentIndex)
@@ -317,7 +311,7 @@ struct ImageLightboxOverlay: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
-                        .opacity(headerOpacity)
+                        .opacity(manager.isZoomExpanded ? headerOpacity : 0.0)
                         
                         Spacer()
                     }
@@ -335,7 +329,7 @@ struct ImageLightboxOverlay: View {
                                     .padding(.trailing, max(12, (windowSize.width - boxWidth) / 2 - 46))
                             }
                         }
-                        .opacity(headerOpacity)
+                        .opacity(manager.isZoomExpanded ? headerOpacity : 0.0)
                     }
                 }
                 .simultaneousGesture(
