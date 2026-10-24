@@ -61,13 +61,30 @@ final class VideoLightboxManager: ObservableObject {
     
     @Published var showToast: Bool = false
     @Published var toastMessage: String = ""
-    @Published var isControlsHovered: Bool = true
+    @Published var isControlsVisible: Bool = true
+    @Published var isDockHovered: Bool = false
+    @Published var isDockObstructing: Bool = false
     @Published var isScrubbing: Bool = false
+    @Published var windowSize: CGSize = .zero
     
     var player: AVPlayer = AVPlayer()
     private var timeObserverToken: Any?
     private var keyMonitor: Any?
+    private var mouseMonitor: Any?
     private var controlsTimer: Timer?
+    
+    var currentVideoAspectRatio: CGFloat {
+        if let item = player.currentItem, item.presentationSize.width > 0, item.presentationSize.height > 0 {
+            return item.presentationSize.width / item.presentationSize.height
+        }
+        return currentMedia?.aspectRatio ?? 1.777
+    }
+    
+    var shouldShowControls: Bool {
+        if !isPlaying { return true }
+        if !isDockObstructing { return true }
+        return isControlsVisible
+    }
     
     init() {
         setupTimeObserver()
@@ -83,11 +100,15 @@ final class VideoLightboxManager: ObservableObject {
         self.isRetweeted = false
         self.favoriteCount = tweet.favoriteCount
         self.retweetCount = tweet.retweetCount
-        self.isControlsHovered = true
+        self.isControlsVisible = true
+        self.isDockHovered = false
         
         loadQualityStream(selectedQuality)
         setupEventMonitors()
-        resetHoverTimer()
+        checkObstruction()
+        if isDockObstructing {
+            scheduleFadeOutTimer()
+        }
         
         withAnimation(.easeInOut(duration: 0.22)) {
             self.isPresented = true
@@ -100,6 +121,7 @@ final class VideoLightboxManager: ObservableObject {
     func dismiss() {
         removeEventMonitors()
         controlsTimer?.invalidate()
+        controlsTimer = nil
         player.pause()
         self.isPlaying = false
         
@@ -118,12 +140,97 @@ final class VideoLightboxManager: ObservableObject {
         if isPlaying {
             player.pause()
             isPlaying = false
+            controlsTimer?.invalidate()
+            controlsTimer = nil
+            withAnimation(.easeInOut(duration: 0.20)) {
+                self.isControlsVisible = true
+            }
         } else {
             if currentTime >= duration - 0.2 && duration > 0 {
                 seek(to: 0)
             }
             player.play()
             isPlaying = true
+            if isDockObstructing {
+                scheduleFadeOutTimer()
+            }
+        }
+    }
+    
+    func updateWindowSize(_ size: CGSize) {
+        guard size.width > 0 && size.height > 0 && size != windowSize else { return }
+        self.windowSize = size
+        checkObstruction()
+    }
+    
+    func checkObstruction() {
+        guard windowSize.width > 0, windowSize.height > 0 else {
+            isDockObstructing = false
+            return
+        }
+        let ar = currentVideoAspectRatio
+        guard ar > 0 else {
+            isDockObstructing = false
+            return
+        }
+        
+        let windowAR = windowSize.width / windowSize.height
+        let videoHeight: CGFloat
+        if ar >= windowAR {
+            // Fits width, letterbox at top and bottom
+            videoHeight = windowSize.width / ar
+        } else {
+            // Fits height, pillarbox at left and right
+            videoHeight = windowSize.height
+        }
+        
+        let bottomLetterbox = (windowSize.height - videoHeight) / 2.0
+        // Dock height (~110pt) + bottom padding (28pt) = ~138pt.
+        // If the bottom black bar is less than 135pt, the dock obstructs the video frame.
+        let obstructing = bottomLetterbox < 135.0
+        if self.isDockObstructing != obstructing {
+            self.isDockObstructing = obstructing
+            if !obstructing {
+                // Not obstructing video -> always visible
+                controlsTimer?.invalidate()
+                controlsTimer = nil
+                withAnimation(.easeInOut(duration: 0.20)) {
+                    self.isControlsVisible = true
+                }
+            } else if isPlaying {
+                // Obstructing & playing -> schedule 2s fade out
+                scheduleFadeOutTimer()
+            }
+        }
+    }
+    
+    func userDidMoveCursor() {
+        guard isPresented else { return }
+        if !isControlsVisible {
+            withAnimation(.easeInOut(duration: 0.20)) {
+                self.isControlsVisible = true
+            }
+        }
+        if isPlaying && isDockObstructing && !isScrubbing && !isDockHovered {
+            scheduleFadeOutTimer()
+        } else {
+            controlsTimer?.invalidate()
+            controlsTimer = nil
+        }
+    }
+    
+    func scheduleFadeOutTimer() {
+        controlsTimer?.invalidate()
+        guard isPlaying && isDockObstructing && !isScrubbing && !isDockHovered else { return }
+        
+        // 2-second timeout before smooth fade out
+        controlsTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            if self.isPlaying && self.isDockObstructing && !self.isScrubbing && !self.isDockHovered {
+                withAnimation(.easeInOut(duration: 0.40)) {
+                    self.isControlsVisible = false
+                }
+            }
         }
     }
     
@@ -214,12 +321,19 @@ final class VideoLightboxManager: ObservableObject {
                 if !d.isNaN && !d.isInfinite && d > 0 {
                     self.duration = d
                 }
+                self.checkObstruction()
             }
         }
     }
     
     private func setupEventMonitors() {
         removeEventMonitors()
+        
+        DispatchQueue.main.async {
+            if let win = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }) {
+                win.acceptsMouseMovedEvents = true
+            }
+        }
         
         // Keyboard shortcuts: Space (play/pause), M (mute), Esc (exit)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -238,6 +352,13 @@ final class VideoLightboxManager: ObservableObject {
                 return event
             }
         }
+        
+        // Mouse movement and dragging monitor
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+            guard let self = self, self.isPresented else { return event }
+            self.userDidMoveCursor()
+            return event
+        }
     }
     
     private func removeEventMonitors() {
@@ -245,19 +366,14 @@ final class VideoLightboxManager: ObservableObject {
             NSEvent.removeMonitor(km)
             keyMonitor = nil
         }
+        if let mm = mouseMonitor {
+            NSEvent.removeMonitor(mm)
+            mouseMonitor = nil
+        }
     }
     
     func resetHoverTimer() {
-        isControlsHovered = true
-        controlsTimer?.invalidate()
-        controlsTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            if self.isPlaying {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    self.isControlsHovered = false
-                }
-            }
-        }
+        userDidMoveCursor()
     }
     
     func downloadVideo() {
@@ -338,12 +454,41 @@ final class VideoLightboxManager: ObservableObject {
     }
 }
 
-// MARK: - Native AVPlayerView Wrapper
+// MARK: - Native AVPlayerView Wrapper with Hover & Click Interception
+class ClickablePlayerView: AVPlayerView {
+    private var trackingArea: NSTrackingArea?
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        self.trackingArea = area
+    }
+    
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        VideoLightboxManager.shared.userDidMoveCursor()
+    }
+    
+    override func mouseDown(with event: NSEvent) {
+        VideoLightboxManager.shared.togglePlay()
+        VideoLightboxManager.shared.userDidMoveCursor()
+    }
+}
+
 struct NativePlayerView: NSViewRepresentable {
     let player: AVPlayer
     
-    func makeNSView(context: Context) -> AVPlayerView {
-        let view = AVPlayerView()
+    func makeNSView(context: Context) -> ClickablePlayerView {
+        let view = ClickablePlayerView()
         view.player = player
         view.controlsStyle = .none
         view.showsFullScreenToggleButton = false
@@ -351,7 +496,7 @@ struct NativePlayerView: NSViewRepresentable {
         return view
     }
     
-    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+    func updateNSView(_ nsView: ClickablePlayerView, context: Context) {
         if nsView.player !== player {
             nsView.player = player
         }
@@ -381,11 +526,6 @@ struct VideoLightboxOverlay: View {
                     NativePlayerView(player: manager.player)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.black)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            manager.togglePlay()
-                            manager.resetHoverTimer()
-                        }
                     
                     // 3. Center Screen Play/Pause Indicator (Dead Center, No Overlap)
                     if !manager.isPlaying {
@@ -393,7 +533,7 @@ struct VideoLightboxOverlay: View {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
                                 manager.togglePlay()
                             }
-                            manager.resetHoverTimer()
+                            manager.userDidMoveCursor()
                         }) {
                             Image(systemName: "play.fill")
                                 .font(.system(size: 32, weight: .semibold))
@@ -401,13 +541,18 @@ struct VideoLightboxOverlay: View {
                                 .offset(x: 2) // optical center alignment for play triangle
                                 .frame(width: 72, height: 72)
                                 .background(
-                                    videoGlassBackground(shape: Circle(), accentTint: 0.22)
+                                    videoGlassBackground(shape: Circle(), accentTint: theme.useLiquidGlassTint ? 0.22 : 0.0)
                                 )
                                 .overlay(
-                                    videoGlassBorder(shape: Circle(), isAccent: true)
+                                    videoGlassBorder(shape: Circle(), isAccent: theme.useLiquidGlassTint)
                                 )
                                 .shadow(color: Color.black.opacity(0.50), radius: 20, x: 0, y: 6)
-                                .shadow(color: ThemeManager.accent.opacity(0.35), radius: 12, x: 0, y: 2)
+                                .shadow(
+                                    color: (theme.useLiquidGlassTint ? ThemeManager.accent : Color.clear).opacity(theme.useLiquidGlassTint ? 0.35 : 0.0),
+                                    radius: 12,
+                                    x: 0,
+                                    y: 2
+                                )
                         }
                         .buttonStyle(PlainButtonStyle())
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -443,7 +588,7 @@ struct VideoLightboxOverlay: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6.5)
                                 .background(
-                                    videoGlassBackground(shape: Capsule(), accentTint: 0.10)
+                                    videoGlassBackground(shape: Capsule(), accentTint: theme.useLiquidGlassTint ? 0.10 : 0.0)
                                 )
                                 .overlay(
                                     videoGlassBorder(shape: Capsule(), isAccent: false)
@@ -466,8 +611,8 @@ struct VideoLightboxOverlay: View {
                         
                         Spacer()
                     }
-                    .opacity(manager.isControlsHovered || !manager.isPlaying ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.22), value: manager.isControlsHovered)
+                    .opacity(manager.shouldShowControls ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.25), value: manager.shouldShowControls)
                     
                     // 5. Bottom Floating Unified Glass Control Dock
                     VStack {
@@ -477,14 +622,14 @@ struct VideoLightboxOverlay: View {
                             // Smooth Scrubber Bar
                             videoScrubberBar
                             
-                            // Social Actions & Themed Glass Download Button (NO white divider)
+                            // Social Actions & Glass Download Button (NO white divider)
                             actionBottomBar
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .frame(maxWidth: min(windowSize.width - 56, 760))
                         .background(
-                            videoGlassBackground(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), accentTint: 0.06)
+                            videoGlassBackground(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), accentTint: theme.useLiquidGlassTint ? 0.06 : 0.0)
                         )
                         .overlay(
                             videoGlassBorder(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), isAccent: false)
@@ -492,9 +637,19 @@ struct VideoLightboxOverlay: View {
                         .shadow(color: Color.black.opacity(0.55), radius: 24, x: 0, y: 10)
                         .padding(.horizontal, 24)
                         .padding(.bottom, 28)
+                        .onHover { hovered in
+                            manager.isDockHovered = hovered
+                            if hovered {
+                                manager.userDidMoveCursor()
+                            } else {
+                                if manager.isPlaying && manager.isDockObstructing {
+                                    manager.scheduleFadeOutTimer()
+                                }
+                            }
+                        }
                     }
-                    .opacity(manager.isControlsHovered || !manager.isPlaying ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.22), value: manager.isControlsHovered)
+                    .opacity(manager.shouldShowControls ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.25), value: manager.shouldShowControls)
                     
                     // 6. Toast Notification Banner
                     if manager.showToast {
@@ -523,9 +678,19 @@ struct VideoLightboxOverlay: View {
                         }
                     }
                 }
-                .onHover { hovered in
-                    manager.isControlsHovered = hovered
-                    if hovered { manager.resetHoverTimer() }
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active:
+                        manager.userDidMoveCursor()
+                    case .ended:
+                        break
+                    }
+                }
+                .onAppear {
+                    manager.updateWindowSize(windowSize)
+                }
+                .onChange(of: windowSize) { _, newSize in
+                    manager.updateWindowSize(newSize)
                 }
             }
             .transition(.opacity)
@@ -536,14 +701,15 @@ struct VideoLightboxOverlay: View {
     // MARK: - Dual Glass Helper (Liquid Glass Mode vs Frosted Blur Glass Mode)
     @ViewBuilder
     private func videoGlassBackground<S: Shape>(shape: S, accentTint: Double = 0.0) -> some View {
+        let effectiveAccent = theme.useLiquidGlassTint ? accentTint : 0.0
         if #available(macOS 26.0, *), theme.useLiquidGlass {
-            let glass: Glass = accentTint > 0
-                ? .regular.tint(ThemeManager.accent.opacity(accentTint)).interactive()
+            let glass: Glass = effectiveAccent > 0
+                ? .regular.tint(ThemeManager.accent.opacity(effectiveAccent)).interactive()
                 : .regular.interactive()
             shape
                 .fill(
-                    accentTint > 0
-                        ? ThemeManager.accent.opacity(accentTint * 0.70)
+                    effectiveAccent > 0
+                        ? ThemeManager.accent.opacity(effectiveAccent * 0.70)
                         : Color.black.opacity(0.35)
                 )
                 .glassEffect(glass, in: shape)
@@ -552,8 +718,8 @@ struct VideoLightboxOverlay: View {
             ZStack {
                 VisualEffectBackground(material: .hudWindow, blendingMode: .withinWindow)
                 Color.black.opacity(0.48)
-                if accentTint > 0 {
-                    ThemeManager.accent.opacity(accentTint)
+                if effectiveAccent > 0 {
+                    ThemeManager.accent.opacity(effectiveAccent)
                 }
             }
             .clipShape(shape)
@@ -562,10 +728,11 @@ struct VideoLightboxOverlay: View {
     
     @ViewBuilder
     private func videoGlassBorder<S: Shape>(shape: S, isAccent: Bool = false) -> some View {
+        let effectiveIsAccent = theme.useLiquidGlassTint && isAccent
         shape
             .stroke(
                 LinearGradient(
-                    colors: isAccent ? [
+                    colors: effectiveIsAccent ? [
                         ThemeManager.accent.opacity(0.85),
                         Color.white.opacity(0.45),
                         ThemeManager.accent.opacity(0.40)
@@ -582,7 +749,7 @@ struct VideoLightboxOverlay: View {
             .allowsHitTesting(false)
     }
     
-    // MARK: - Smooth Glass Video Scrubber Bar (Theme-tinted, 25fps Interpolated)
+    // MARK: - Smooth Glass Video Scrubber Bar (Theme-tinted or Pure Monochrome Glass)
     private var videoScrubberBar: some View {
         HStack(spacing: 12) {
             // Play / Pause mini toggle
@@ -611,11 +778,17 @@ struct VideoLightboxOverlay: View {
                         .fill(Color.white.opacity(0.18))
                         .frame(height: 5)
                     
-                    // Played Progress: Theme-accent Gradient Fill
+                    // Played Progress: Theme-accent or Pure Apple White Gradient Fill
                     Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [ThemeManager.accent.opacity(0.85), ThemeManager.accent],
+                                colors: theme.useLiquidGlassTint ? [
+                                    ThemeManager.accent.opacity(0.85),
+                                    ThemeManager.accent
+                                ] : [
+                                    Color.white.opacity(0.85),
+                                    Color.white
+                                ],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -623,16 +796,21 @@ struct VideoLightboxOverlay: View {
                         .frame(width: max(0, w * CGFloat(progress)), height: 5)
                         .animation(manager.isScrubbing ? nil : .linear(duration: 0.04), value: progress)
                     
-                    // Theme-accent Glow Thumb Knob
+                    // Thumb Knob
                     ZStack {
                         Circle()
                             .fill(Color.white)
                             .frame(width: 14, height: 14)
                         Circle()
-                            .stroke(ThemeManager.accent, lineWidth: 1.5)
+                            .stroke(theme.useLiquidGlassTint ? ThemeManager.accent : Color.white.opacity(0.80), lineWidth: 1.5)
                             .frame(width: 14, height: 14)
                     }
-                    .shadow(color: ThemeManager.accent.opacity(0.60), radius: 6, x: 0, y: 1)
+                    .shadow(
+                        color: theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.60) : Color.white.opacity(0.35),
+                        radius: 6,
+                        x: 0,
+                        y: 1
+                    )
                     .offset(x: max(0, min(w - 14, w * CGFloat(progress) - 7)))
                     .animation(manager.isScrubbing ? nil : .linear(duration: 0.04), value: progress)
                 }
@@ -643,13 +821,13 @@ struct VideoLightboxOverlay: View {
                             manager.isScrubbing = true
                             let ratio = max(0.0, min(1.0, val.location.x / w))
                             manager.currentTime = ratio * manager.duration
-                            manager.resetHoverTimer()
+                            manager.userDidMoveCursor()
                         }
                         .onEnded { val in
                             let ratio = max(0.0, min(1.0, val.location.x / w))
                             manager.seek(to: ratio * manager.duration)
                             manager.isScrubbing = false
-                            manager.resetHoverTimer()
+                            manager.userDidMoveCursor()
                         }
                 )
             }
@@ -678,7 +856,7 @@ struct VideoLightboxOverlay: View {
         )
     }
     
-    // MARK: - Action Bottom Bar (Like, Repost, Share, Themed Glass Download)
+    // MARK: - Action Bottom Bar (Like, Repost, Share, Glass Download)
     private var actionBottomBar: some View {
         HStack(spacing: 26) {
             // Like
@@ -713,7 +891,7 @@ struct VideoLightboxOverlay: View {
             
             Spacer()
             
-            // Download MP4 (Themed Glass Capsule Button)
+            // Download MP4 (Glass Capsule Button)
             Button(action: { manager.downloadVideo() }) {
                 HStack(spacing: 7) {
                     Image(systemName: "arrow.down.circle.fill")
@@ -726,12 +904,17 @@ struct VideoLightboxOverlay: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(
-                    videoGlassBackground(shape: Capsule(), accentTint: 0.32)
+                    videoGlassBackground(shape: Capsule(), accentTint: theme.useLiquidGlassTint ? 0.32 : 0.0)
                 )
                 .overlay(
-                    videoGlassBorder(shape: Capsule(), isAccent: true)
+                    videoGlassBorder(shape: Capsule(), isAccent: theme.useLiquidGlassTint)
                 )
-                .shadow(color: ThemeManager.accent.opacity(0.40), radius: 10, x: 0, y: 3)
+                .shadow(
+                    color: (theme.useLiquidGlassTint ? ThemeManager.accent : Color.black).opacity(theme.useLiquidGlassTint ? 0.40 : 0.35),
+                    radius: 10,
+                    x: 0,
+                    y: 3
+                )
             }
             .buttonStyle(PlainButtonStyle())
         }
