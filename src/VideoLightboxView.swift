@@ -66,7 +66,6 @@ final class VideoLightboxManager: ObservableObject {
     var player: AVPlayer = AVPlayer()
     private var timeObserverToken: Any?
     private var keyMonitor: Any?
-    private var scrollMonitor: Any?
     private var controlsTimer: Timer?
     
     init() {
@@ -221,8 +220,7 @@ final class VideoLightboxManager: ObservableObject {
     private func setupEventMonitors() {
         removeEventMonitors()
         
-        // 1. Keyboard shortcuts: Space (play/pause), M (mute), Esc (exit)
-        // Left/Right arrow keys removed per user request
+        // Keyboard shortcuts: Space (play/pause), M (mute), Esc (exit)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.isPresented else { return event }
             switch event.keyCode {
@@ -239,29 +237,12 @@ final class VideoLightboxManager: ObservableObject {
                 return event
             }
         }
-        
-        // 2. Trackpad Two-Finger Swipe -> Smoothly scrubs video progress bar
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self = self, self.isPresented else { return event }
-            let deltaX = event.scrollingDeltaX
-            if abs(deltaX) > 0.4 {
-                // Scrub progress bar relative to gesture magnitude
-                let scrubSecs = Double(deltaX) * 0.12
-                self.seekRelative(by: scrubSecs)
-                self.resetHoverTimer()
-            }
-            return nil // Absorb so background timeline never scrolls
-        }
     }
     
     private func removeEventMonitors() {
         if let km = keyMonitor {
             NSEvent.removeMonitor(km)
             keyMonitor = nil
-        }
-        if let sm = scrollMonitor {
-            NSEvent.removeMonitor(sm)
-            scrollMonitor = nil
         }
     }
     
@@ -402,7 +383,7 @@ struct VideoLightboxOverlay: View {
                         ZStack(alignment: .bottom) {
                             // Video Layer
                             NativePlayerView(player: manager.player)
-                                .frame(width: boxWidth, height: boxHeight - 70)
+                                .frame(width: boxWidth, height: boxHeight - 68)
                                 .clipShape(RoundedCorner(tl: 12, tr: 12, bl: 0, br: 0))
                                 .background(Color.black)
                                 .onTapGesture {
@@ -414,31 +395,45 @@ struct VideoLightboxOverlay: View {
                             if !manager.isPlaying {
                                 Button(action: { manager.togglePlay() }) {
                                     Image(systemName: "play.fill")
-                                        .font(.system(size: 32))
+                                        .font(.system(size: 30))
                                         .foregroundColor(.white)
-                                        .frame(width: 68, height: 68)
-                                        .background(Circle().fill(Color.black.opacity(0.65)))
-                                        .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 1))
-                                        .shadow(radius: 12)
+                                        .frame(width: 64, height: 64)
+                                        .background(
+                                            ZStack {
+                                                VisualEffectBackground(material: .hudWindow, blendingMode: .withinWindow)
+                                                Color.black.opacity(0.40)
+                                            }
+                                            .clipShape(Circle())
+                                        )
+                                        .overlay(
+                                            Circle()
+                                                .stroke(
+                                                    LinearGradient(
+                                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    ),
+                                                    lineWidth: 0.8
+                                                )
+                                        )
+                                        .shadow(color: Color.black.opacity(0.40), radius: 12, x: 0, y: 4)
                                 }
                                 .buttonStyle(PlainButtonStyle())
                                 .transition(.scale.combined(with: .opacity))
                             }
                             
-                            // Bottom Scrubber Bar Overlay
+                            // Bottom Floating Glass Scrubber Bar
                             videoScrubberBar
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 8)
+                                .padding(.horizontal, 20)
+                                .padding(.bottom, 12)
                                 .opacity(manager.isControlsHovered || !manager.isPlaying ? 1.0 : 0.0)
                                 .animation(.easeInOut(duration: 0.20), value: manager.isControlsHovered)
                         }
-                        .frame(width: boxWidth, height: boxHeight - 70)
+                        .frame(width: boxWidth, height: boxHeight - 68)
                         
-                        // 3. Social & Download Action Bottom Dock
+                        // 3. Social & Download Glass Bottom Dock
                         actionBottomBar
-                            .frame(width: boxWidth, height: 70)
-                            .background(Color(white: 0.12))
-                            .clipShape(RoundedCorner(tl: 0, tr: 0, bl: 12, br: 12))
+                            .frame(width: boxWidth, height: 68)
                     }
                     .frame(width: boxWidth, height: boxHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -448,12 +443,12 @@ struct VideoLightboxOverlay: View {
                         if hovered { manager.resetHoverTimer() }
                     }
                     
-                    // 4. Top Header Bar: Clean single quality menu + Close button (no redundant left pill)
+                    // 4. Top Header Bar: Clean single glass quality menu + Close button
                     VStack {
                         HStack(alignment: .center, spacing: 12) {
                             Spacer()
                             
-                            // Quality Switcher Dropdown Menu (Single point of truth)
+                            // Quality Switcher Glass Dropdown Menu
                             Menu {
                                 ForEach(VideoQualityOption.allCases) { opt in
                                     Button(action: { manager.switchQuality(to: opt) }) {
@@ -466,31 +461,50 @@ struct VideoLightboxOverlay: View {
                                     }
                                 }
                             } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "gearshape")
-                                        .font(.system(size: 12))
+                                HStack(spacing: 6) {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 11))
                                     Text(manager.selectedQuality.shortLabel)
-                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                                     Image(systemName: "chevron.down")
-                                        .font(.system(size: 9))
+                                        .font(.system(size: 8))
                                 }
-                                .foregroundColor(.white.opacity(0.90))
+                                .foregroundColor(.white.opacity(0.92))
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
-                                .background(Capsule().fill(Color.black.opacity(0.65)))
-                                .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.6))
+                                .background(
+                                    ZStack {
+                                        VisualEffectBackground(material: .hudWindow, blendingMode: .withinWindow)
+                                        Color.black.opacity(0.40)
+                                    }
+                                    .clipShape(Capsule())
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [Color.white.opacity(0.32), Color.white.opacity(0.08), Color.white.opacity(0.18)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 0.75
+                                        )
+                                        .allowsHitTesting(false)
+                                )
+                                .shadow(color: Color.black.opacity(0.30), radius: 8, x: 0, y: 2)
                             }
                             .menuStyle(BorderlessButtonMenuStyle())
+                            .fixedSize()
                             
                             // Close Button
                             Button(action: { manager.dismiss() }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 26))
                                     .foregroundColor(Color(white: 0.85))
-                                    .padding(.trailing, max(20, (windowSize.width - boxWidth) / 2))
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
+                        .padding(.trailing, max(20, (windowSize.width - boxWidth) / 2))
                         .padding(.top, 18)
                         
                         Spacer()
@@ -504,8 +518,17 @@ struct VideoLightboxOverlay: View {
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 10)
-                                .background(Capsule().fill(Color(white: 0.16)))
-                                .overlay(Capsule().stroke(Color.white.opacity(0.20), lineWidth: 0.8))
+                                .background(
+                                    ZStack {
+                                        VisualEffectBackground(material: .hudWindow, blendingMode: .withinWindow)
+                                        Color.black.opacity(0.50)
+                                    }
+                                    .clipShape(Capsule())
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.white.opacity(0.25), lineWidth: 0.8)
+                                )
                                 .shadow(radius: 16)
                                 .padding(.top, 70)
                                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -520,42 +543,52 @@ struct VideoLightboxOverlay: View {
         }
     }
     
-    // MARK: - Video Scrubber Bar
+    // MARK: - Glass Video Scrubber Bar (HUD Frosted Glass Capsule)
     private var videoScrubberBar: some View {
         HStack(spacing: 12) {
             // Play / Pause mini toggle
             Button(action: { manager.togglePlay() }) {
                 Image(systemName: manager.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
             }
             .buttonStyle(PlainButtonStyle())
             
             // Current Time
             Text(formatTime(manager.currentTime))
-                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.85))
+                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.92))
             
-            // Interactive Progress Slider
+            // Interactive Glass Progress Slider
             GeometryReader { sliderGeo in
                 let w = sliderGeo.size.width
                 let progress = manager.duration > 0 ? min(1.0, max(0.0, manager.currentTime / manager.duration)) : 0
                 
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white.opacity(0.25))
+                    // Frosted Track Background
+                    Capsule()
+                        .fill(Color.white.opacity(0.20))
                         .frame(height: 5)
                     
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.accentColor)
+                    // Played Progress: Bright Frosted Fill
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white, Color.white.opacity(0.85)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .frame(width: w * progress, height: 5)
                     
+                    // Glass Thumb Knob
                     Circle()
                         .fill(Color.white)
-                        .frame(width: 12, height: 12)
-                        .shadow(radius: 3)
-                        .offset(x: max(0, min(w - 12, w * progress - 6)))
+                        .frame(width: 13, height: 13)
+                        .shadow(color: Color.black.opacity(0.40), radius: 4, x: 0, y: 1)
+                        .offset(x: max(0, min(w - 13, w * progress - 6.5)))
                 }
                 .contentShape(Rectangle())
                 .gesture(
@@ -571,24 +604,47 @@ struct VideoLightboxOverlay: View {
             // Duration
             Text(formatTime(manager.duration))
                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.70))
+                .foregroundColor(.white.opacity(0.65))
             
             // Mute / Unmute
             Button(action: { manager.toggleMute() }) {
                 Image(systemName: manager.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.system(size: 13))
-                    .foregroundColor(.white)
-                    .frame(width: 28, height: 28)
+                    .foregroundColor(.white.opacity(manager.isMuted ? 0.65 : 1.0))
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.72)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+        .background(
+            ZStack {
+                VisualEffectBackground(material: .hudWindow, blendingMode: .withinWindow)
+                Color.black.opacity(0.48)
+            }
+            .clipShape(Capsule())
+        )
+        .overlay(
+            Capsule()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.32),
+                            Color.white.opacity(0.08),
+                            Color.white.opacity(0.20)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.75
+                )
+                .allowsHitTesting(false)
+        )
+        .shadow(color: Color.black.opacity(0.40), radius: 14, x: 0, y: 5)
     }
     
-    // MARK: - Action Bottom Bar (Like, Repost, Share, Download)
+    // MARK: - Action Bottom Bar (Like, Repost, Share, Glass Download)
     private var actionBottomBar: some View {
         HStack(spacing: 28) {
             // Like
@@ -613,7 +669,7 @@ struct VideoLightboxOverlay: View {
             Button(action: { manager.copyTweetLink() }) {
                 HStack(spacing: 6) {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 14))
+                        .font(.system(size: 13.5))
                     Text(loc.t("video_share_link"))
                         .font(.system(size: 12.5, weight: .medium))
                 }
@@ -623,23 +679,60 @@ struct VideoLightboxOverlay: View {
             
             Spacer()
             
-            // Download MP4
+            // Download MP4 (Frosted Glass Capsule Button)
             Button(action: { manager.downloadVideo() }) {
-                HStack(spacing: 6) {
+                HStack(spacing: 7) {
                     Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 15))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color.white)
                     Text(loc.t("video_save_mp4"))
                         .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(Color.white)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 15)
                 .padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor))
-                .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 2)
+                .background(
+                    ZStack {
+                        VisualEffectBackground(material: .hudWindow, blendingMode: .withinWindow)
+                        Color.white.opacity(0.14)
+                    }
+                    .clipShape(Capsule())
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.38),
+                                    Color.white.opacity(0.10),
+                                    Color.white.opacity(0.24)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.8
+                        )
+                        .allowsHitTesting(false)
+                )
+                .shadow(color: Color.black.opacity(0.30), radius: 8, x: 0, y: 3)
             }
             .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 22)
+        .background(
+            ZStack {
+                VisualEffectBackground(material: .sidebar, blendingMode: .withinWindow)
+                Color.black.opacity(0.52)
+            }
+        )
+        .clipShape(RoundedCorner(tl: 0, tr: 0, bl: 12, br: 12))
+        .overlay(
+            VStack {
+                Divider()
+                    .background(Color.white.opacity(0.10))
+                Spacer()
+            }
+        )
     }
     
     private func actionButton(icon: String, count: Int, color: Color, action: @escaping () -> Void) -> some View {
