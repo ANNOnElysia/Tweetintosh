@@ -6,6 +6,18 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Image Zoom Namespace Environment Key
+struct ImageZoomNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    var imageZoomNamespace: Namespace.ID? {
+        get { self[ImageZoomNamespaceKey.self] }
+        set { self[ImageZoomNamespaceKey.self] = newValue }
+    }
+}
+
 // MARK: - Lightbox State Manager
 final class LightboxManager: ObservableObject {
     static let shared = LightboxManager()
@@ -46,7 +58,7 @@ final class LightboxManager: ObservableObject {
         
         setupEventMonitors()
         
-        withAnimation(.easeInOut(duration: 0.22)) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             self.isPresented = true
         }
     }
@@ -62,13 +74,13 @@ final class LightboxManager: ObservableObject {
     
     func dismiss() {
         removeEventMonitors()
-        withAnimation(.easeInOut(duration: 0.20)) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             self.isPresented = false
             self.dragOffset = .zero
             self.zoomScale = 1.0
             self.panOffset = .zero
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
             self.isAnimatingOut = false
             self.mediaList = []
             self.currentIndex = 0
@@ -225,6 +237,7 @@ final class LightboxManager: ObservableObject {
 // MARK: - Lightbox Overlay View
 struct ImageLightboxOverlay: View {
     @ObservedObject var manager = LightboxManager.shared
+    @Environment(\.imageZoomNamespace) private var imageZoomNamespace
     @GestureState private var pinchScale: CGFloat = 1.0
     
     var body: some View {
@@ -242,6 +255,7 @@ struct ImageLightboxOverlay: View {
                     Color.black
                         .opacity(backdropOpacity)
                         .ignoresSafeArea()
+                        .transition(.opacity)
                         .onTapGesture {
                             if manager.zoomScale > 1.05 {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
@@ -256,7 +270,7 @@ struct ImageLightboxOverlay: View {
                     // 2. The 3/4 Bounding Box: matching longest edge of current image
                     ZStack {
                         if let currentMedia = manager.currentMedia {
-                            CachedAsyncImage(
+                            let imgCard = CachedAsyncImage(
                                 urlString: originalUrl(currentMedia.mediaUrl),
                                 placeholderColor: Color(white: 0.08),
                                 contentMode: .fit
@@ -264,6 +278,15 @@ struct ImageLightboxOverlay: View {
                             .frame(maxWidth: boxWidth, maxHeight: boxHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .shadow(color: Color.black.opacity(0.50), radius: 24, x: 0, y: 8)
+                            
+                            Group {
+                                if let ns = imageZoomNamespace {
+                                    imgCard
+                                        .matchedGeometryEffect(id: currentMedia.id, in: ns, properties: .frame, isSource: true)
+                                } else {
+                                    imgCard
+                                }
+                            }
                             .scaleEffect(effectiveScale * verticalScale)
                             .offset(
                                 x: manager.zoomScale > 1.05 ? manager.panOffset.width : manager.dragOffset.width,
@@ -340,7 +363,7 @@ struct ImageLightboxOverlay: View {
                         }
                 )
             }
-            .transition(.opacity)
+            .transition(.identity)
             .zIndex(999)
             .onAppear {
                 manager.resetTransforms()

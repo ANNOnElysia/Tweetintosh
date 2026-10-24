@@ -172,6 +172,15 @@ struct ImageGridView: View {
     var tweet: Tweet? = nil
     @ObservedObject var layout = TimelineLayoutState.shared
     @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject var nav = NavigationManager.shared
+    @Environment(\.imageZoomNamespace) private var imageZoomNamespace
+    
+    private var isSourceActive: Bool {
+        if nav.selectedTweetDetail != nil {
+            return tweet?.id == nav.selectedTweetDetail?.id
+        }
+        return true
+    }
     
     private func thumbUrl(_ original: String) -> String {
         if original.contains("pbs.twimg.com/media") {
@@ -202,23 +211,32 @@ struct ImageGridView: View {
     private func singleImageView(_ media: TweetMedia) -> some View {
         let dims = calculateSingleDimensions(media)
         
+        let card = ZStack {
+            CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
+                .frame(width: dims.width, height: dims.height)
+                .clipped()
+            
+            if media.isVideo {
+                videoBadgeOverlay(for: media)
+            }
+        }
+        .frame(width: dims.width, height: dims.height)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(ThemeManager.border, lineWidth: 0.6)
+        )
+        .contentShape(Rectangle())
+        
         return HStack {
-            ZStack {
-                CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
-                    .frame(width: dims.width, height: dims.height)
-                    .clipped()
-                
-                if media.isVideo {
-                    videoBadgeOverlay(for: media)
+            Group {
+                if let ns = imageZoomNamespace, !media.isVideo {
+                    card
+                        .matchedGeometryEffect(id: media.id, in: ns, properties: .frame, isSource: isSourceActive)
+                } else {
+                    card
                 }
             }
-            .frame(width: dims.width, height: dims.height)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(ThemeManager.border, lineWidth: 0.6)
-            )
-            .contentShape(Rectangle())
             .onTapGesture {
                 if media.isVideo, let tweet = tweet {
                     VideoLightboxManager.shared.present(tweet: tweet, media: media)
@@ -276,22 +294,47 @@ struct ImageGridView: View {
         let singleWidth = (availableWidth - spacing) / 2.0
         let height: CGFloat = min(layout.windowHeight / 3.0, 260)
         
+        let card0 = ZStack {
+            CachedAsyncImage(urlString: thumbUrl(items[0].mediaUrl), contentMode: .fill)
+                .frame(width: singleWidth, height: height)
+                .clipped()
+            if items[0].isVideo {
+                videoBadgeOverlay(for: items[0])
+            }
+        }
+        .frame(width: singleWidth, height: height)
+        .clipShape(RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0))
+        .overlay(
+            RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0)
+                .stroke(ThemeManager.border, lineWidth: 0.6)
+        )
+        .contentShape(Rectangle())
+        
+        let card1 = ZStack {
+            CachedAsyncImage(urlString: thumbUrl(items[1].mediaUrl), contentMode: .fill)
+                .frame(width: singleWidth, height: height)
+                .clipped()
+            if items[1].isVideo {
+                videoBadgeOverlay(for: items[1])
+            }
+        }
+        .frame(width: singleWidth, height: height)
+        .clipShape(RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16))
+        .overlay(
+            RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16)
+                .stroke(ThemeManager.border, lineWidth: 0.6)
+        )
+        .contentShape(Rectangle())
+        
         return HStack(spacing: spacing) {
-            ZStack {
-                CachedAsyncImage(urlString: thumbUrl(items[0].mediaUrl), contentMode: .fill)
-                    .frame(width: singleWidth, height: height)
-                    .clipped()
-                if items[0].isVideo {
-                    videoBadgeOverlay(for: items[0])
+            Group {
+                if let ns = imageZoomNamespace, !items[0].isVideo {
+                    card0
+                        .matchedGeometryEffect(id: items[0].id, in: ns, properties: .frame, isSource: isSourceActive)
+                } else {
+                    card0
                 }
             }
-            .frame(width: singleWidth, height: height)
-            .clipShape(RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0))
-            .overlay(
-                RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0)
-                    .stroke(ThemeManager.border, lineWidth: 0.6)
-            )
-            .contentShape(Rectangle())
             .onTapGesture {
                 if items[0].isVideo, let tweet = tweet {
                     VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
@@ -300,21 +343,14 @@ struct ImageGridView: View {
                 }
             }
             
-            ZStack {
-                CachedAsyncImage(urlString: thumbUrl(items[1].mediaUrl), contentMode: .fill)
-                    .frame(width: singleWidth, height: height)
-                    .clipped()
-                if items[1].isVideo {
-                    videoBadgeOverlay(for: items[1])
+            Group {
+                if let ns = imageZoomNamespace, !items[1].isVideo {
+                    card1
+                        .matchedGeometryEffect(id: items[1].id, in: ns, properties: .frame, isSource: isSourceActive)
+                } else {
+                    card1
                 }
             }
-            .frame(width: singleWidth, height: height)
-            .clipShape(RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16))
-            .overlay(
-                RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16)
-                    .stroke(ThemeManager.border, lineWidth: 0.6)
-            )
-            .contentShape(Rectangle())
             .onTapGesture {
                 if items[1].isVideo, let tweet = tweet {
                     VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
@@ -343,7 +379,7 @@ struct ImageGridView: View {
                     let tr: CGFloat = isLast ? 16 : 0
                     let br: CGFloat = isLast ? 16 : 0
                     
-                    ZStack {
+                    let card = ZStack {
                         CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
                             .frame(width: cardWidth, height: height)
                             .clipped()
@@ -358,6 +394,15 @@ struct ImageGridView: View {
                             .stroke(ThemeManager.border, lineWidth: 0.6)
                     )
                     .contentShape(Rectangle())
+                    
+                    Group {
+                        if let ns = imageZoomNamespace, !media.isVideo {
+                            card
+                                .matchedGeometryEffect(id: media.id, in: ns, properties: .frame, isSource: isSourceActive)
+                        } else {
+                            card
+                        }
+                    }
                     .onTapGesture {
                         if media.isVideo, let tweet = tweet {
                             VideoLightboxManager.shared.present(tweet: tweet, media: media)
