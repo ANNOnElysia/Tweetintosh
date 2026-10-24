@@ -125,7 +125,7 @@ struct NotificationsView: View {
             }
             .coordinateSpace(name: "notifScrollViewSpace")
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
-                let isTop = (offset >= -16.0)
+                let isTop = (offset >= -2.0)
                 TrackpadPullCoordinator.shared.isAtTop = isTop
                 TrackpadPullCoordinator.shared.isRefreshing = viewModel.isRefreshing
                 scrollState.isAtTop = isTop
@@ -273,15 +273,19 @@ private struct NotificationRowView: View {
     
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            // Left: Type Icon Badge (Heart, Retweet, Reply, Mention)
+            // Left: Type Icon Badge (Heart, Retweet, Reply, Mention, or Recent Post)
+            let isRecent = item.isRecentPost
+            let badgeColor = isRecent ? Color(red: 0.11, green: 0.61, blue: 0.94) : item.type.accentColor
+            let badgeIcon = isRecent ? "sparkles" : item.type.iconName
+            
             ZStack {
                 Circle()
-                    .fill(item.type.accentColor.opacity(0.18))
+                    .fill(badgeColor.opacity(0.18))
                     .frame(width: 32, height: 32)
                 
-                Image(systemName: item.type.iconName)
+                Image(systemName: badgeIcon)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(item.type.accentColor)
+                    .foregroundColor(badgeColor)
             }
             .padding(.top, 2)
             

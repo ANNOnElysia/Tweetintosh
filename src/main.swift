@@ -131,7 +131,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         
-        let settingsRect = NSRect(x: 0, y: 0, width: 480, height: 410)
+        let settingsRect = NSRect(x: 0, y: 0, width: 480, height: 440)
         let win = NSWindow(
             contentRect: settingsRect,
             styleMask: [.titled, .closable],

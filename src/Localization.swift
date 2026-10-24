@@ -464,10 +464,10 @@ final class LocalizationManager: ObservableObject {
             ],
             "notif_recent_post": [
                 .english: "Recent post from {actor}",
-                .japanese: "{actor}さんの新しい投稿",
+                .japanese: "{actor}さんの最新の投稿",
                 .korean: "{actor}님의 최근 게시물",
-                .simplifiedChinese: "{actor} 发布了新推文",
-                .traditionalChinese: "{actor} 發布了新貼文"
+                .simplifiedChinese: "来自 {actor} 的最新推文",
+                .traditionalChinese: "來自 {actor} 的最新貼文"
             ],
             "notif_mentioned_single": [
                 .english: "{actor} mentioned you in a post",

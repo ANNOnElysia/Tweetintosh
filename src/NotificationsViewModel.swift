@@ -92,6 +92,30 @@ struct NotificationItem: Identifiable, Hashable, Codable {
         }
     }
     
+    var isRecentPost: Bool {
+        let lowerSummary = actionSummary.lowercased()
+        return (type == .mention) && (
+            lowerSummary.contains("recent post") ||
+            lowerSummary.contains("recent tweet") ||
+            lowerSummary.contains("new post") ||
+            lowerSummary.contains("new tweet") ||
+            actionSummary.contains("最新帖子") ||
+            actionSummary.contains("最新推文") ||
+            actionSummary.contains("最新貼文") ||
+            actionSummary.contains("发布了新推文") ||
+            actionSummary.contains("發布了新貼文") ||
+            actionSummary.contains("发布了新帖子") ||
+            actionSummary.contains("發布了新帖子") ||
+            actionSummary.contains("最新の投稿") ||
+            actionSummary.contains("新しい投稿") ||
+            actionSummary.contains("新しいツイート") ||
+            actionSummary.contains("최근 게시물") ||
+            actionSummary.contains("새로운 트윗") ||
+            (actionSummary.contains("来自 ") && (actionSummary.contains("帖子") || actionSummary.contains("推文"))) ||
+            (actionSummary.contains("來自 ") && (actionSummary.contains("貼文") || actionSummary.contains("推文")))
+        )
+    }
+    
     var localizedActionSummary: String {
         let loc = LocalizationManager.shared
         
@@ -133,6 +157,13 @@ struct NotificationItem: Identifiable, Hashable, Codable {
                 .replacingOccurrences(of: " 关注了你", with: "")
                 .replacingOccurrences(of: " 转发了你的推文", with: "")
                 .replacingOccurrences(of: " 回复了你的推文", with: "")
+                .replacingOccurrences(of: "来自 ", with: "")
+                .replacingOccurrences(of: "來自 ", with: "")
+                .replacingOccurrences(of: " 的最新帖子", with: "")
+                .replacingOccurrences(of: " 的最新推文", with: "")
+                .replacingOccurrences(of: " 的最新貼文", with: "")
+                .replacingOccurrences(of: "さんの最新の投稿", with: "")
+                .replacingOccurrences(of: "님의 최근 게시물", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
@@ -141,14 +172,6 @@ struct NotificationItem: Identifiable, Hashable, Codable {
         }
         
         // 2. Detect recent post notification
-        let isRecentPost = type == .mention && (
-            actionSummary.localizedCaseInsensitiveContains("recent post") ||
-            actionSummary.contains("发布了新推文") ||
-            actionSummary.contains("發布了新貼文") ||
-            actionSummary.contains("新しい投稿") ||
-            actionSummary.contains("최근 게시물")
-        )
-        
         if isRecentPost {
             return loc.format("notif_recent_post", ["actor": firstActorName])
         }

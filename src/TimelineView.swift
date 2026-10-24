@@ -37,6 +37,12 @@ final class TrackpadPullCoordinator {
     var isAtTop: Bool = true
     var isRefreshing: Bool = false
     
+    // Strict pull activation:
+    // Only when a two-finger downward pull begins (.began) while ALREADY at the very top (isAtTop == true && scrollingDeltaY > 0)
+    // is a pull-to-refresh session activated.
+    // If the scroll began while scrolled down (browsing content upward), isPullGestureActive remains false,
+    // so reaching the top during upward browsing will NEVER accidentally trigger pull-to-refresh.
+    private var isPullGestureActive: Bool = false
     private var accumulatedPull: CGFloat = 0.0
     private var hasTriggeredHaptic: Bool = false
     
@@ -60,6 +66,7 @@ final class TrackpadPullCoordinator {
             wheelReleaseTimer?.invalidate()
             wheelReleaseTimer = nil
             accumulatedPull = 0
+            isPullGestureActive = false
             hasTriggeredHaptic = false
         }
     }
@@ -89,9 +96,26 @@ final class TrackpadPullCoordinator {
         guard !isRefreshing else { return }
         guard event.window == NSApp.mainWindow || event.window == nil else { return }
         
-        // Trackpad scroll gesture with phase
-        if isAtTop {
-            if event.phase == .began || event.phase == .changed {
+        let phase = event.phase
+        let momentumPhase = event.momentumPhase
+        
+        // 1. Gesture Began: strictly check if fingers touched while ALREADY at the top with downward swipe
+        if phase == .began {
+            if isAtTop && event.scrollingDeltaY > 0 {
+                isPullGestureActive = true
+                accumulatedPull = 0
+                hasTriggeredHaptic = false
+            } else {
+                isPullGestureActive = false
+                accumulatedPull = 0
+                hasTriggeredHaptic = false
+            }
+            return
+        }
+        
+        // 2. Gesture Changed: only process if the gesture was initiated at the top
+        if phase == .changed {
+            if isPullGestureActive && isAtTop {
                 let delta = event.scrollingDeltaY
                 if delta > 0 || accumulatedPull > 0 {
                     let dampedDelta = Self.calculateDampedDelta(rawDelta: delta, currentPull: accumulatedPull, threshold: threshold)
@@ -113,7 +137,21 @@ final class TrackpadPullCoordinator {
                     
                     onPullProgress?(accumulatedPull)
                 }
-            } else if event.phase == .ended || event.momentumPhase == .ended {
+            } else if !isAtTop && accumulatedPull > 0 {
+                // Moved away from top during pull -> abort immediately
+                isPullGestureActive = false
+                accumulatedPull = 0
+                hasTriggeredHaptic = false
+                onPullProgress?(0)
+                onCancelPull?()
+            }
+            return
+        }
+        
+        // 3. Gesture Ended: only trigger refresh if this was an active top pull that reached threshold
+        if phase == .ended || momentumPhase == .ended {
+            if isPullGestureActive {
+                isPullGestureActive = false
                 if accumulatedPull >= threshold {
                     accumulatedPull = 0
                     hasTriggeredHaptic = false
@@ -126,46 +164,49 @@ final class TrackpadPullCoordinator {
                     onPullProgress?(0)
                     onCancelPull?()
                 }
-            } else if event.phase == .cancelled || event.momentumPhase == .cancelled {
-                accumulatedPull = 0
-                hasTriggeredHaptic = false
-                onPullProgress?(0)
-                onCancelPull?()
-            } else if event.phase.isEmpty {
-                // Notched mouse wheel support
-                let delta = event.scrollingDeltaY
-                if delta > 0 || accumulatedPull > 0 {
-                    let dampedDelta = Self.calculateDampedDelta(rawDelta: delta * 2.8, currentPull: accumulatedPull, threshold: threshold)
-                    accumulatedPull = max(0, accumulatedPull + dampedDelta)
-                    if accumulatedPull >= threshold && !hasTriggeredHaptic {
-                        hasTriggeredHaptic = true
-                        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-                    }
-                    onPullProgress?(accumulatedPull)
-                    
-                    wheelReleaseTimer?.invalidate()
-                    let timer = Timer(timeInterval: 0.22, repeats: false) { [weak self] _ in
-                        guard let self = self else { return }
-                        let didReachThreshold = self.accumulatedPull >= self.threshold
-                        self.accumulatedPull = 0
-                        self.hasTriggeredHaptic = false
-                        self.onPullProgress?(0)
-                        if didReachThreshold {
-                            self.onTriggerRefresh?()
-                        } else {
-                            self.onCancelPull?()
-                        }
-                    }
-                    RunLoop.main.add(timer, forMode: .common)
-                    self.wheelReleaseTimer = timer
-                }
             }
-        } else {
+            return
+        }
+        
+        // 4. Gesture Cancelled
+        if phase == .cancelled || momentumPhase == .cancelled {
+            isPullGestureActive = false
             if accumulatedPull > 0 {
                 accumulatedPull = 0
                 hasTriggeredHaptic = false
                 onPullProgress?(0)
                 onCancelPull?()
+            }
+            return
+        }
+        
+        // 5. Discrete Notched Mouse Wheel support (when phase is empty)
+        if phase.isEmpty && momentumPhase.isEmpty {
+            if isAtTop && event.scrollingDeltaY > 0 {
+                let delta = event.scrollingDeltaY
+                let dampedDelta = Self.calculateDampedDelta(rawDelta: delta * 2.8, currentPull: accumulatedPull, threshold: threshold)
+                accumulatedPull = max(0, accumulatedPull + dampedDelta)
+                if accumulatedPull >= threshold && !hasTriggeredHaptic {
+                    hasTriggeredHaptic = true
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                }
+                onPullProgress?(accumulatedPull)
+                
+                wheelReleaseTimer?.invalidate()
+                let timer = Timer(timeInterval: 0.22, repeats: false) { [weak self] _ in
+                    guard let self = self else { return }
+                    let didReachThreshold = self.accumulatedPull >= self.threshold
+                    self.accumulatedPull = 0
+                    self.hasTriggeredHaptic = false
+                    self.onPullProgress?(0)
+                    if didReachThreshold {
+                        self.onTriggerRefresh?()
+                    } else {
+                        self.onCancelPull?()
+                    }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                self.wheelReleaseTimer = timer
             }
         }
     }
@@ -339,7 +380,7 @@ struct MainTimelineView: View {
     }
     
     private func handlePullOffset(_ offset: CGFloat) {
-        let isTop = (offset >= -16.0)
+        let isTop = (offset >= -2.0)
         TrackpadPullCoordinator.shared.isAtTop = isTop
         TrackpadPullCoordinator.shared.isRefreshing = viewModel.isRefreshing
         scrollState.isAtTop = isTop
