@@ -238,9 +238,17 @@ struct TweetDetailView: View {
                 Spacer()
             }
             
+            // Reply Context Subheader (Consistent with official X logic)
+            if let replyContext = viewModel.focalTweet.replyContextText {
+                Text(replyContext)
+                    .font(.system(size: 13))
+                    .foregroundColor(ThemeManager.secondaryText)
+                    .lineLimit(1)
+            }
+            
             // Tweet Body Text (Large, crisp typography)
-            if !viewModel.focalTweet.cleanText.isEmpty {
-                Text(viewModel.focalTweet.cleanText)
+            if !viewModel.focalTweet.displayBodyText.isEmpty {
+                Text(viewModel.focalTweet.displayBodyText)
                     .font(theme.tweetFont(size: 17))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineSpacing(5)
@@ -436,10 +444,19 @@ struct TweetDetailView: View {
                     Spacer()
                 }
                 
-                Text(tweet.text)
-                    .font(.system(size: 13.5))
-                    .foregroundColor(ThemeManager.primaryText)
-                    .lineSpacing(3)
+                if let replyContext = tweet.replyContextText {
+                    Text(replyContext)
+                        .font(.system(size: 12))
+                        .foregroundColor(ThemeManager.secondaryText)
+                        .lineLimit(1)
+                }
+                
+                if !tweet.displayBodyText.isEmpty {
+                    Text(tweet.displayBodyText)
+                        .font(.system(size: 13.5))
+                        .foregroundColor(ThemeManager.primaryText)
+                        .lineSpacing(3)
+                }
                 
                 if !tweet.media.isEmpty {
                     ImageGridView(mediaList: tweet.media, tweet: tweet)
@@ -478,9 +495,17 @@ struct TweetDetailView: View {
                         Spacer()
                     }
                     
-                    // Reply Text
-                    if !tweet.text.isEmpty {
-                        Text(tweet.text)
+                    // Reply Context Subheader (Consistent with official X logic)
+                    if let replyContext = tweet.replyContextText {
+                        Text(replyContext)
+                            .font(.system(size: 12))
+                            .foregroundColor(ThemeManager.secondaryText)
+                            .lineLimit(1)
+                    }
+                    
+                    // Reply Text (Clean text with leading reply mentions & trailing media URLs stripped)
+                    if !tweet.displayBodyText.isEmpty {
+                        Text(tweet.displayBodyText)
                             .font(.system(size: 13.5))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineSpacing(3)

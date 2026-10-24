@@ -228,7 +228,8 @@ struct ImageGridView: View {
                         LightboxManager.shared.present(
                             mediaList: [media],
                             initialIndex: 0,
-                            sourceRect: rect
+                            sourceRect: rect,
+                            tweet: tweet
                         )
                     }
                 }) {
@@ -236,8 +237,10 @@ struct ImageGridView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .mediaContextMenu(media: media, tweet: tweet)
             }
         )
+        .mediaContextMenu(media: media, tweet: tweet)
         
         return HStack {
             card
@@ -309,15 +312,17 @@ struct ImageGridView: View {
                         VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
                     } else {
                         let rect = proxy.frame(in: .named("AppWindow"))
-                        LightboxManager.shared.present(mediaList: items, initialIndex: 0, sourceRect: rect)
+                        LightboxManager.shared.present(mediaList: items, initialIndex: 0, sourceRect: rect, tweet: tweet)
                     }
                 }) {
                     Color.clear
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .mediaContextMenu(media: items[0], tweet: tweet)
             }
         )
+        .mediaContextMenu(media: items[0], tweet: tweet)
         
         let card1 = ZStack {
             CachedAsyncImage(urlString: thumbUrl(items[1].mediaUrl), contentMode: .fill)
@@ -341,15 +346,17 @@ struct ImageGridView: View {
                         VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
                     } else {
                         let rect = proxy.frame(in: .named("AppWindow"))
-                        LightboxManager.shared.present(mediaList: items, initialIndex: 1, sourceRect: rect)
+                        LightboxManager.shared.present(mediaList: items, initialIndex: 1, sourceRect: rect, tweet: tweet)
                     }
                 }) {
                     Color.clear
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .mediaContextMenu(media: items[1], tweet: tweet)
             }
         )
+        .mediaContextMenu(media: items[1], tweet: tweet)
         
         return HStack(spacing: spacing) {
             card0
@@ -397,15 +404,17 @@ struct ImageGridView: View {
                                     VideoLightboxManager.shared.present(tweet: tweet, media: media)
                                 } else {
                                     let rect = proxy.frame(in: .named("AppWindow"))
-                                    LightboxManager.shared.present(mediaList: items, initialIndex: idx, sourceRect: rect)
+                                    LightboxManager.shared.present(mediaList: items, initialIndex: idx, sourceRect: rect, tweet: tweet)
                                 }
                             }) {
                                 Color.clear
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .mediaContextMenu(media: media, tweet: tweet)
                         }
                     )
+                    .mediaContextMenu(media: media, tweet: tweet)
                     
                     card
                 }

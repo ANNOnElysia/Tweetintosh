@@ -53,8 +53,15 @@ struct QuotedTweetCard: View {
             }
             
             // 2. Tweet Text Content
-            if !tweet.cleanText.isEmpty {
-                Text(tweet.cleanText)
+            if let replyContext = tweet.replyContextText {
+                Text(replyContext)
+                    .font(.system(size: 11.5))
+                    .foregroundColor(ThemeManager.secondaryText)
+                    .lineLimit(1)
+            }
+            
+            if !tweet.displayBodyText.isEmpty {
+                Text(tweet.displayBodyText)
                     .font(theme.tweetFont(size: 13))
                     .lineSpacing(theme.lineSpacing() * 0.8)
                     .foregroundColor(ThemeManager.primaryText.opacity(0.92))
@@ -99,5 +106,6 @@ struct QuotedTweetCard: View {
             .frame(maxWidth: .infinity)
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .mediaContextMenu(media: firstMedia, tweet: tweet)
     }
 }

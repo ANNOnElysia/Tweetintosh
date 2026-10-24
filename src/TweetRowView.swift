@@ -82,9 +82,17 @@ struct TweetRowView: View {
                             Spacer()
                         }
                         
-                        // Tweet Body Text (Clean text with trailing media t.co URLs stripped)
-                        if !tweet.cleanText.isEmpty {
-                            Text(tweet.cleanText)
+                        // Reply Context Subheader (Consistent with official X logic)
+                        if let replyContext = tweet.replyContextText {
+                            Text(replyContext)
+                                .font(.system(size: 12.5))
+                                .foregroundColor(ThemeManager.secondaryText)
+                                .lineLimit(1)
+                        }
+                        
+                        // Tweet Body Text (Clean text with leading reply mentions & trailing media t.co URLs stripped)
+                        if !tweet.displayBodyText.isEmpty {
+                            Text(tweet.displayBodyText)
                                 .font(theme.tweetFont(size: 14.5))
                                 .lineSpacing(theme.lineSpacing())
                                 .foregroundColor(ThemeManager.primaryText)

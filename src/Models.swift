@@ -116,6 +116,8 @@ struct Tweet: Codable, Hashable, Identifiable {
     var isBookmarked: Bool = false
     var bookmarkCount: Int = 0
     var quotedTweet: QuotedTweetBox? = nil
+    var inReplyToScreenName: String? = nil
+    var inReplyToStatusId: String? = nil
     
     var quoted: Tweet? {
         quotedTweet?.tweet
@@ -127,6 +129,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         case isRetweet, retweetedBy
         case isFavorited, isRetweeted, isBookmarked, bookmarkCount
         case quotedTweet
+        case inReplyToScreenName, inReplyToStatusId
     }
     
     init(
@@ -144,7 +147,9 @@ struct Tweet: Codable, Hashable, Identifiable {
         isRetweeted: Bool = false,
         isBookmarked: Bool = false,
         bookmarkCount: Int = 0,
-        quotedTweet: QuotedTweetBox? = nil
+        quotedTweet: QuotedTweetBox? = nil,
+        inReplyToScreenName: String? = nil,
+        inReplyToStatusId: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -161,6 +166,8 @@ struct Tweet: Codable, Hashable, Identifiable {
         self.isBookmarked = isBookmarked
         self.bookmarkCount = bookmarkCount
         self.quotedTweet = quotedTweet
+        self.inReplyToScreenName = inReplyToScreenName
+        self.inReplyToStatusId = inReplyToStatusId
     }
     
     init(from decoder: Decoder) throws {
@@ -180,18 +187,69 @@ struct Tweet: Codable, Hashable, Identifiable {
         isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
         bookmarkCount = try container.decodeIfPresent(Int.self, forKey: .bookmarkCount) ?? 0
         quotedTweet = try container.decodeIfPresent(QuotedTweetBox.self, forKey: .quotedTweet)
+        inReplyToScreenName = try container.decodeIfPresent(String.self, forKey: .inReplyToScreenName)
+        inReplyToStatusId = try container.decodeIfPresent(String.self, forKey: .inReplyToStatusId)
+    }
+    
+    // Clean text breakdown: strips trailing media t.co URLs and extracts leading reply mentions
+    struct TextBreakdown {
+        let mentions: [String]
+        let body: String
+    }
+    
+    var textBreakdown: TextBreakdown {
+        var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 1. Strip trailing media or quote t.co URLs when media or quote is present
+        if !media.isEmpty || quotedTweet != nil {
+            while let range = raw.range(of: #"(?:https?:\/\/t\.co\/[A-Za-z0-9]+|https?:\/\/[^\s]+)\s*$"#, options: .regularExpression) {
+                raw.removeSubrange(range)
+                raw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
+        // 2. Extract leading @mentions
+        var mentions: [String] = []
+        var remainder = raw
+        
+        if let regex = try? NSRegularExpression(pattern: #"^(@[A-Za-z0-9_]{1,50})\s*"#) {
+            while true {
+                let nsRemainder = remainder as NSString
+                guard let match = regex.firstMatch(in: remainder, range: NSRange(location: 0, length: nsRemainder.length)),
+                      match.range.location == 0 else {
+                    break
+                }
+                let mention = nsRemainder.substring(with: match.range(at: 1))
+                mentions.append(mention)
+                remainder = nsRemainder.substring(from: match.range.length).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
+        // If no leading mentions found in text, but inReplyToScreenName is present
+        if mentions.isEmpty, let replyScreenName = inReplyToScreenName, !replyScreenName.isEmpty {
+            mentions.append("@" + replyScreenName)
+        }
+        
+        return TextBreakdown(mentions: mentions, body: remainder)
+    }
+    
+    var replyMentions: [String] {
+        textBreakdown.mentions
+    }
+    
+    var replyContextText: String? {
+        let mentions = replyMentions
+        guard !mentions.isEmpty else { return nil }
+        return LocalizationManager.shared.formatReplyContext(mentions: mentions)
+    }
+    
+    var displayBodyText: String {
+        textBreakdown.body
     }
     
     // Clean text: strip trailing media or quote t.co links when media or quote is present
     var cleanText: String {
-        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !media.isEmpty || quotedTweet != nil {
-            // Remove trailing https://t.co/xxxxxx URL from the text body (even with whitespace)
-            if let range = result.range(of: #"https:\/\/t\.co\/[A-Za-z0-9]+\s*$"#, options: .regularExpression) {
-                result.removeSubrange(range)
-            }
-        }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        displayBodyText
     }
     
     // Relative time string helper

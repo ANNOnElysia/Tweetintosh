@@ -26,6 +26,7 @@ final class LightboxManager: ObservableObject {
     @Published var dragOffset: CGSize = .zero
     @Published var isDraggingVertically: Bool = false
     @Published var isDraggingHorizontally: Bool = false
+    @Published var currentTweet: Tweet? = nil
     
     var currentMedia: TweetMedia? {
         guard currentIndex >= 0, currentIndex < mediaList.count else { return nil }
@@ -38,12 +39,13 @@ final class LightboxManager: ObservableObject {
     private var accumulatedScrollX: CGFloat = 0
     private var lastScrollTime = Date()
     
-    func present(mediaList: [TweetMedia], initialIndex: Int, sourceRect: CGRect = .zero) {
+    func present(mediaList: [TweetMedia], initialIndex: Int, sourceRect: CGRect = .zero, tweet: Tweet? = nil) {
         guard !mediaList.isEmpty, initialIndex >= 0, initialIndex < mediaList.count else { return }
         self.mediaList = mediaList
         self.initialIndex = initialIndex
         self.currentIndex = initialIndex
         self.sourceRect = sourceRect
+        self.currentTweet = tweet
         self.isAnimatingOut = false
         self.isZoomExpanded = false
         
@@ -304,7 +306,7 @@ struct ImageLightboxOverlay: View {
                     // 2. The Zooming Image Container (exact frame & corner radius matching timeline card)
                     if let currentMedia = currentMedia {
                         CachedAsyncImage(
-                            urlString: originalUrl(currentMedia.mediaUrl),
+                            urlString: MediaHelpers.originalImageUrl(currentMedia.mediaUrl),
                             placeholderColor: Color(white: 0.08),
                             contentMode: .fill
                         )
@@ -325,6 +327,7 @@ struct ImageLightboxOverlay: View {
                         .onTapGesture(count: 2) {
                             manager.toggleZoom()
                         }
+                        .mediaContextMenu(media: currentMedia, tweet: manager.currentTweet)
                     }
                     
                     // 3. Top Header Bar (Pagination Capsule / Zoom % + Close Button)

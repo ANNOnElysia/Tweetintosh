@@ -410,6 +410,9 @@ final class APIClient {
             quotedTweet = parseGraphQLTweetResult(quotedRaw, dateFormatter: dateFormatter, parseQuoted: false)
         }
         
+        let inReplyToScreenName = legacy["in_reply_to_screen_name"] as? String
+        let inReplyToStatusId = (legacy["in_reply_to_status_id_str"] as? String) ?? (legacy["in_reply_to_status_id"] as? NSNumber)?.stringValue
+        
         return Tweet(
             id: restId,
             text: fullText,
@@ -425,7 +428,9 @@ final class APIClient {
             isRetweeted: isRetweeted,
             isBookmarked: isBookmarked,
             bookmarkCount: bookmarkCount,
-            quotedTweet: quotedTweet.map { QuotedTweetBox(tweet: $0) }
+            quotedTweet: quotedTweet.map { QuotedTweetBox(tweet: $0) },
+            inReplyToScreenName: inReplyToScreenName,
+            inReplyToStatusId: inReplyToStatusId
         )
     }
     
@@ -932,6 +937,9 @@ final class APIClient {
         let isBookmarked = (tweetObj["bookmarked"] as? Bool) ?? ((tweetObj["bookmarked"] as? NSNumber)?.boolValue ?? false)
         let bookmarkCount = (tweetObj["bookmark_count"] as? Int) ?? 0
         
+        let inReplyToScreenName = tweetObj["in_reply_to_screen_name"] as? String
+        let inReplyToStatusId = (tweetObj["in_reply_to_status_id_str"] as? String) ?? (tweetObj["in_reply_to_status_id"] as? NSNumber)?.stringValue
+        
         return Tweet(
             id: idStr,
             text: fullText,
@@ -946,7 +954,10 @@ final class APIClient {
             isFavorited: isFavorited,
             isRetweeted: isRetweeted,
             isBookmarked: isBookmarked,
-            bookmarkCount: bookmarkCount
+            bookmarkCount: bookmarkCount,
+            quotedTweet: nil,
+            inReplyToScreenName: inReplyToScreenName,
+            inReplyToStatusId: inReplyToStatusId
         )
     }
     
