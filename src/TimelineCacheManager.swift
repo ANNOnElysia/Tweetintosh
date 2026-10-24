@@ -35,6 +35,25 @@ final class TimelineCacheManager {
         return try? decoder.decode(TimelineSnapshot.self, from: data)
     }
     
+    // MARK: - User Lists Cache
+    private var userListsCacheURL: URL {
+        return maxDir.appendingPathComponent("user_twitter_lists.json")
+    }
+    
+    func loadCachedUserLists() -> [TwitterList] {
+        guard let data = try? Data(contentsOf: userListsCacheURL) else { return [] }
+        return (try? JSONDecoder().decode([TwitterList].self, from: data)) ?? []
+    }
+    
+    func saveCachedUserLists(_ lists: [TwitterList]) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            if let data = try? JSONEncoder().encode(lists) {
+                try? data.write(to: self.userListsCacheURL, options: .atomic)
+            }
+        }
+    }
+    
     func saveSnapshot(feed: HomeFeedType = .forYou, listId: String? = nil, tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
         queue.async { [weak self] in
             guard let self = self else { return }

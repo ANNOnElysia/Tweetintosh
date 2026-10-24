@@ -17,15 +17,13 @@ final class TimelineViewModel: ObservableObject {
     
     @Published var tweets: [Tweet] = []
     
-    // Available Lists
-    @Published var availableLists: [TwitterList] = TwitterList.defaultLists
-    @Published var selectedListId: String = "list_tech"
-    @Published var showAddCustomListPopover: Bool = false
-    @Published var customListName: String = ""
-    @Published var customListId: String = ""
+    // Official Twitter Lists for authenticated account
+    @Published var userLists: [TwitterList] = []
+    @Published var selectedListId: String = ""
+    @Published var isLoadingLists: Bool = false
     
     var selectedList: TwitterList? {
-        availableLists.first { $0.id == selectedListId } ?? availableLists.first
+        userLists.first { $0.id == selectedListId } ?? userLists.first
     }
     
     // Independent storage for each feed
@@ -93,33 +91,45 @@ final class TimelineViewModel: ObservableObject {
     }
     
     init() {
-        loadCustomLists()
+        let cachedLists = TimelineCacheManager.shared.loadCachedUserLists()
+        self.userLists = cachedLists
+        if let first = cachedLists.first, selectedListId.isEmpty {
+            self.selectedListId = first.id
+        }
         checkAuth()
+        fetchUserLists()
     }
     
-    func loadCustomLists() {
-        if let data = UserDefaults.standard.data(forKey: "MaX_CustomTwitterLists"),
-           let saved = try? JSONDecoder().decode([TwitterList].self, from: data), !saved.isEmpty {
-            self.availableLists = saved
-        } else {
-            self.availableLists = TwitterList.defaultLists
+    func fetchUserLists(completion: (() -> Void)? = nil) {
+        isLoadingLists = true
+        APIClient.shared.fetchUserLists { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoadingLists = false
+                switch result {
+                case .success(let lists):
+                    self.userLists = lists
+                    TimelineCacheManager.shared.saveCachedUserLists(lists)
+                    if !lists.isEmpty {
+                        if self.selectedListId.isEmpty || !lists.contains(where: { $0.id == self.selectedListId }) {
+                            self.selectedListId = lists.first?.id ?? ""
+                        }
+                    } else {
+                        // User has no lists! Fallback to forYou if currently on list feed
+                        if self.selectedFeed == .list {
+                            self.selectedFeed = .forYou
+                            self.updateActiveTweets()
+                        }
+                    }
+                case .failure:
+                    if self.userLists.isEmpty && self.selectedFeed == .list {
+                        self.selectedFeed = .forYou
+                        self.updateActiveTweets()
+                    }
+                }
+                completion?()
+            }
         }
-    }
-    
-    func saveCustomLists() {
-        if let data = try? JSONEncoder().encode(availableLists) {
-            UserDefaults.standard.set(data, forKey: "MaX_CustomTwitterLists")
-        }
-    }
-    
-    func addCustomList(name: String, listId: String) {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedId = listId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty, !trimmedId.isEmpty else { return }
-        let newList = TwitterList(id: trimmedId, name: trimmedName, iconName: "list.bullet", isCustom: true)
-        availableLists.append(newList)
-        saveCustomLists()
-        selectList(newList)
     }
     
     func selectList(_ list: TwitterList) {
@@ -127,57 +137,10 @@ final class TimelineViewModel: ObservableObject {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             selectedFeed = .list
         }
-        if (listTweets[list.id] ?? []).isEmpty {
-            populateDefaultListTweetsIfNeeded(for: list)
-        }
         updateActiveTweets()
         if (listTweets[list.id] ?? []).isEmpty {
             refresh(silently: false, isUserInitiated: false)
         }
-    }
-    
-    private func populateDefaultListTweetsIfNeeded(for list: TwitterList) {
-        let sourcePool = forYouTweets.isEmpty ? followingTweets : forYouTweets
-        guard !sourcePool.isEmpty else { return }
-        var curated: [Tweet] = []
-        switch list.id {
-        case "list_tech":
-            curated = sourcePool.filter {
-                let lower = $0.text.lowercased()
-                return lower.contains("ai") || lower.contains("tech") || lower.contains("apple") || lower.contains("mac") || $0.text.contains("科技")
-            }
-        case "list_dev":
-            curated = sourcePool.filter {
-                let lower = $0.text.lowercased()
-                return lower.contains("code") || lower.contains("swift") || lower.contains("github") || lower.contains("dev") || $0.text.contains("开发")
-            }
-        case "list_design":
-            curated = sourcePool.filter {
-                let lower = $0.text.lowercased()
-                return lower.contains("design") || lower.contains("ui") || lower.contains("ux") || $0.text.contains("设计") || $0.text.contains("美")
-            }
-        case "list_news":
-            curated = Array(sourcePool.prefix(15))
-        case "list_acg":
-            curated = sourcePool.filter {
-                let lower = $0.text.lowercased()
-                return lower.contains("anime") || lower.contains("art") || $0.text.contains("アニメ") || $0.text.contains("画") || $0.text.contains("漫画")
-            }
-        default:
-            curated = Array(sourcePool.prefix(15))
-        }
-        if curated.isEmpty {
-            let offset = abs(list.id.hashValue) % max(1, sourcePool.count / 2)
-            curated = Array(sourcePool.dropFirst(offset).prefix(20))
-        }
-        self.listTweets[list.id] = curated
-        TimelineCacheManager.shared.saveSnapshot(
-            feed: .list,
-            listId: list.id,
-            tweets: curated,
-            topCursor: nil,
-            bottomCursor: nil
-        )
     }
     
     func checkAuth() {
@@ -312,6 +275,7 @@ final class TimelineViewModel: ObservableObject {
     
     // MARK: - Feed Switching
     func selectFeed(_ feed: HomeFeedType) {
+        if feed == .list && userLists.isEmpty { return }
         guard selectedFeed != feed else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             selectedFeed = feed
@@ -324,7 +288,7 @@ final class TimelineViewModel: ObservableObject {
     }
     
     func nextFeed() {
-        let all = HomeFeedType.allCases
+        let all: [HomeFeedType] = userLists.isEmpty ? [.forYou, .following] : HomeFeedType.allCases
         if let idx = all.firstIndex(of: selectedFeed) {
             let nextIdx = (idx + 1) % all.count
             selectFeed(all[nextIdx])
@@ -332,7 +296,7 @@ final class TimelineViewModel: ObservableObject {
     }
     
     func prevFeed() {
-        let all = HomeFeedType.allCases
+        let all: [HomeFeedType] = userLists.isEmpty ? [.forYou, .following] : HomeFeedType.allCases
         if let idx = all.firstIndex(of: selectedFeed) {
             let prevIdx = (idx - 1 + all.count) % all.count
             selectFeed(all[prevIdx])

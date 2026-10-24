@@ -733,7 +733,7 @@ private struct SidebarHomeFeedSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // Three parallel choices: 推荐 (For You), 关注中 (Following), 列表 (List)
+            // Three parallel choices if user has lists; two if user has NO lists
             HStack(spacing: 2) {
                 // 1. 推荐 (For You)
                 feedButton(type: .forYou)
@@ -741,8 +741,10 @@ private struct SidebarHomeFeedSection: View {
                 // 2. 关注中 (Following)
                 feedButton(type: .following)
                 
-                // 3. 列表 (List with dropdown menu)
-                listFeedButton
+                // 3. 列表 (List with dropdown menu) - ONLY if user has lists
+                if !timelineVM.userLists.isEmpty {
+                    listFeedButton
+                }
             }
             .padding(2.5)
             .background(
@@ -754,17 +756,29 @@ private struct SidebarHomeFeedSection: View {
                     )
             )
             
-            // If List is currently selected, show the active list banner with switcher
-            if timelineVM.selectedFeed == .list {
+            // If List is currently selected and user has lists, show active list banner
+            if timelineVM.selectedFeed == .list && !timelineVM.userLists.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: timelineVM.selectedList?.iconName ?? "list.bullet")
                         .font(.system(size: 10.5))
                         .foregroundColor(ThemeManager.accent)
                     
-                    Text(timelineVM.selectedList?.localizedName ?? loc.t("feed_list"))
+                    Text(timelineVM.selectedList?.name ?? loc.t("feed_list"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.9) : Color.white.opacity(0.88))
                         .lineLimit(1)
+                    
+                    if let count = timelineVM.selectedList?.memberCount, count > 0 {
+                        Text("\(count)")
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule()
+                                    .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
+                            )
+                    }
                     
                     Spacer()
                     
@@ -782,9 +796,6 @@ private struct SidebarHomeFeedSection: View {
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
-        }
-        .popover(isPresented: $timelineVM.showAddCustomListPopover, arrowEdge: .trailing) {
-            addCustomListView
         }
     }
     
@@ -836,7 +847,7 @@ private struct SidebarHomeFeedSection: View {
         let isSelected = (selection == .home && timelineVM.selectedFeed == .list)
         return Menu {
             Section(loc.t("select_list")) {
-                ForEach(timelineVM.availableLists) { list in
+                ForEach(timelineVM.userLists) { list in
                     Button {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
                             selection = .home
@@ -845,7 +856,7 @@ private struct SidebarHomeFeedSection: View {
                     } label: {
                         HStack {
                             Image(systemName: list.iconName)
-                            Text(list.localizedName)
+                            Text(list.name + (list.memberCount > 0 ? " · \(list.memberCount)" : ""))
                             if timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id {
                                 Image(systemName: "checkmark")
                             }
@@ -855,9 +866,16 @@ private struct SidebarHomeFeedSection: View {
             }
             Divider()
             Button {
-                timelineVM.showAddCustomListPopover = true
+                timelineVM.fetchUserLists()
             } label: {
-                Label(loc.t("add_custom_list"), systemImage: "plus")
+                Label(loc.t("refresh_lists"), systemImage: "arrow.clockwise")
+            }
+            Button {
+                if let url = URL(string: "https://x.com/i/lists") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Label(loc.t("manage_lists_on_x"), systemImage: "arrow.up.forward.square")
             }
         } label: {
             HStack(spacing: 2.5) {
@@ -889,7 +907,7 @@ private struct SidebarHomeFeedSection: View {
     // Quick switcher menu inside the active list banner
     private var listPickerMenu: some View {
         Menu {
-            ForEach(timelineVM.availableLists) { list in
+            ForEach(timelineVM.userLists) { list in
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
                         timelineVM.selectList(list)
@@ -897,7 +915,7 @@ private struct SidebarHomeFeedSection: View {
                 } label: {
                     HStack {
                         Image(systemName: list.iconName)
-                        Text(list.localizedName)
+                        Text(list.name + (list.memberCount > 0 ? " · \(list.memberCount)" : ""))
                         if timelineVM.selectedListId == list.id {
                             Image(systemName: "checkmark")
                         }
@@ -906,9 +924,16 @@ private struct SidebarHomeFeedSection: View {
             }
             Divider()
             Button {
-                timelineVM.showAddCustomListPopover = true
+                timelineVM.fetchUserLists()
             } label: {
-                Label(loc.t("add_custom_list"), systemImage: "plus")
+                Label(loc.t("refresh_lists"), systemImage: "arrow.clockwise")
+            }
+            Button {
+                if let url = URL(string: "https://x.com/i/lists") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Label(loc.t("manage_lists_on_x"), systemImage: "arrow.up.forward.square")
             }
         } label: {
             HStack(spacing: 2) {
@@ -950,52 +975,6 @@ private struct SidebarHomeFeedSection: View {
                     .stroke(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 0.6)
             )
             .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
-    }
-    
-    // Add custom list popover dialog
-    private var addCustomListView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(loc.t("add_custom_list"))
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(ThemeManager.primaryText)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("List Name")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(ThemeManager.secondaryText)
-                TextField("e.g. AI Pioneers", text: $timelineVM.customListName)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("List ID or Slug")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(ThemeManager.secondaryText)
-                TextField("e.g. 1589123456789", text: $timelineVM.customListId)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-            }
-            
-            HStack {
-                Button("Cancel") {
-                    timelineVM.showAddCustomListPopover = false
-                }
-                .buttonStyle(PlainButtonStyle())
-                .foregroundColor(ThemeManager.secondaryText)
-                
-                Spacer()
-                
-                Button("Add") {
-                    timelineVM.addCustomList(name: timelineVM.customListName, listId: timelineVM.customListId)
-                    timelineVM.customListName = ""
-                    timelineVM.customListId = ""
-                    timelineVM.showAddCustomListPopover = false
-                }
-                .buttonStyle(BorderedProminentButtonStyle())
-                .disabled(timelineVM.customListName.trimmingCharacters(in: .whitespaces).isEmpty || timelineVM.customListId.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(14)
-        .frame(width: 240)
     }
 }
 

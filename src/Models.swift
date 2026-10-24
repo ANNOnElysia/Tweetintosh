@@ -121,28 +121,24 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
 struct TwitterList: Identifiable, Codable, Hashable {
     var id: String
     var name: String
-    var iconName: String
-    var isCustom: Bool = false
+    var description: String?
+    var memberCount: Int
+    var subscriberCount: Int
+    var isPrivate: Bool
+    var isPinned: Bool
+    var bannerUrl: String?
+    var ownerName: String?
+    var ownerHandle: String?
     
-    var localizedName: String {
-        let loc = LocalizationManager.shared
-        switch id {
-        case "list_tech": return loc.t("list_tech")
-        case "list_dev": return loc.t("list_dev")
-        case "list_design": return loc.t("list_design")
-        case "list_news": return loc.t("list_news")
-        case "list_acg": return loc.t("list_acg")
-        default: return name
+    var iconName: String {
+        if isPinned {
+            return "pin.fill"
+        } else if isPrivate {
+            return "lock.fill"
+        } else {
+            return "list.bullet.rectangle.portrait"
         }
     }
-    
-    static let defaultLists: [TwitterList] = [
-        TwitterList(id: "list_tech", name: "Tech News", iconName: "cpu"),
-        TwitterList(id: "list_dev", name: "Developers", iconName: "chevron.left.forwardslash.chevron.right"),
-        TwitterList(id: "list_design", name: "Design & UI", iconName: "paintpalette.fill"),
-        TwitterList(id: "list_news", name: "Headlines", iconName: "newspaper.fill"),
-        TwitterList(id: "list_acg", name: "ACG & Art", iconName: "sparkles")
-    ]
 }
 
 struct TimelineSnapshot: Codable {

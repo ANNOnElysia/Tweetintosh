@@ -412,6 +412,20 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "当前列表:",
                 .traditionalChinese: "目前清單:"
             ],
+            "manage_lists_on_x": [
+                .english: "Manage Lists on X",
+                .japanese: "Xでリストを管理",
+                .korean: "X에서 목록 관리",
+                .simplifiedChinese: "在 X 上管理列表",
+                .traditionalChinese: "在 X 上管理清單"
+            ],
+            "refresh_lists": [
+                .english: "Refresh Lists",
+                .japanese: "リストを更新",
+                .korean: "목록 새로고침",
+                .simplifiedChinese: "刷新列表",
+                .traditionalChinese: "重新整理清單"
+            ],
             "list_tech": [
                 .english: "Tech News",
                 .japanese: "テクノロジー",

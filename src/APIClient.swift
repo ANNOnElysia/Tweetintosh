@@ -76,9 +76,73 @@ final class APIClient {
             endpoint = "https://x.com/i/api/graphql/\(queryId)/HomeLatestTimeline"
             variables["enableRanking"] = false
         case .list:
-            queryId = "wXzyuxwo9Ke0gHgw28Yj5A"
-            endpoint = "https://x.com/i/api/graphql/\(queryId)/ListLatestTweetsTimeline"
-            variables["listId"] = TimelineViewModel.shared.selectedListId
+            queryId = "uV0pbd0DrW8hTbMrtZ1SYQ"
+            endpoint = ""
+        }
+        
+        // Handle List timeline with GET method as expected by Twitter
+        if feedType == .list {
+            let listId = TimelineViewModel.shared.selectedListId
+            guard !listId.isEmpty else {
+                completion(.success(([], nil, nil)))
+                return
+            }
+            
+            var listVariables: [String: Any] = ["listId": listId, "count": 20]
+            if let cursor = cursor {
+                listVariables["cursor"] = cursor
+            }
+            let listFeatures: [String: Any] = [
+                "responsive_web_graphql_timeline_navigation_enabled": true,
+                "creator_subscriptions_tweet_preview_api_enabled": true,
+                "responsive_web_edit_tweet_api_enabled": true,
+                "articles_preview_enabled": true,
+                "view_counts_everywhere_api_enabled": true,
+                "longform_notetweets_consumption_enabled": true,
+                "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+                "responsive_web_twitter_article_tweet_consumption_enabled": true
+            ]
+            
+            guard let varData = try? JSONSerialization.data(withJSONObject: listVariables),
+                  let featData = try? JSONSerialization.data(withJSONObject: listFeatures),
+                  let varStr = String(data: varData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let featStr = String(data: featData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let listURL = URL(string: "https://x.com/i/api/graphql/\(queryId)/ListLatestTweetsTimeline?variables=\(varStr)&features=\(featStr)") else {
+                completion(.failure(.parseError))
+                return
+            }
+            
+            var request = URLRequest(url: listURL)
+            request.httpMethod = "GET"
+            request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+            request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+            request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+            request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+            request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+            request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+            request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            
+            let task = session.dataTask(with: request) { [weak self] data, response, error in
+                guard let self = self else { return }
+                if let error = error {
+                    completion(.failure(.networkError(error)))
+                    return
+                }
+                guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                      let data = data else {
+                    completion(.failure(.invalidResponse))
+                    return
+                }
+                do {
+                    let parsed = try self.parseGraphQLTimeline(data)
+                    completion(.success(parsed))
+                } catch {
+                    completion(.failure(.parseError))
+                }
+            }
+            task.resume()
+            return
         }
         
         if let cursor = cursor {
@@ -155,10 +219,23 @@ final class APIClient {
     // MARK: - Parse GraphQL Timeline URT JSON
     func parseGraphQLTimeline(_ data: Data) throws -> (tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataDict = json["data"] as? [String: Any],
-              let home = dataDict["home"] as? [String: Any],
-              let timeline = home["home_timeline_urt"] as? [String: Any],
-              let instructions = timeline["instructions"] as? [[String: Any]] else {
+              let dataDict = json["data"] as? [String: Any] else {
+            throw APIError.parseError
+        }
+        
+        var instructions: [[String: Any]]?
+        if let home = dataDict["home"] as? [String: Any],
+           let timeline = home["home_timeline_urt"] as? [String: Any],
+           let inst = timeline["instructions"] as? [[String: Any]] {
+            instructions = inst
+        } else if let list = dataDict["list"] as? [String: Any],
+                  let tweetsTimeline = list["tweets_timeline"] as? [String: Any],
+                  let timeline = tweetsTimeline["timeline"] as? [String: Any],
+                  let inst = timeline["instructions"] as? [[String: Any]] {
+            instructions = inst
+        }
+        
+        guard let instructions = instructions else {
             throw APIError.parseError
         }
         
@@ -803,5 +880,198 @@ final class APIClient {
             isRetweet: isRetweet,
             retweetedBy: retweetedBy
         )
+    }
+    
+    // MARK: - Fetch Official User Lists
+    func fetchUserLists(completion: @escaping (Result<[TwitterList], APIError>) -> Void) {
+        guard let creds = CredentialsManager.shared.loadCredentials() else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        let queryId = "EJr344tsMZZpEwjeaYvk-g"
+        let variables: [String: Any] = ["count": 100]
+        let features: [String: Any] = [
+            "responsive_web_graphql_timeline_navigation_enabled": true
+        ]
+        
+        guard let varData = try? JSONSerialization.data(withJSONObject: variables),
+              let featData = try? JSONSerialization.data(withJSONObject: features),
+              let varStr = String(data: varData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let featStr = String(data: featData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let gqlURL = URL(string: "https://x.com/i/api/graphql/\(queryId)/ListsManagementPageTimeline?variables=\(varStr)&features=\(featStr)") else {
+            self.fetchUserListsREST(creds: creds, completion: completion)
+            return
+        }
+        
+        var request = URLRequest(url: gqlURL)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let data = data,
+               let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                let lists = self.parseListsManagementTimeline(data: data)
+                if !lists.isEmpty {
+                    completion(.success(lists))
+                    return
+                }
+            }
+            // Fallback to REST /1.1/lists/list.json
+            self.fetchUserListsREST(creds: creds, completion: completion)
+        }
+        task.resume()
+    }
+    
+    private func fetchUserListsREST(creds: AuthCredentials, completion: @escaping (Result<[TwitterList], APIError>) -> Void) {
+        guard let restURL = URL(string: "https://api.x.com/1.1/lists/list.json?reverse=true") else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var request = URLRequest(url: restURL)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            guard let data = data,
+                  let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                completion(.failure(.invalidResponse))
+                return
+            }
+            let lists = self.parseRESTUserLists(data: data)
+            completion(.success(lists))
+        }
+        task.resume()
+    }
+    
+    func parseListsManagementTimeline(data: Data) -> [TwitterList] {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let d = json["data"] as? [String: Any],
+              let viewer = d["viewer"] as? [String: Any],
+              let lmt = viewer["list_management_timeline"] as? [String: Any],
+              let timeline = lmt["timeline"] as? [String: Any],
+              let instructions = timeline["instructions"] as? [[String: Any]] else {
+            return []
+        }
+        
+        var lists: [TwitterList] = []
+        var seenIds = Set<String>()
+        
+        for inst in instructions {
+            guard let entries = inst["entries"] as? [[String: Any]] else { continue }
+            for entry in entries {
+                let eid = entry["entryId"] as? String ?? ""
+                let isPinned = eid.hasPrefix("pinned-list-module")
+                let isOwnedOrSub = eid.hasPrefix("owned-subscribed-list-module")
+                
+                if isPinned || isOwnedOrSub {
+                    guard let content = entry["content"] as? [String: Any],
+                          let items = content["items"] as? [[String: Any]] else { continue }
+                    for subItem in items {
+                        guard let itm = subItem["item"] as? [String: Any],
+                              let ic = itm["itemContent"] as? [String: Any],
+                              let l = ic["list"] as? [String: Any] else { continue }
+                        
+                        let id = (l["id_str"] as? String) ?? (l["id"] as? Int64).map { String($0) } ?? ""
+                        let name = (l["name"] as? String) ?? ""
+                        guard !id.isEmpty, !name.isEmpty, !seenIds.contains(id) else { continue }
+                        seenIds.insert(id)
+                        
+                        let desc = l["description"] as? String
+                        let memberCount = (l["member_count"] as? Int) ?? 0
+                        let subscriberCount = (l["subscriber_count"] as? Int) ?? 0
+                        let mode = l["mode"] as? String ?? "Public"
+                        let isPrivate = mode.lowercased() == "private"
+                        
+                        var ownerName: String?
+                        var ownerHandle: String?
+                        if let userRes = l["user_results"] as? [String: Any],
+                           let res = userRes["result"] as? [String: Any] {
+                            let core = (res["core"] as? [String: Any]) ?? [:]
+                            let legacy = (res["legacy"] as? [String: Any]) ?? [:]
+                            ownerName = (legacy["name"] as? String) ?? (core["name"] as? String)
+                            ownerHandle = (legacy["screen_name"] as? String) ?? (core["screen_name"] as? String)
+                        }
+                        
+                        var bannerUrl: String?
+                        if let bannerMedia = l["default_banner_media"] as? [String: Any] {
+                            bannerUrl = bannerMedia["media_url_https"] as? String
+                        }
+                        
+                        lists.append(TwitterList(
+                            id: id,
+                            name: name,
+                            description: desc,
+                            memberCount: memberCount,
+                            subscriberCount: subscriberCount,
+                            isPrivate: isPrivate,
+                            isPinned: isPinned,
+                            bannerUrl: bannerUrl,
+                            ownerName: ownerName,
+                            ownerHandle: ownerHandle
+                        ))
+                    }
+                }
+            }
+        }
+        return lists
+    }
+    
+    func parseRESTUserLists(data: Data) -> [TwitterList] {
+        guard let array = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+            return []
+        }
+        return array.compactMap { item -> TwitterList? in
+            guard let id = (item["id_str"] as? String) ?? (item["id"] as? Int64).map({ String($0) }),
+                  let name = item["name"] as? String, !id.isEmpty, !name.isEmpty else {
+                return nil
+            }
+            let desc = item["description"] as? String
+            let memberCount = item["member_count"] as? Int ?? 0
+            let subscriberCount = item["subscriber_count"] as? Int ?? 0
+            let mode = item["mode"] as? String ?? "public"
+            let isPrivate = mode.lowercased() == "private"
+            
+            var ownerName: String?
+            var ownerHandle: String?
+            if let user = item["user"] as? [String: Any] {
+                ownerName = user["name"] as? String
+                ownerHandle = user["screen_name"] as? String
+            }
+            
+            return TwitterList(
+                id: id,
+                name: name,
+                description: desc,
+                memberCount: memberCount,
+                subscriberCount: subscriberCount,
+                isPrivate: isPrivate,
+                isPinned: false,
+                bannerUrl: nil,
+                ownerName: ownerName,
+                ownerHandle: ownerHandle
+            )
+        }
     }
 }
