@@ -10,18 +10,29 @@ import AVFoundation
 
 // MARK: - Video Quality Options
 enum VideoQualityOption: String, CaseIterable, Identifiable {
-    case highest = "最高画质 (默认)"
-    case auto = "自动 (自适应网络)"
-    case p720 = "720p 高清"
-    case p480 = "480p 标清"
-    case p360 = "360p 流畅"
+    case highest
+    case auto
+    case p720
+    case p480
+    case p360
     
     var id: String { rawValue }
     
+    var localizedTitle: String {
+        let loc = LocalizationManager.shared
+        switch self {
+        case .highest: return loc.t("video_quality_highest")
+        case .auto: return loc.t("video_quality_auto")
+        case .p720: return loc.t("video_quality_720p")
+        case .p480: return loc.t("video_quality_480p")
+        case .p360: return loc.t("video_quality_360p")
+        }
+    }
+    
     var shortLabel: String {
         switch self {
-        case .highest: return "最高"
-        case .auto: return "自动"
+        case .highest: return "MAX"
+        case .auto: return "AUTO"
         case .p720: return "720p"
         case .p480: return "480p"
         case .p360: return "360p"
@@ -50,29 +61,16 @@ final class VideoLightboxManager: ObservableObject {
     
     @Published var showToast: Bool = false
     @Published var toastMessage: String = ""
-    
-    @Published var isSubtitlesActive: Bool = false
     @Published var isControlsHovered: Bool = true
     
     var player: AVPlayer = AVPlayer()
     private var timeObserverToken: Any?
     private var keyMonitor: Any?
+    private var scrollMonitor: Any?
     private var controlsTimer: Timer?
     
     init() {
         setupTimeObserver()
-    }
-    
-    func resetHoverTimer() {
-        controlsTimer?.invalidate()
-        controlsTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            if self.isPlaying {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    self.isControlsHovered = false
-                }
-            }
-        }
     }
     
     func present(tweet: Tweet, media: TweetMedia) {
@@ -85,12 +83,11 @@ final class VideoLightboxManager: ObservableObject {
         self.isRetweeted = false
         self.favoriteCount = tweet.favoriteCount
         self.retweetCount = tweet.retweetCount
-        self.isSubtitlesActive = false
-        
-        SpeechSubtitleService.shared.reset()
+        self.isControlsHovered = true
         
         loadQualityStream(selectedQuality)
-        setupKeyMonitor()
+        setupEventMonitors()
+        resetHoverTimer()
         
         withAnimation(.easeInOut(duration: 0.22)) {
             self.isPresented = true
@@ -101,10 +98,10 @@ final class VideoLightboxManager: ObservableObject {
     }
     
     func dismiss() {
-        removeKeyMonitor()
+        removeEventMonitors()
+        controlsTimer?.invalidate()
         player.pause()
         self.isPlaying = false
-        SpeechSubtitleService.shared.reset()
         
         withAnimation(.easeInOut(duration: 0.20)) {
             self.isPresented = false
@@ -146,16 +143,6 @@ final class VideoLightboxManager: ObservableObject {
         player.isMuted = isMuted
     }
     
-    func toggleSubtitles() {
-        guard let media = currentMedia else { return }
-        isSubtitlesActive.toggle()
-        if isSubtitlesActive {
-            SpeechSubtitleService.shared.startRecognition(for: media)
-        } else {
-            SpeechSubtitleService.shared.reset()
-        }
-    }
-    
     func switchQuality(to quality: VideoQualityOption) {
         self.selectedQuality = quality
         let seekTime = self.currentTime
@@ -169,7 +156,8 @@ final class VideoLightboxManager: ObservableObject {
             self.isPlaying = true
         }
         
-        showToastMessage("画质已切换为: \(quality.shortLabel)")
+        let msg = LocalizationManager.shared.format("video_quality_switched", ["quality": quality.shortLabel])
+        showToastMessage(msg)
     }
     
     private func loadQualityStream(_ quality: VideoQualityOption) {
@@ -193,7 +181,6 @@ final class VideoLightboxManager: ObservableObject {
         
         let item = AVPlayerItem(url: url)
         if quality == .auto {
-            // Adaptive auto bitrate controlled by system HLS
             item.preferredPeakBitRate = 0
         }
         player.replaceCurrentItem(with: item)
@@ -221,7 +208,6 @@ final class VideoLightboxManager: ObservableObject {
             let secs = time.seconds
             if !secs.isNaN && !secs.isInfinite {
                 self.currentTime = secs
-                SpeechSubtitleService.shared.updateCurrentTime(secs)
             }
             if let currentItem = self.player.currentItem {
                 let d = currentItem.duration.seconds
@@ -232,19 +218,16 @@ final class VideoLightboxManager: ObservableObject {
         }
     }
     
-    private func setupKeyMonitor() {
-        removeKeyMonitor()
+    private func setupEventMonitors() {
+        removeEventMonitors()
+        
+        // 1. Keyboard shortcuts: Space (play/pause), M (mute), Esc (exit)
+        // Left/Right arrow keys removed per user request
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.isPresented else { return event }
             switch event.keyCode {
             case 49: // Spacebar -> Toggle Play/Pause
                 self.togglePlay()
-                return nil
-            case 123: // Left Arrow -> Seek -5s
-                self.seekRelative(by: -5)
-                return nil
-            case 124: // Right Arrow -> Seek +5s
-                self.seekRelative(by: 5)
                 return nil
             case 46: // M key -> Toggle Mute
                 self.toggleMute()
@@ -256,25 +239,56 @@ final class VideoLightboxManager: ObservableObject {
                 return event
             }
         }
+        
+        // 2. Trackpad Two-Finger Swipe -> Smoothly scrubs video progress bar
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self = self, self.isPresented else { return event }
+            let deltaX = event.scrollingDeltaX
+            if abs(deltaX) > 0.4 {
+                // Scrub progress bar relative to gesture magnitude
+                let scrubSecs = Double(deltaX) * 0.12
+                self.seekRelative(by: scrubSecs)
+                self.resetHoverTimer()
+            }
+            return nil // Absorb so background timeline never scrolls
+        }
     }
     
-    private func removeKeyMonitor() {
+    private func removeEventMonitors() {
         if let km = keyMonitor {
             NSEvent.removeMonitor(km)
             keyMonitor = nil
         }
+        if let sm = scrollMonitor {
+            NSEvent.removeMonitor(sm)
+            scrollMonitor = nil
+        }
+    }
+    
+    func resetHoverTimer() {
+        isControlsHovered = true
+        controlsTimer?.invalidate()
+        controlsTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            if self.isPlaying {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    self.isControlsHovered = false
+                }
+            }
+        }
     }
     
     func downloadVideo() {
+        let loc = LocalizationManager.shared
         guard let media = currentMedia,
               let videoInfo = media.videoInfo,
               let downloadUrl = videoInfo.highestBitrateVariant?.url ?? videoInfo.variants.first(where: { $0.url.hasSuffix(".mp4") })?.url,
               let url = URL(string: downloadUrl) else {
-            showToastMessage("未找到可下载的完整视频源")
+            showToastMessage(loc.t("video_download_failed"))
             return
         }
         
-        showToastMessage("正在下载最高画质视频至 Downloads 目录...")
+        showToastMessage(loc.t("video_downloading"))
         
         let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
         let fileName = "Twitter_Video_\(media.id).mp4"
@@ -289,16 +303,16 @@ final class VideoLightboxManager: ObservableObject {
                     }
                     try FileManager.default.moveItem(at: location, to: destination)
                     DispatchQueue.main.async {
-                        self.showToastMessage("✅ 视频已保存至 Downloads: \(fileName)")
+                        self.showToastMessage("✅ \(loc.t("video_saved_success")): \(fileName)")
                     }
                 } catch {
                     DispatchQueue.main.async {
-                        self.showToastMessage("保存失败: \(error.localizedDescription)")
+                        self.showToastMessage("\(loc.t("video_download_failed")): \(error.localizedDescription)")
                     }
                 }
             } else {
                 DispatchQueue.main.async {
-                    self.showToastMessage("下载视频失败")
+                    self.showToastMessage(loc.t("video_download_failed"))
                 }
             }
         }.resume()
@@ -312,7 +326,6 @@ final class VideoLightboxManager: ObservableObject {
     func toggleRetweet() {
         isRetweeted.toggle()
         retweetCount += isRetweeted ? 1 : -1
-        showToastMessage(isRetweeted ? "已转推" : "已撤销转推")
     }
     
     func copyTweetLink() {
@@ -320,7 +333,7 @@ final class VideoLightboxManager: ObservableObject {
         let link = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(link, forType: .string)
-        showToastMessage("推文链接已复制至剪贴板")
+        showToastMessage(LocalizationManager.shared.t("video_link_copied"))
     }
     
     func showToastMessage(_ msg: String) {
@@ -339,7 +352,7 @@ final class VideoLightboxManager: ObservableObject {
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
         }
-        removeKeyMonitor()
+        removeEventMonitors()
     }
 }
 
@@ -350,7 +363,7 @@ struct NativePlayerView: NSViewRepresentable {
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
         view.player = player
-        view.controlsStyle = .none // Fully custom SwiftUI overlay controls
+        view.controlsStyle = .none
         view.showsFullScreenToggleButton = false
         view.videoGravity = .resizeAspect
         return view
@@ -366,7 +379,7 @@ struct NativePlayerView: NSViewRepresentable {
 // MARK: - Video Lightbox Overlay View
 struct VideoLightboxOverlay: View {
     @ObservedObject var manager = VideoLightboxManager.shared
-    @ObservedObject var subtitleService = SpeechSubtitleService.shared
+    @ObservedObject var loc = LocalizationManager.shared
     
     var body: some View {
         if manager.isPresented {
@@ -389,7 +402,7 @@ struct VideoLightboxOverlay: View {
                         ZStack(alignment: .bottom) {
                             // Video Layer
                             NativePlayerView(player: manager.player)
-                                .frame(width: boxWidth, height: boxHeight - 74)
+                                .frame(width: boxWidth, height: boxHeight - 70)
                                 .clipShape(RoundedCorner(tl: 12, tr: 12, bl: 0, br: 0))
                                 .background(Color.black)
                                 .onTapGesture {
@@ -412,38 +425,6 @@ struct VideoLightboxOverlay: View {
                                 .transition(.scale.combined(with: .opacity))
                             }
                             
-                            // Subtitles Display Banner
-                            VStack {
-                                Spacer()
-                                
-                                if manager.isSubtitlesActive {
-                                    switch subtitleService.status {
-                                    case .downloading(let p):
-                                        subtitleStatusPill(icon: "arrow.down.circle", text: "正在下载音轨 (\(Int(p * 100))%)...")
-                                    case .transcribing:
-                                        subtitleStatusPill(icon: "waveform.badge.magnifyingglass", text: "正在使用本地神经引擎识别字幕...")
-                                    case .failed(let err):
-                                        subtitleStatusPill(icon: "exclamationmark.triangle", text: err)
-                                    case .active:
-                                        if !subtitleService.currentCueText.isEmpty {
-                                            Text(subtitleService.currentCueText)
-                                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                                .foregroundColor(.white)
-                                                .multilineTextAlignment(.center)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 8)
-                                                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.80)))
-                                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.20), lineWidth: 0.6))
-                                                .padding(.horizontal, 24)
-                                                .padding(.bottom, 16)
-                                                .transition(.opacity)
-                                        }
-                                    default:
-                                        EmptyView()
-                                    }
-                                }
-                            }
-                            
                             // Bottom Scrubber Bar Overlay
                             videoScrubberBar
                                 .padding(.horizontal, 16)
@@ -451,11 +432,11 @@ struct VideoLightboxOverlay: View {
                                 .opacity(manager.isControlsHovered || !manager.isPlaying ? 1.0 : 0.0)
                                 .animation(.easeInOut(duration: 0.20), value: manager.isControlsHovered)
                         }
-                        .frame(width: boxWidth, height: boxHeight - 74)
+                        .frame(width: boxWidth, height: boxHeight - 70)
                         
                         // 3. Social & Download Action Bottom Dock
                         actionBottomBar
-                            .frame(width: boxWidth, height: 74)
+                            .frame(width: boxWidth, height: 70)
                             .background(Color(white: 0.12))
                             .clipShape(RoundedCorner(tl: 0, tr: 0, bl: 12, br: 12))
                     }
@@ -467,48 +448,17 @@ struct VideoLightboxOverlay: View {
                         if hovered { manager.resetHoverTimer() }
                     }
                     
-                    // 4. Top Header Bar (Close button + Quality Menu + CC button)
+                    // 4. Top Header Bar: Clean single quality menu + Close button (no redundant left pill)
                     VStack {
                         HStack(alignment: .center, spacing: 12) {
-                            // Video format pill
-                            HStack(spacing: 6) {
-                                Image(systemName: "video.fill")
-                                    .font(.system(size: 11))
-                                Text(manager.selectedQuality.shortLabel)
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                            }
-                            .foregroundColor(.white.opacity(0.90))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color.black.opacity(0.65)))
-                            .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.6))
-                            .padding(.leading, max(24, (windowSize.width - boxWidth) / 2))
-                            
                             Spacer()
                             
-                            // CC (Speech-to-Text Subtitles) Button
-                            Button(action: { manager.toggleSubtitles() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: manager.isSubtitlesActive ? "captions.bubble.fill" : "captions.bubble")
-                                        .font(.system(size: 13, weight: .semibold))
-                                    Text("CC")
-                                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                                }
-                                .foregroundColor(manager.isSubtitlesActive ? Color.accentColor : Color.white.opacity(0.85))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Capsule().fill(Color.black.opacity(0.65)))
-                                .overlay(Capsule().stroke(manager.isSubtitlesActive ? Color.accentColor.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 0.8))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("主动开启本地端侧字幕识别")
-                            
-                            // Quality Switcher Dropdown Menu
+                            // Quality Switcher Dropdown Menu (Single point of truth)
                             Menu {
                                 ForEach(VideoQualityOption.allCases) { opt in
                                     Button(action: { manager.switchQuality(to: opt) }) {
                                         HStack {
-                                            Text(opt.rawValue)
+                                            Text(opt.localizedTitle)
                                             if manager.selectedQuality == opt {
                                                 Image(systemName: "checkmark")
                                             }
@@ -516,19 +466,19 @@ struct VideoLightboxOverlay: View {
                                     }
                                 }
                             } label: {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 5) {
                                     Image(systemName: "gearshape")
                                         .font(.system(size: 12))
                                     Text(manager.selectedQuality.shortLabel)
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
                                     Image(systemName: "chevron.down")
                                         .font(.system(size: 9))
                                 }
-                                .foregroundColor(.white.opacity(0.85))
-                                .padding(.horizontal, 10)
+                                .foregroundColor(.white.opacity(0.90))
+                                .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
                                 .background(Capsule().fill(Color.black.opacity(0.65)))
-                                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.6))
+                                .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.6))
                             }
                             .menuStyle(BorderlessButtonMenuStyle())
                             
@@ -536,7 +486,7 @@ struct VideoLightboxOverlay: View {
                             Button(action: { manager.dismiss() }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 26))
-                                    .foregroundColor(Color(white: 0.82))
+                                    .foregroundColor(Color(white: 0.85))
                                     .padding(.trailing, max(20, (windowSize.width - boxWidth) / 2))
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -593,17 +543,14 @@ struct VideoLightboxOverlay: View {
                 let progress = manager.duration > 0 ? min(1.0, max(0.0, manager.currentTime / manager.duration)) : 0
                 
                 ZStack(alignment: .leading) {
-                    // Track Background
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.white.opacity(0.25))
                         .frame(height: 5)
                     
-                    // Played Progress
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.accentColor)
                         .frame(width: w * progress, height: 5)
                     
-                    // Thumb
                     Circle()
                         .fill(Color.white)
                         .frame(width: 12, height: 12)
@@ -667,7 +614,7 @@ struct VideoLightboxOverlay: View {
                 HStack(spacing: 6) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 14))
-                    Text("分享链接")
+                    Text(loc.t("video_share_link"))
                         .font(.system(size: 12.5, weight: .medium))
                 }
                 .foregroundColor(.white.opacity(0.85))
@@ -681,7 +628,7 @@ struct VideoLightboxOverlay: View {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 15))
-                    Text("一键保存 MP4")
+                    Text(loc.t("video_save_mp4"))
                         .font(.system(size: 12.5, weight: .semibold, design: .rounded))
                 }
                 .foregroundColor(.white)
@@ -709,21 +656,6 @@ struct VideoLightboxOverlay: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
-    }
-    
-    private func subtitleStatusPill(icon: String, text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-            Text(text)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-        }
-        .foregroundColor(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .background(Capsule().fill(Color.black.opacity(0.75)))
-        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.6))
-        .padding(.bottom, 16)
     }
     
     private func formatTime(_ seconds: Double) -> String {

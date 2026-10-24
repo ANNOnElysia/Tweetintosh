@@ -594,6 +594,90 @@ final class LocalizationManager: ObservableObject {
                 .korean: "시스템",
                 .simplifiedChinese: "跟随系统",
                 .traditionalChinese: "跟隨系統"
+            ],
+            "video_quality_highest": [
+                .english: "Highest (Default)",
+                .japanese: "最高画質 (デフォルト)",
+                .korean: "최고 화질 (기본)",
+                .simplifiedChinese: "最高画质 (默认)",
+                .traditionalChinese: "最高畫質 (預設)"
+            ],
+            "video_quality_auto": [
+                .english: "Auto (Adaptive)",
+                .japanese: "自動 (適応型)",
+                .korean: "자동 (적응형)",
+                .simplifiedChinese: "自动 (自适应网络)",
+                .traditionalChinese: "自動 (自適應網路)"
+            ],
+            "video_quality_720p": [
+                .english: "720p HD",
+                .japanese: "720p 高画質",
+                .korean: "720p HD",
+                .simplifiedChinese: "720p 高清",
+                .traditionalChinese: "720p 高畫質"
+            ],
+            "video_quality_480p": [
+                .english: "480p SD",
+                .japanese: "480p 標準",
+                .korean: "480p SD",
+                .simplifiedChinese: "480p 标清",
+                .traditionalChinese: "480p 標清"
+            ],
+            "video_quality_360p": [
+                .english: "360p Fast",
+                .japanese: "360p 低画質",
+                .korean: "360p 일반",
+                .simplifiedChinese: "360p 流畅",
+                .traditionalChinese: "360p 流暢"
+            ],
+            "video_save_mp4": [
+                .english: "Save MP4",
+                .japanese: "MP4を保存",
+                .korean: "MP4 저장",
+                .simplifiedChinese: "一键保存 MP4",
+                .traditionalChinese: "一鍵保存 MP4"
+            ],
+            "video_share_link": [
+                .english: "Share Link",
+                .japanese: "リンクを共有",
+                .korean: "링크 공유",
+                .simplifiedChinese: "分享链接",
+                .traditionalChinese: "分享連結"
+            ],
+            "video_link_copied": [
+                .english: "Tweet link copied to clipboard",
+                .japanese: "ポストのリンクをコピーしました",
+                .korean: "게시물 링크가 복사되었습니다",
+                .simplifiedChinese: "推文链接已复制至剪贴板",
+                .traditionalChinese: "貼文連結已複製至剪貼簿"
+            ],
+            "video_downloading": [
+                .english: "Downloading highest quality video...",
+                .japanese: "最高画質動画をダウンロード中...",
+                .korean: "최고 화질 동영상을 다운로드하는 중...",
+                .simplifiedChinese: "正在下载最高画质视频...",
+                .traditionalChinese: "正在下載最高畫質影片..."
+            ],
+            "video_saved_success": [
+                .english: "Video saved to Downloads",
+                .japanese: "動画をダウンロードフォルダに保存しました",
+                .korean: "동영상이 다운로드 폴더에 저장되었습니다",
+                .simplifiedChinese: "视频已保存至 Downloads 目录",
+                .traditionalChinese: "影片已保存至 Downloads 目錄"
+            ],
+            "video_download_failed": [
+                .english: "Failed to download video",
+                .japanese: "動画のダウンロードに失敗しました",
+                .korean: "동영상 다운로드 실패",
+                .simplifiedChinese: "下载视频失败",
+                .traditionalChinese: "下載影片失敗"
+            ],
+            "video_quality_switched": [
+                .english: "Quality switched to: {quality}",
+                .japanese: "画質を切り替えました: {quality}",
+                .korean: "화질이 변경되었습니다: {quality}",
+                .simplifiedChinese: "画质已切换为: {quality}",
+                .traditionalChinese: "畫質已切換為: {quality}"
             ]
         ]
         
