@@ -37,6 +37,23 @@ final class NavigationManager: ObservableObject {
     @Published var sidebarExpanded: Bool = false
     @Published var isSearchActive: Bool = false
     @Published var searchQuery: String = ""
+    @Published var selectedTweetDetail: Tweet? = nil
+    
+    func openTweetDetail(_ tweet: Tweet) {
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                self.selectedTweetDetail = tweet
+            }
+        }
+    }
+    
+    func dismissTweetDetail() {
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                self.selectedTweetDetail = nil
+            }
+        }
+    }
     
     func toggleSidebar() {
         DispatchQueue.main.async {
@@ -144,8 +161,20 @@ final class NavigationManager: ObservableObject {
                 
                 // If Esc key is pressed
                 if keyCode == 53 {
+                    if self.selectedTweetDetail != nil {
+                        self.dismissTweetDetail()
+                        return nil
+                    }
                     if self.isSearchActive {
                         self.toggleSearch()
+                        return nil
+                    }
+                }
+                
+                // Command + [ (keyCode 33) -> Back from Tweet Detail
+                if hasCmd && !hasOption && !hasCtrl && keyCode == 33 {
+                    if self.selectedTweetDetail != nil {
+                        self.dismissTweetDetail()
                         return nil
                     }
                 }

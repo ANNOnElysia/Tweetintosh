@@ -283,10 +283,14 @@ final class APIClient {
         guard let content = entry["content"] as? [String: Any],
               let itemContent = content["itemContent"] as? [String: Any],
               let tweetResults = itemContent["tweet_results"] as? [String: Any],
-              var result = tweetResults["result"] as? [String: Any] else {
+              let result = tweetResults["result"] as? [String: Any] else {
             return nil
         }
-        
+        return parseGraphQLTweetResult(result, dateFormatter: dateFormatter)
+    }
+    
+    func parseGraphQLTweetResult(_ rawResult: [String: Any], dateFormatter: DateFormatter) -> Tweet? {
+        var result = rawResult
         // Unwrap TweetWithVisibilityResults
         if let inner = result["tweet"] as? [String: Any] {
             result = inner
@@ -1410,5 +1414,181 @@ final class APIClient {
             }
         }
         task.resume()
+    }
+    
+    // MARK: - Fetch Tweet Detail & Thread Conversation
+    func fetchTweetDetail(
+        tweetId: String,
+        cursor: String? = nil,
+        completion: @escaping (Result<(focalTweet: Tweet?, ancestors: [Tweet], replies: [Tweet], bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        let qid = "gJoREC4Bspo4kJ0ax9C3sQ"
+        
+        var variables: [String: Any] = [
+            "focalTweetId": tweetId,
+            "with_rux_injections": false,
+            "rankingMode": "Relevance",
+            "includePromotedContent": false,
+            "withCommunity": true,
+            "withQuickPromoteEligibility": false,
+            "withBirdwatchNotes": true,
+            "withVoice": true
+        ]
+        if let cursor = cursor, !cursor.isEmpty {
+            variables["cursor"] = cursor
+        }
+        
+        let features: [String: Any] = [
+            "rweb_video_screen_enabled": true,
+            "responsive_web_graphql_exclude_directive_enabled": true,
+            "verified_phone_label_enabled": false,
+            "creator_subscriptions_tweet_preview_api_enabled": true,
+            "responsive_web_graphql_timeline_navigation_enabled": true,
+            "responsive_web_graphql_skip_user_profile_image_extensions_enabled": false,
+            "communities_web_enable_tweet_community_results_fetch": true,
+            "c9s_tweet_anatomy_moderator_badge_enabled": true,
+            "articles_preview_enabled": true,
+            "responsive_web_edit_tweet_api_enabled": true,
+            "graphql_is_translatable_rweb_tweet_is_translatable_enabled": true,
+            "view_counts_everywhere_api_enabled": true,
+            "longform_notetweets_consumption_enabled": true,
+            "responsive_web_twitter_article_tweet_consumption_enabled": true,
+            "tweet_awards_web_tipping_enabled": false,
+            "creator_subscriptions_quote_tweet_preview_enabled": false,
+            "freedom_of_speech_not_reached_appeal_enabled": true,
+            "standardized_nudges_misinfo": true,
+            "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+            "rweb_tipjar_consumption_enabled": true,
+            "responsive_web_enhance_cards_enabled": false
+        ]
+        
+        guard let varData = try? JSONSerialization.data(withJSONObject: variables),
+              let varStr = String(data: varData, encoding: .utf8),
+              let featData = try? JSONSerialization.data(withJSONObject: features),
+              let featStr = String(data: featData, encoding: .utf8) else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var comp = URLComponents(string: "https://x.com/i/api/graphql/\(qid)/TweetDetail")!
+        comp.queryItems = [
+            URLQueryItem(name: "variables", value: varStr),
+            URLQueryItem(name: "features", value: featStr)
+        ]
+        
+        guard let url = comp.url else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://x.com/", forHTTPHeaderField: "referer")
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.invalidResponse))
+                return
+            }
+            guard (200...299).contains(httpResponse.statusCode), let data = data else {
+                completion(.failure(.serverError("HTTP \(httpResponse.statusCode)")))
+                return
+            }
+            do {
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    completion(.failure(.parseError))
+                    return
+                }
+                guard let dataObj = json["data"] as? [String: Any],
+                      let threadedConv = dataObj["threaded_conversation_with_injections_v2"] as? [String: Any],
+                      let instructions = threadedConv["instructions"] as? [[String: Any]] else {
+                    completion(.failure(.parseError))
+                    return
+                }
+                
+                var focalTweet: Tweet?
+                var ancestors: [Tweet] = []
+                var replies: [Tweet] = []
+                var bottomCursor: String?
+                
+                for inst in instructions {
+                    guard let type = inst["type"] as? String else { continue }
+                    if type == "TimelineAddEntries" {
+                        let entries = (inst["entries"] as? [[String: Any]]) ?? []
+                        for entry in entries {
+                            let entryId = (entry["entryId"] as? String) ?? ""
+                            let content = (entry["content"] as? [String: Any]) ?? [:]
+                            let entryType = (content["entryType"] as? String) ?? ""
+                            
+                            if entryType == "TimelineTimelineItem" {
+                                if let tweet = self.buildGraphQLTweet(entry: entry, dateFormatter: dateFormatter) {
+                                    if tweet.id == tweetId {
+                                        focalTweet = tweet
+                                    } else if focalTweet == nil {
+                                        ancestors.append(tweet)
+                                    } else {
+                                        replies.append(tweet)
+                                    }
+                                }
+                            } else if entryType == "TimelineTimelineModule" && entryId.hasPrefix("conversationthread-") {
+                                let items = (content["items"] as? [[String: Any]]) ?? []
+                                for it in items {
+                                    guard let itemObj = it["item"] as? [String: Any],
+                                          let itemContent = itemObj["itemContent"] as? [String: Any],
+                                          let tweetResults = itemContent["tweet_results"] as? [String: Any],
+                                          let res = tweetResults["result"] as? [String: Any] else {
+                                        continue
+                                    }
+                                    if let replyTweet = self.parseGraphQLTweetResult(res, dateFormatter: dateFormatter) {
+                                        replies.append(replyTweet)
+                                    }
+                                }
+                            } else if entryType == "TimelineTimelineCursor" || entryId.hasPrefix("cursor-bottom") {
+                                if let cursorType = content["cursorType"] as? String, cursorType == "Bottom" {
+                                    bottomCursor = content["value"] as? String
+                                } else if entryId.hasPrefix("cursor-bottom") {
+                                    bottomCursor = content["value"] as? String
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                completion(.success((focalTweet, ancestors, replies, bottomCursor)))
+            } catch {
+                completion(.failure(.parseError))
+            }
+        }
+        task.resume()
+    }
+    
+    func fetchTweetDetail(tweetId: String, cursor: String? = nil) async throws -> (focalTweet: Tweet?, ancestors: [Tweet], replies: [Tweet], bottomCursor: String?) {
+        try await withCheckedThrowingContinuation { continuation in
+            fetchTweetDetail(tweetId: tweetId, cursor: cursor) { result in
+                continuation.resume(with: result)
+            }
+        }
     }
 }

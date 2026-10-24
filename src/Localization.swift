@@ -335,6 +335,55 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "取消",
                 .traditionalChinese: "取消"
             ],
+            "nav_post": [
+                .english: "Post",
+                .japanese: "ポスト",
+                .korean: "게시물",
+                .simplifiedChinese: "帖子",
+                .traditionalChinese: "貼文"
+            ],
+            "nav_back": [
+                .english: "Back",
+                .japanese: "戻る",
+                .korean: "뒤로",
+                .simplifiedChinese: "返回",
+                .traditionalChinese: "返回"
+            ],
+            "thread_replies": [
+                .english: "Replies",
+                .japanese: "返信",
+                .korean: "답글",
+                .simplifiedChinese: "回复",
+                .traditionalChinese: "回覆"
+            ],
+            "no_replies_yet": [
+                .english: "No replies yet. Be the first to reply!",
+                .japanese: "返信はまだありません。最初の返信を投稿しましょう！",
+                .korean: "아직 답글이 없습니다. 첫 번째 답글을 남겨보세요!",
+                .simplifiedChinese: "暂无回复，发表第一条评论吧！",
+                .traditionalChinese: "暫無回覆，發表第一則留言吧！"
+            ],
+            "copy_link": [
+                .english: "Copy Link",
+                .japanese: "リンクをコピー",
+                .korean: "링크 복사",
+                .simplifiedChinese: "复制链接",
+                .traditionalChinese: "複製連結"
+            ],
+            "link_copied": [
+                .english: "Link copied to clipboard",
+                .japanese: "リンクをクリップボードにコピーしました",
+                .korean: "링크가 클립보드에 복사되었습니다",
+                .simplifiedChinese: "推文链接已复制到剪贴板",
+                .traditionalChinese: "貼文連結已複製至剪貼簿"
+            ],
+            "views": [
+                .english: "Views",
+                .japanese: "件の表示",
+                .korean: "회 조회",
+                .simplifiedChinese: "次浏览",
+                .traditionalChinese: "次瀏覽"
+            ],
             "theme_colour": [
                 .english: "Theme Colour",
                 .japanese: "テーマカラー",

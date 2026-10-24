@@ -153,10 +153,10 @@ struct AppRootView: View {
             }
             
             // Top Floating Capsule Bar (Horizontal Droplet)
-            // Visible when sidebar is collapsed.
+            // Visible when sidebar is collapsed and not viewing tweet detail.
             // Leftmost button clicks to wake sidebar and capsule disappears.
             // Sidebar close button clicks to hide sidebar and capsule "卷土重来".
-            if !nav.sidebarExpanded {
+            if !nav.sidebarExpanded && nav.selectedTweetDetail == nil {
                 LiquidGlassCapsule(
                     selection: $nav.currentTab,
                     onToggleSidebar: {
@@ -173,6 +173,20 @@ struct AppRootView: View {
                     )
                 )
                 .zIndex(100)
+            }
+            
+            // Full-Pane Tweet Detail & Thread Conversation Overlay
+            if let detailTweet = nav.selectedTweetDetail {
+                TweetDetailView(tweet: detailTweet) {
+                    nav.dismissTweetDetail()
+                }
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    )
+                )
+                .zIndex(900)
             }
             
             // Full-Window Lightbox Overlay (covers entire window including top bar)

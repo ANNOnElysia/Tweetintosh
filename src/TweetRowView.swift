@@ -87,7 +87,6 @@ struct TweetRowView: View {
                             .lineSpacing(theme.lineSpacing())
                             .foregroundColor(ThemeManager.primaryText)
                             .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
                     }
                     
                     // Media Photo / Video Grid
@@ -203,6 +202,10 @@ struct TweetRowView: View {
                 .background(ThemeManager.divider)
         }
         .background(ThemeManager.background)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            NavigationManager.shared.openTweetDetail(tweet)
+        }
         .sheet(isPresented: $state.isShowingReplySheet) {
             ReplyComposerSheet(tweet: tweet)
         }
