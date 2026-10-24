@@ -82,7 +82,7 @@ struct TweetRowView: View {
                     
                     // Media Photo / Video Grid
                     if !tweet.media.isEmpty {
-                        ImageGridView(mediaList: tweet.media)
+                        ImageGridView(mediaList: tweet.media, tweet: tweet)
                             .padding(.top, 2)
                     }
                     

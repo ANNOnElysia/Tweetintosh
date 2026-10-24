@@ -169,6 +169,7 @@ struct CachedAsyncImage: View {
 // MARK: - Photo Presentation Views (Proportional Scaling via Apple Hardware Resolution)
 struct ImageGridView: View {
     let mediaList: [TweetMedia]
+    var tweet: Tweet? = nil
     @ObservedObject var layout = TimelineLayoutState.shared
     @ObservedObject var theme = ThemeManager.shared
     
@@ -202,21 +203,32 @@ struct ImageGridView: View {
         let dims = calculateSingleDimensions(media)
         
         return HStack {
-            CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
-                .frame(width: dims.width, height: dims.height)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(ThemeManager.border, lineWidth: 0.6)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
+            ZStack {
+                CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
+                    .frame(width: dims.width, height: dims.height)
+                    .clipped()
+                
+                if media.isVideo {
+                    videoBadgeOverlay(for: media)
+                }
+            }
+            .frame(width: dims.width, height: dims.height)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(ThemeManager.border, lineWidth: 0.6)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if media.isVideo, let tweet = tweet {
+                    VideoLightboxManager.shared.present(tweet: tweet, media: media)
+                } else {
                     LightboxManager.shared.present(
                         mediaList: [media],
                         initialIndex: 0
                     )
                 }
+            }
             
             Spacer(minLength: 0)
         }
@@ -265,31 +277,51 @@ struct ImageGridView: View {
         let height: CGFloat = min(layout.windowHeight / 3.0, 260)
         
         return HStack(spacing: spacing) {
-            CachedAsyncImage(urlString: thumbUrl(items[0].mediaUrl), contentMode: .fill)
-                .frame(width: singleWidth, height: height)
-                .clipped()
-                .clipShape(RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0))
-                .overlay(
-                    RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0)
-                        .stroke(ThemeManager.border, lineWidth: 0.6)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
+            ZStack {
+                CachedAsyncImage(urlString: thumbUrl(items[0].mediaUrl), contentMode: .fill)
+                    .frame(width: singleWidth, height: height)
+                    .clipped()
+                if items[0].isVideo {
+                    videoBadgeOverlay(for: items[0])
+                }
+            }
+            .frame(width: singleWidth, height: height)
+            .clipShape(RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0))
+            .overlay(
+                RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0)
+                    .stroke(ThemeManager.border, lineWidth: 0.6)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if items[0].isVideo, let tweet = tweet {
+                    VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
+                } else {
                     LightboxManager.shared.present(mediaList: items, initialIndex: 0)
                 }
+            }
             
-            CachedAsyncImage(urlString: thumbUrl(items[1].mediaUrl), contentMode: .fill)
-                .frame(width: singleWidth, height: height)
-                .clipped()
-                .clipShape(RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16))
-                .overlay(
-                    RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16)
-                        .stroke(ThemeManager.border, lineWidth: 0.6)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
+            ZStack {
+                CachedAsyncImage(urlString: thumbUrl(items[1].mediaUrl), contentMode: .fill)
+                    .frame(width: singleWidth, height: height)
+                    .clipped()
+                if items[1].isVideo {
+                    videoBadgeOverlay(for: items[1])
+                }
+            }
+            .frame(width: singleWidth, height: height)
+            .clipShape(RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16))
+            .overlay(
+                RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16)
+                    .stroke(ThemeManager.border, lineWidth: 0.6)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if items[1].isVideo, let tweet = tweet {
+                    VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
+                } else {
                     LightboxManager.shared.present(mediaList: items, initialIndex: 1)
                 }
+            }
         }
         .frame(width: availableWidth, height: height)
     }
@@ -311,23 +343,74 @@ struct ImageGridView: View {
                     let tr: CGFloat = isLast ? 16 : 0
                     let br: CGFloat = isLast ? 16 : 0
                     
-                    CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
-                        .frame(width: cardWidth, height: height)
-                        .clipped()
-                        .clipShape(RoundedCorner(tl: tl, tr: tr, bl: bl, br: br))
-                        .overlay(
-                            RoundedCorner(tl: tl, tr: tr, bl: bl, br: br)
-                                .stroke(ThemeManager.border, lineWidth: 0.6)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                    ZStack {
+                        CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
+                            .frame(width: cardWidth, height: height)
+                            .clipped()
+                        if media.isVideo {
+                            videoBadgeOverlay(for: media)
+                        }
+                    }
+                    .frame(width: cardWidth, height: height)
+                    .clipShape(RoundedCorner(tl: tl, tr: tr, bl: bl, br: br))
+                    .overlay(
+                        RoundedCorner(tl: tl, tr: tr, bl: bl, br: br)
+                            .stroke(ThemeManager.border, lineWidth: 0.6)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if media.isVideo, let tweet = tweet {
+                            VideoLightboxManager.shared.present(tweet: tweet, media: media)
+                        } else {
                             LightboxManager.shared.present(mediaList: items, initialIndex: idx)
                         }
+                    }
                 }
             }
         }
         .frame(height: height)
     }
     
-
+    // MARK: - Video Overlay Badges (Play button + Duration pill)
+    private func videoBadgeOverlay(for media: TweetMedia) -> some View {
+        ZStack {
+            // Center Play Icon
+            Circle()
+                .fill(Color.black.opacity(0.60))
+                .frame(width: 44, height: 44)
+                .overlay(
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white)
+                        .offset(x: 1.5)
+                )
+                .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
+                .shadow(radius: 8)
+            
+            // Bottom Right Duration Pill
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    if let durationStr = media.videoInfo?.formattedDuration, !durationStr.isEmpty {
+                        Text(durationStr)
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.black.opacity(0.72)))
+                            .padding(6)
+                    } else if media.type == "animated_gif" {
+                        Text("GIF")
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2.5)
+                            .background(Capsule().fill(Color.black.opacity(0.72)))
+                            .padding(6)
+                    }
+                }
+            }
+        }
+    }
 }

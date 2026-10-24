@@ -178,6 +178,10 @@ struct AppRootView: View {
             // Full-Window Lightbox Overlay (covers entire window including top bar)
             ImageLightboxOverlay()
                 .zIndex(999)
+            
+            // Full-Window Video Lightbox Overlay (native AVPlayer + subtitles + quality control)
+            VideoLightboxOverlay()
+                .zIndex(1000)
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
     }

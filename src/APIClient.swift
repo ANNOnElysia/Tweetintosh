@@ -358,13 +358,31 @@ final class APIClient {
                     let width = (large?["w"] as? Int) ?? 800
                     let height = (large?["h"] as? Int) ?? 600
                     
+                    var videoInfo: TweetVideoInfo? = nil
+                    if let vInfo = m["video_info"] as? [String: Any] {
+                        let durationMillis = vInfo["duration_millis"] as? Int
+                        let ar = vInfo["aspect_ratio"] as? [Int]
+                        var variants: [TweetVideoVariant] = []
+                        if let vList = vInfo["variants"] as? [[String: Any]] {
+                            for v in vList {
+                                if let cType = v["content_type"] as? String,
+                                   let vUrl = v["url"] as? String {
+                                    let br = v["bitrate"] as? Int
+                                    variants.append(TweetVideoVariant(contentType: cType, url: vUrl, bitrate: br))
+                                }
+                            }
+                        }
+                        videoInfo = TweetVideoInfo(durationMillis: durationMillis, aspectRatio: ar, variants: variants)
+                    }
+                    
                     mediaList.append(TweetMedia(
                         id: mId,
                         type: mType,
                         mediaUrl: mUrl,
                         previewUrl: mUrl,
                         width: width,
-                        height: height
+                        height: height,
+                        videoInfo: videoInfo
                     ))
                 }
             }
@@ -852,13 +870,31 @@ final class APIClient {
                     let width = (large?["w"] as? Int) ?? 800
                     let height = (large?["h"] as? Int) ?? 600
                     
+                    var videoInfo: TweetVideoInfo? = nil
+                    if let vInfo = m["video_info"] as? [String: Any] {
+                        let durationMillis = vInfo["duration_millis"] as? Int
+                        let ar = vInfo["aspect_ratio"] as? [Int]
+                        var variants: [TweetVideoVariant] = []
+                        if let vList = vInfo["variants"] as? [[String: Any]] {
+                            for v in vList {
+                                if let cType = v["content_type"] as? String,
+                                   let vUrl = v["url"] as? String {
+                                    let br = v["bitrate"] as? Int
+                                    variants.append(TweetVideoVariant(contentType: cType, url: vUrl, bitrate: br))
+                                }
+                            }
+                        }
+                        videoInfo = TweetVideoInfo(durationMillis: durationMillis, aspectRatio: ar, variants: variants)
+                    }
+                    
                     mediaList.append(TweetMedia(
                         id: mId,
                         type: mType,
                         mediaUrl: mUrl,
                         previewUrl: mUrl,
                         width: width,
-                        height: height
+                        height: height,
+                        videoInfo: videoInfo
                     ))
                 }
             }

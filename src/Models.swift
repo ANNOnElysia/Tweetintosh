@@ -5,6 +5,47 @@
 
 import Foundation
 
+struct TweetVideoVariant: Codable, Hashable {
+    var contentType: String
+    var url: String
+    var bitrate: Int?
+}
+
+struct TweetVideoInfo: Codable, Hashable {
+    var durationMillis: Int?
+    var aspectRatio: [Int]?
+    var variants: [TweetVideoVariant]
+    
+    var highestBitrateVariant: TweetVideoVariant? {
+        variants
+            .filter { $0.contentType == "video/mp4" && ($0.bitrate ?? 0) > 0 }
+            .max(by: { ($0.bitrate ?? 0) < ($1.bitrate ?? 0) })
+            ?? variants.first(where: { $0.contentType == "video/mp4" })
+    }
+    
+    var hlsVariant: TweetVideoVariant? {
+        variants.first { $0.contentType == "application/x-mpegURL" }
+    }
+    
+    var sortedMp4Variants: [TweetVideoVariant] {
+        variants
+            .filter { $0.contentType == "video/mp4" }
+            .sorted(by: { ($0.bitrate ?? 0) > ($1.bitrate ?? 0) })
+    }
+    
+    var durationSeconds: Double {
+        Double(durationMillis ?? 0) / 1000.0
+    }
+    
+    var formattedDuration: String {
+        guard let ms = durationMillis, ms > 0 else { return "" }
+        let totalSecs = ms / 1000
+        let m = totalSecs / 60
+        let s = totalSecs % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+}
+
 struct TweetMedia: Codable, Hashable, Identifiable {
     var id: String
     var type: String // photo, video, animated_gif
@@ -12,8 +53,16 @@ struct TweetMedia: Codable, Hashable, Identifiable {
     var previewUrl: String?
     var width: Int
     var height: Int
+    var videoInfo: TweetVideoInfo?
+    
+    var isVideo: Bool {
+        return type == "video" || type == "animated_gif" || videoInfo != nil
+    }
     
     var aspectRatio: CGFloat {
+        if let ar = videoInfo?.aspectRatio, ar.count >= 2, ar[1] > 0 {
+            return CGFloat(ar[0]) / CGFloat(ar[1])
+        }
         guard height > 0 else { return 1.77 }
         return CGFloat(width) / CGFloat(height)
     }
