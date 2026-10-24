@@ -373,10 +373,6 @@ struct MainTimelineView: View {
                 .padding(.top, nav.sidebarExpanded ? 16 : 60)
                 .zIndex(55)
             }
-            
-            // Native Full-Resolution Lightbox Overlay (Smooth Opacity Crossfade)
-            ImageLightboxOverlay()
-                .animation(.easeInOut(duration: 0.22), value: LightboxManager.shared.isPresented)
         }
         .onAppear {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in

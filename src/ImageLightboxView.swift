@@ -13,8 +13,16 @@ final class LightboxManager: ObservableObject {
     @Published var isPresented: Bool = false
     @Published var mediaList: [TweetMedia] = []
     @Published var currentIndex: Int = 0
-    @Published var sourceRect: CGRect = .zero
     @Published var isAnimatingOut: Bool = false
+    
+    // Zoom & Pan State
+    @Published var zoomScale: CGFloat = 1.0
+    @Published var panOffset: CGSize = .zero
+    
+    // Dismiss / Swipe Drag State
+    @Published var dragOffset: CGSize = .zero
+    @Published var isDraggingVertically: Bool = false
+    @Published var isDraggingHorizontally: Bool = false
     
     var currentMedia: TweetMedia? {
         guard currentIndex >= 0, currentIndex < mediaList.count else { return nil }
@@ -23,6 +31,7 @@ final class LightboxManager: ObservableObject {
     
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
+    private var magnifyMonitor: Any?
     private var accumulatedScrollX: CGFloat = 0
     private var lastScrollTime = Date()
     
@@ -30,8 +39,10 @@ final class LightboxManager: ObservableObject {
         guard !mediaList.isEmpty, initialIndex >= 0, initialIndex < mediaList.count else { return }
         self.mediaList = mediaList
         self.currentIndex = initialIndex
-        self.sourceRect = sourceRect
         self.isAnimatingOut = false
+        
+        // Ensure all gesture and transform states are cleanly reset to default
+        resetTransforms()
         
         setupEventMonitors()
         
@@ -40,29 +51,55 @@ final class LightboxManager: ObservableObject {
         }
     }
     
+    func resetTransforms() {
+        self.zoomScale = 1.0
+        self.panOffset = .zero
+        self.dragOffset = .zero
+        self.isDraggingVertically = false
+        self.isDraggingHorizontally = false
+        self.accumulatedScrollX = 0
+    }
+    
     func dismiss() {
         removeEventMonitors()
         withAnimation(.easeInOut(duration: 0.20)) {
             self.isPresented = false
+            self.dragOffset = .zero
+            self.zoomScale = 1.0
+            self.panOffset = .zero
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
             self.isAnimatingOut = false
             self.mediaList = []
             self.currentIndex = 0
+            self.resetTransforms()
         }
     }
     
     func next() {
         guard currentIndex < mediaList.count - 1 else { return }
         withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
-            currentIndex += 1
+            self.resetTransforms()
+            self.currentIndex += 1
         }
     }
     
     func prev() {
         guard currentIndex > 0 else { return }
         withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
-            currentIndex -= 1
+            self.resetTransforms()
+            self.currentIndex -= 1
+        }
+    }
+    
+    func toggleZoom() {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+            if self.zoomScale > 1.05 {
+                self.zoomScale = 1.0
+                self.panOffset = .zero
+            } else {
+                self.zoomScale = 2.5
+            }
         }
     }
     
@@ -74,51 +111,93 @@ final class LightboxManager: ObservableObject {
             guard let self = self, self.isPresented else { return event }
             switch event.keyCode {
             case 123: // Left Arrow (←)
+                if self.zoomScale > 1.05 {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                        self.zoomScale = 1.0
+                        self.panOffset = .zero
+                    }
+                }
                 self.prev()
                 return nil
             case 124: // Right Arrow (→)
+                if self.zoomScale > 1.05 {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                        self.zoomScale = 1.0
+                        self.panOffset = .zero
+                    }
+                }
                 self.next()
                 return nil
             case 53: // Esc
-                self.dismiss()
+                if self.zoomScale > 1.05 {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                        self.zoomScale = 1.0
+                        self.panOffset = .zero
+                    }
+                } else {
+                    self.dismiss()
+                }
                 return nil
             default:
                 return event
             }
         }
         
-        // 2. Trackpad Two-Finger Swipe (scrollWheel)
+        // 2. Trackpad Two-Finger Pinch (Magnify)
+        magnifyMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak self] event in
+            guard let self = self, self.isPresented else { return event }
+            let delta = event.magnification
+            let newScale = max(1.0, min(5.0, self.zoomScale + delta * 2.2))
+            self.zoomScale = newScale
+            if newScale <= 1.0 {
+                self.panOffset = .zero
+            }
+            return nil
+        }
+        
+        // 3. Trackpad Two-Finger Swipe / Pan (scrollWheel)
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self = self, self.isPresented, self.mediaList.count > 1 else { return event }
+            guard let self = self, self.isPresented else { return event }
             
-            let deltaX = event.scrollingDeltaX
-            if abs(deltaX) > 0.4 {
-                self.accumulatedScrollX += deltaX
-                
-                let threshold: CGFloat = 24.0
-                let now = Date()
-                if now.timeIntervalSince(self.lastScrollTime) > 0.28 {
-                    if self.accumulatedScrollX > threshold {
-                        // Swiped right -> Previous image
-                        self.lastScrollTime = now
-                        self.accumulatedScrollX = 0
-                        self.prev()
-                        return nil
-                    } else if self.accumulatedScrollX < -threshold {
-                        // Swiped left -> Next image
-                        self.lastScrollTime = now
-                        self.accumulatedScrollX = 0
-                        self.next()
-                        return nil
+            // If currently zoomed in, two-finger scroll smoothly pans the image
+            if self.zoomScale > 1.05 {
+                let dx = event.scrollingDeltaX
+                let dy = event.scrollingDeltaY
+                self.panOffset.width += dx
+                self.panOffset.height += dy
+                return nil // Prevent background scroll
+            }
+            
+            // In standard zoom, handle horizontal swipe between images
+            if self.mediaList.count > 1 {
+                let deltaX = event.scrollingDeltaX
+                if abs(deltaX) > 0.4 {
+                    self.accumulatedScrollX += deltaX
+                    
+                    let threshold: CGFloat = 24.0
+                    let now = Date()
+                    if now.timeIntervalSince(self.lastScrollTime) > 0.28 {
+                        if self.accumulatedScrollX > threshold {
+                            self.lastScrollTime = now
+                            self.accumulatedScrollX = 0
+                            self.prev()
+                            return nil
+                        } else if self.accumulatedScrollX < -threshold {
+                            self.lastScrollTime = now
+                            self.accumulatedScrollX = 0
+                            self.next()
+                            return nil
+                        }
                     }
+                }
+                
+                if event.phase == .ended || event.phase == .cancelled {
+                    self.accumulatedScrollX = 0
                 }
             }
             
-            if event.phase == .ended || event.phase == .cancelled {
-                self.accumulatedScrollX = 0
-            }
-            
-            return event
+            // Always absorb scroll events while lightbox is active to protect background timeline
+            return nil
         }
     }
     
@@ -131,6 +210,10 @@ final class LightboxManager: ObservableObject {
             NSEvent.removeMonitor(sm)
             scrollMonitor = nil
         }
+        if let mm = magnifyMonitor {
+            NSEvent.removeMonitor(mm)
+            magnifyMonitor = nil
+        }
         accumulatedScrollX = 0
     }
     
@@ -139,17 +222,10 @@ final class LightboxManager: ObservableObject {
     }
 }
 
-// MARK: - Lightbox Drag State (Avoids @State macro in CommandLineTools)
-final class LightboxDragState: ObservableObject {
-    @Published var dragOffset: CGSize = .zero
-    @Published var isDraggingVertically = false
-    @Published var isDraggingHorizontally = false
-}
-
 // MARK: - Lightbox Overlay View
 struct ImageLightboxOverlay: View {
     @ObservedObject var manager = LightboxManager.shared
-    @StateObject private var dragState = LightboxDragState()
+    @GestureState private var pinchScale: CGFloat = 1.0
     
     var body: some View {
         if manager.isPresented {
@@ -159,13 +235,22 @@ struct ImageLightboxOverlay: View {
                 let boxWidth = windowSize.width * 0.75
                 let boxHeight = windowSize.height * 0.75
                 
+                let effectiveScale = manager.zoomScale * pinchScale
+                
                 ZStack {
                     // 1. Dark Backdrop with interactive opacity
                     Color.black
                         .opacity(backdropOpacity)
                         .ignoresSafeArea()
                         .onTapGesture {
-                            manager.dismiss()
+                            if manager.zoomScale > 1.05 {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                                    manager.zoomScale = 1.0
+                                    manager.panOffset = .zero
+                                }
+                            } else {
+                                manager.dismiss()
+                            }
                         }
                     
                     // 2. The 3/4 Bounding Box: matching longest edge of current image
@@ -179,27 +264,25 @@ struct ImageLightboxOverlay: View {
                             .frame(maxWidth: boxWidth, maxHeight: boxHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .shadow(color: Color.black.opacity(0.50), radius: 24, x: 0, y: 8)
-                            .offset(x: dragState.dragOffset.width, y: dragState.dragOffset.height)
-                            .scaleEffect(verticalScale)
+                            .scaleEffect(effectiveScale * verticalScale)
+                            .offset(
+                                x: manager.zoomScale > 1.05 ? manager.panOffset.width : manager.dragOffset.width,
+                                y: manager.zoomScale > 1.05 ? manager.panOffset.height : manager.dragOffset.height
+                            )
                             .animation(.spring(response: 0.30, dampingFraction: 0.86), value: manager.currentIndex)
                             .id(manager.currentIndex)
+                            .onTapGesture(count: 2) {
+                                manager.toggleZoom()
+                            }
                         }
                     }
                     .frame(width: boxWidth, height: boxHeight)
                     
-                    // 3. Top Header Bar (Pagination Capsule + Close Button)
+                    // 3. Top Header Bar (Pagination Capsule / Zoom % + Close Button)
                     VStack {
                         HStack(alignment: .center) {
-                            if manager.mediaList.count > 1 {
-                                Text("\(manager.currentIndex + 1) / \(manager.mediaList.count)")
-                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Color(white: 0.90))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 6)
-                                    .background(Capsule().fill(Color.black.opacity(0.60)))
-                                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.6))
-                                    .padding(.leading, 24)
-                            }
+                            headerIndicator
+                                .padding(.leading, 24)
                             
                             Spacer()
                             
@@ -211,13 +294,13 @@ struct ImageLightboxOverlay: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
-                        .opacity(1.0 - abs(dragState.dragOffset.height) / 100)
+                        .opacity(headerOpacity)
                         
                         Spacer()
                     }
                     
-                    // 4. Subtle Navigation Chevrons for multi-image
-                    if manager.mediaList.count > 1 {
+                    // 4. Subtle Navigation Chevrons for multi-image (hidden when zoomed in)
+                    if manager.mediaList.count > 1 && manager.zoomScale <= 1.05 {
                         HStack {
                             if manager.currentIndex > 0 {
                                 chevronButton(icon: "chevron.left") { manager.prev() }
@@ -229,13 +312,28 @@ struct ImageLightboxOverlay: View {
                                     .padding(.trailing, max(12, (windowSize.width - boxWidth) / 2 - 46))
                             }
                         }
-                        .opacity(1.0 - abs(dragState.dragOffset.height) / 80)
+                        .opacity(headerOpacity)
                     }
                 }
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 8)
+                    MagnificationGesture()
+                        .updating($pinchScale) { val, state, _ in
+                            state = val
+                        }
+                        .onEnded { val in
+                            let target = max(1.0, min(5.0, manager.zoomScale * val))
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                                manager.zoomScale = target
+                                if target <= 1.0 {
+                                    manager.panOffset = .zero
+                                }
+                            }
+                        }
+                )
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 6)
                         .onChanged { value in
-                            handleDragChanged(value)
+                            handleDragChanged(value, boxWidth: boxWidth, boxHeight: boxHeight)
                         }
                         .onEnded { value in
                             handleDragEnded(value)
@@ -244,7 +342,31 @@ struct ImageLightboxOverlay: View {
             }
             .transition(.opacity)
             .zIndex(999)
+            .onAppear {
+                manager.resetTransforms()
+            }
         }
+    }
+    
+    @ViewBuilder private var headerIndicator: some View {
+        HStack(spacing: 8) {
+            if manager.mediaList.count > 1 {
+                Text("\(manager.currentIndex + 1) / \(manager.mediaList.count)")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color(white: 0.90))
+            }
+            
+            if manager.zoomScale > 1.05 {
+                Text("\(Int(manager.zoomScale * 100))%")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(Color(white: 0.70))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color.black.opacity(0.60)))
+        .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.6))
+        .opacity((manager.mediaList.count > 1 || manager.zoomScale > 1.05) ? 1.0 : 0.0)
     }
     
     private func chevronButton(icon: String, action: @escaping () -> Void) -> some View {
@@ -260,38 +382,52 @@ struct ImageLightboxOverlay: View {
     }
     
     // MARK: - Gesture Mechanics
-    private func handleDragChanged(_ value: DragGesture.Value) {
-        let trans = value.translation
+    private func handleDragChanged(_ value: DragGesture.Value, boxWidth: CGFloat, boxHeight: CGFloat) {
+        if manager.zoomScale > 1.05 {
+            let maxPanX = max(0, (boxWidth * (manager.zoomScale - 1)) / 1.5)
+            let maxPanY = max(0, (boxHeight * (manager.zoomScale - 1)) / 1.5)
+            
+            manager.panOffset.width = min(maxPanX, max(-maxPanX, manager.panOffset.width + value.translation.width * 0.15))
+            manager.panOffset.height = min(maxPanY, max(-maxPanY, manager.panOffset.height + value.translation.height * 0.15))
+            return
+        }
         
-        if !dragState.isDraggingVertically && !dragState.isDraggingHorizontally {
+        let trans = value.translation
+        if !manager.isDraggingVertically && !manager.isDraggingHorizontally {
             if abs(trans.height) > abs(trans.width) * 1.2 {
-                dragState.isDraggingVertically = true
+                manager.isDraggingVertically = true
             } else if abs(trans.width) > abs(trans.height) {
-                dragState.isDraggingHorizontally = true
+                manager.isDraggingHorizontally = true
             }
         }
         
-        if dragState.isDraggingVertically {
-            dragState.dragOffset = CGSize(width: 0, height: trans.height)
-        } else if dragState.isDraggingHorizontally {
+        if manager.isDraggingVertically {
+            manager.dragOffset = CGSize(width: 0, height: trans.height)
+        } else if manager.isDraggingHorizontally {
             var dx = trans.width
             if (manager.currentIndex == 0 && dx > 0) || (manager.currentIndex == manager.mediaList.count - 1 && dx < 0) {
                 dx = dx * 0.35 // Rubber band resistance
             }
-            dragState.dragOffset = CGSize(width: dx, height: 0)
+            manager.dragOffset = CGSize(width: dx, height: 0)
         }
     }
     
     private func handleDragEnded(_ value: DragGesture.Value) {
-        if dragState.isDraggingVertically {
+        if manager.zoomScale > 1.05 {
+            return
+        }
+        
+        if manager.isDraggingVertically {
             if abs(value.translation.height) > 65 || abs(value.velocity.height) > 400 {
+                // Must explicitly reset dragOffset so subsequent opens are clean
+                manager.dragOffset = .zero
                 manager.dismiss()
             } else {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                    dragState.dragOffset = .zero
+                    manager.dragOffset = .zero
                 }
             }
-        } else if dragState.isDraggingHorizontally {
+        } else if manager.isDraggingHorizontally {
             let dx = value.translation.width
             let vx = value.velocity.width
             
@@ -302,21 +438,30 @@ struct ImageLightboxOverlay: View {
             }
             
             withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                dragState.dragOffset = .zero
+                manager.dragOffset = .zero
+            }
+        } else {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                manager.dragOffset = .zero
             }
         }
         
-        dragState.isDraggingVertically = false
-        dragState.isDraggingHorizontally = false
+        manager.isDraggingVertically = false
+        manager.isDraggingHorizontally = false
     }
     
     private var backdropOpacity: Double {
-        let dragDist = abs(dragState.dragOffset.height)
-        return max(0.0, min(0.94, 0.94 - Double(dragDist) / 360.0))
+        let dragDist = abs(manager.dragOffset.height)
+        return max(0.40, min(0.94, 0.94 - Double(dragDist) / 500.0))
+    }
+    
+    private var headerOpacity: Double {
+        let dragDist = abs(manager.dragOffset.height)
+        return max(0.50, 1.0 - Double(dragDist) / 250.0)
     }
     
     private var verticalScale: CGFloat {
-        let dragDist = abs(dragState.dragOffset.height)
+        let dragDist = abs(manager.dragOffset.height)
         return max(0.72, 1.0 - dragDist / 1000.0)
     }
     
