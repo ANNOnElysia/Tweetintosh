@@ -54,8 +54,6 @@ final class TimelineViewModel: ObservableObject {
     // Track seen tweet IDs for the algorithmic "For You" feed
     private var seenTweetIds: [String] = []
     
-    private var timer: Timer?
-    
     var topCursor: String? {
         get {
             switch selectedFeed {
@@ -190,11 +188,8 @@ final class TimelineViewModel: ObservableObject {
             self.isLoadingInitial = false
         }
         
-        // 2. Fetch fresh posts from GraphQL API
+        // 2. Fetch fresh posts from GraphQL API (Fetch once on launch/restart)
         refresh(silently: !tweets.isEmpty, isUserInitiated: false)
-        
-        // 3. Start background poll timer (every 75 seconds)
-        startPollTimer()
     }
     
     private func updateActiveTweets() {
@@ -505,40 +500,6 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
-    private func startPollTimer() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 75.0, repeats: true) { [weak self] _ in
-            self?.checkNewPostsSilently()
-        }
-    }
-    
-    private func checkNewPostsSilently() {
-        guard isAuthenticated, !tweets.isEmpty else { return }
-        let currentFeed = selectedFeed
-        
-        APIClient.shared.fetchGraphQLHomeTimeline(
-            feedType: currentFeed,
-            cursor: topCursor,
-            seenTweetIds: currentFeed == .forYou ? seenTweetIds : []
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if case .success(let payload) = result {
-                    let existingIds = Set(self.currentFeedTweets(currentFeed).map { $0.id })
-                    let fresh = payload.tweets.filter { !existingIds.contains($0.id) }
-                    if !fresh.isEmpty {
-                        self.enqueuePendingTweets(fresh, for: currentFeed)
-                        self.prefetchMedia(for: fresh)
-                        
-                        if self.selectedFeed == currentFeed {
-                            TimelineScrollCoordinator.shared.unreadCountAbove = self.pendingCount(for: currentFeed)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
     private func prefetchMedia(for tweetsList: [Tweet]) {
         var urlsToFetch: [String] = []
         for tweet in tweetsList.prefix(15) {
@@ -554,9 +515,5 @@ final class TimelineViewModel: ObservableObject {
             }
         }
         ImageCache.shared.prefetch(urls: urlsToFetch)
-    }
-    
-    deinit {
-        timer?.invalidate()
     }
 }
