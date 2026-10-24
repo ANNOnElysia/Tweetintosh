@@ -21,6 +21,129 @@ final class TimelineScrollState: ObservableObject {
     var hasTriggeredHaptic: Bool = false
 }
 
+// MARK: - Native NSScrollView Anchor & Viewport Coordinator
+class CustomAnchorNSView: NSView {
+    var onFound: ((NSScrollView) -> Void)?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let sv = enclosingScrollView { onFound?(sv) }
+    }
+}
+
+struct ScrollViewAccessor: NSViewRepresentable {
+    var onScrollView: (NSScrollView) -> Void
+    func makeNSView(context: Context) -> CustomAnchorNSView {
+        let v = CustomAnchorNSView()
+        v.onFound = onScrollView
+        return v
+    }
+    func updateNSView(_ nsView: CustomAnchorNSView, context: Context) {
+        if let sv = nsView.enclosingScrollView { onScrollView(sv) }
+    }
+}
+
+final class TimelineScrollCoordinator: ObservableObject {
+    static let shared = TimelineScrollCoordinator()
+    
+    weak var scrollView: NSScrollView?
+    @Published var unreadCountAbove: Int = 0
+    
+    private var preUpdateOriginY: CGFloat = 0.0
+    private var preUpdateDocHeight: CGFloat = 0.0
+    
+    func registerScrollView(_ sv: NSScrollView) {
+        self.scrollView = sv
+    }
+    
+    func prepareForPrepend(topTweetId: String?) {
+        guard let sv = scrollView else { return }
+        preUpdateOriginY = sv.contentView.bounds.origin.y
+        preUpdateDocHeight = sv.documentView?.frame.height ?? 0
+    }
+    
+    func adjustAfterPrepend(isUserInitiated: Bool) {
+        guard !isUserInitiated else {
+            DispatchQueue.main.async {
+                self.unreadCountAbove = 0
+            }
+            return
+        }
+        guard scrollView != nil else { return }
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let sv = self.scrollView, let docView = sv.documentView else { return }
+            let newDocHeight = docView.frame.height
+            let addedHeight = newDocHeight - self.preUpdateDocHeight
+            
+            if addedHeight > 0 {
+                // If user was at/near the top (origin.y <= 2.0), AppKit would keep origin at 0.0,
+                // which would push the currently viewed tweet downwards.
+                // We scroll by addedHeight so that the tweet coordinate remains rock-solid in the user's viewport!
+                if self.preUpdateOriginY <= 2.0 {
+                    let targetY = self.preUpdateOriginY + addedHeight
+                    sv.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+                    sv.reflectScrolledClipView(sv.contentView)
+                    
+                    TrackpadPullCoordinator.shared.isAtTop = false
+                    TimelineScrollState.shared.isAtTop = false
+                }
+            }
+        }
+    }
+    
+    func scrollToTop() {
+        guard let sv = scrollView else { return }
+        DispatchQueue.main.async {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.35
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                sv.contentView.animator().scroll(to: NSPoint(x: 0, y: 0))
+            } completionHandler: {
+                sv.reflectScrolledClipView(sv.contentView)
+                self.unreadCountAbove = 0
+                TrackpadPullCoordinator.shared.isAtTop = true
+                TimelineScrollState.shared.isAtTop = true
+            }
+        }
+    }
+}
+
+// MARK: - Floating New Posts Available Pill
+struct NewPostsFloatingPill: View {
+    var count: Int
+    var onTap: () -> Void
+    @ObservedObject var loc = LocalizationManager.shared
+    @ObservedObject var theme = ThemeManager.shared
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 11, weight: .bold))
+                Text(loc.format("new_posts_available", ["count": "\(count)"]))
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(
+                Capsule()
+                    .fill(ThemeManager.accent.opacity(0.92))
+                    .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.35), lineWidth: 0.8)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .transition(.asymmetric(
+            insertion: .scale(scale: 0.85).combined(with: .opacity).combined(with: .move(edge: .top)),
+            removal: .scale(scale: 0.9).combined(with: .opacity).combined(with: .move(edge: .top))
+        ))
+    }
+}
+
 // MARK: - Native Trackpad & ScrollWheel Pull Coordinator
 final class TrackpadPullCoordinator {
     static let shared = TrackpadPullCoordinator()
@@ -218,6 +341,7 @@ struct MainTimelineView: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var scrollState = TimelineScrollState.shared
+    @ObservedObject var scrollCoordinator = TimelineScrollCoordinator.shared
     
     var onOpenSettings: () -> Void
     var onLoginRequest: () -> Void
@@ -245,6 +369,15 @@ struct MainTimelineView: View {
                     .zIndex(50)
             }
             
+            // Floating New Posts Pill (shown when new posts arrive above the user's current reading position)
+            if scrollCoordinator.unreadCountAbove > 0 && viewModel.isAuthenticated {
+                NewPostsFloatingPill(count: scrollCoordinator.unreadCountAbove) {
+                    scrollCoordinator.scrollToTop()
+                }
+                .padding(.top, nav.sidebarExpanded ? 64 : 110)
+                .zIndex(55)
+            }
+            
             // Native Full-Resolution Lightbox Overlay
             ImageLightboxOverlay()
         }
@@ -261,7 +394,7 @@ struct MainTimelineView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         scrollState.pullDistance = 0
                     }
-                    viewModel.refresh(silently: false)
+                    viewModel.refresh(silently: false, isUserInitiated: true)
                 }
             }
             TrackpadPullCoordinator.shared.onCancelPull = {
@@ -279,7 +412,7 @@ struct MainTimelineView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MaX_RefreshTimeline"))) { _ in
             if nav.currentTab == .home {
-                viewModel.refresh(silently: false)
+                viewModel.refresh(silently: false, isUserInitiated: true)
             }
         }
     }
@@ -330,6 +463,11 @@ struct MainTimelineView: View {
                     // Bottom Loading Footer
                     bottomLoadingFooter
                 }
+                .background(
+                    ScrollViewAccessor { sv in
+                        TimelineScrollCoordinator.shared.registerScrollView(sv)
+                    }
+                )
             }
             .coordinateSpace(name: "timelineScrollViewSpace")
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
@@ -367,7 +505,7 @@ struct MainTimelineView: View {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 scrollState.pullDistance = 0
                             }
-                            viewModel.refresh(silently: false)
+                            viewModel.refresh(silently: false, isUserInitiated: true)
                         } else {
                             scrollState.hasTriggeredHaptic = false
                             withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
@@ -384,6 +522,9 @@ struct MainTimelineView: View {
         TrackpadPullCoordinator.shared.isAtTop = isTop
         TrackpadPullCoordinator.shared.isRefreshing = viewModel.isRefreshing
         scrollState.isAtTop = isTop
+        if isTop {
+            TimelineScrollCoordinator.shared.unreadCountAbove = 0
+        }
     }
     
     // MARK: - Bottom Loading Footer

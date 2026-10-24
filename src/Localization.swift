@@ -475,6 +475,13 @@ final class LocalizationManager: ObservableObject {
                 .korean: "{actor}님이 게시물에서 회원님을 멘션했습니다",
                 .simplifiedChinese: "{actor} 在推文中提及了你",
                 .traditionalChinese: "{actor} 在貼文中提及了你"
+            ],
+            "new_posts_available": [
+                .english: "↑ {count} new posts",
+                .japanese: "↑ {count}件の新しい投稿",
+                .korean: "↑ {count}개의 새 게시물",
+                .simplifiedChinese: "↑ {count} 条新推文",
+                .traditionalChinese: "↑ {count} 則新貼文"
             ]
         ]
         

@@ -105,7 +105,7 @@ final class TimelineViewModel: ObservableObject {
         }
         
         // 2. Fetch fresh posts from GraphQL API
-        refresh(silently: !tweets.isEmpty)
+        refresh(silently: !tweets.isEmpty, isUserInitiated: false)
         
         // 3. Start background poll timer (every 75 seconds)
         startPollTimer()
@@ -124,7 +124,7 @@ final class TimelineViewModel: ObservableObject {
         }
         
         if tweets.isEmpty {
-            refresh(silently: false)
+            refresh(silently: false, isUserInitiated: false)
         }
     }
     
@@ -145,7 +145,7 @@ final class TimelineViewModel: ObservableObject {
     }
     
     // MARK: - Refresh (Pull or Initial)
-    func refresh(silently: Bool = false) {
+    func refresh(silently: Bool = false, isUserInitiated: Bool = false) {
         if !silently {
             isRefreshing = true
         }
@@ -195,7 +195,10 @@ final class TimelineViewModel: ObservableObject {
                         )
                         self.prefetchMedia(for: payload.tweets)
                     } else if !newOnes.isEmpty {
-                        // Prepend newly discovered tweets
+                        // Prepend newly discovered tweets directly above existing tweets.
+                        // Record pre-update anchor so user's visible reading coordinates do NOT jump or move down!
+                        TimelineScrollCoordinator.shared.prepareForPrepend(topTweetId: self.tweets.first?.id)
+                        
                         var updated = self.currentFeedTweets(currentFeed)
                         updated.insert(contentsOf: newOnes, at: 0)
                         self.setFeedTweets(updated, for: currentFeed)
@@ -220,18 +223,26 @@ final class TimelineViewModel: ObservableObject {
                             bottomCursor: self.bottomCursor
                         )
                         self.prefetchMedia(for: newOnes)
-                    } else if currentFeed == .forYou && !payload.tweets.isEmpty {
-                        // In For You mode, if all was filtered out, still inject the freshest candidate batch
-                        self.setFeedTweets(payload.tweets, for: currentFeed)
-                        self.forYouTopCursor = payload.topCursor
-                        self.forYouBottomCursor = payload.bottomCursor
-                        self.seenTweetIds = Array(payload.tweets.prefix(40).map { $0.id })
-                        TimelineCacheManager.shared.saveSnapshot(
-                            feed: currentFeed,
-                            tweets: payload.tweets,
-                            topCursor: payload.topCursor,
-                            bottomCursor: payload.bottomCursor
-                        )
+                        
+                        if !isUserInitiated {
+                            TimelineScrollCoordinator.shared.unreadCountAbove += newOnes.count
+                        }
+                        
+                        if self.selectedFeed == currentFeed {
+                            self.updateActiveTweets()
+                            // Adjust scroll offset to keep visible tweet coordinates rock-solid!
+                            TimelineScrollCoordinator.shared.adjustAfterPrepend(isUserInitiated: isUserInitiated)
+                        }
+                    } else {
+                        // When no new tweets arrive, only update cursors:
+                        // NEVER overwrite existing tweets so the user's reading list is never blown away!
+                        if currentFeed == .forYou {
+                            if let newTop = payload.topCursor { self.forYouTopCursor = newTop }
+                            if let newBottom = payload.bottomCursor { self.forYouBottomCursor = newBottom }
+                        } else {
+                            if let newTop = payload.topCursor { self.followingTopCursor = newTop }
+                            if let newBottom = payload.bottomCursor { self.followingBottomCursor = newBottom }
+                        }
                     }
                     
                     if self.selectedFeed == currentFeed {
@@ -332,13 +343,17 @@ final class TimelineViewModel: ObservableObject {
                     let existingIds = Set(self.currentFeedTweets(currentFeed).map { $0.id })
                     let fresh = payload.tweets.filter { !existingIds.contains($0.id) }
                     if !fresh.isEmpty {
+                        TimelineScrollCoordinator.shared.prepareForPrepend(topTweetId: self.tweets.first?.id)
+                        
                         var updated = self.currentFeedTweets(currentFeed)
                         updated.insert(contentsOf: fresh, at: 0)
                         self.setFeedTweets(updated, for: currentFeed)
+                        
+                        TimelineScrollCoordinator.shared.unreadCountAbove += fresh.count
+                        
                         if self.selectedFeed == currentFeed {
-                            withAnimation(.spring()) {
-                                self.updateActiveTweets()
-                            }
+                            self.updateActiveTweets()
+                            TimelineScrollCoordinator.shared.adjustAfterPrepend(isUserInitiated: false)
                         }
                     }
                 }
