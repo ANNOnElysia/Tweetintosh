@@ -5,6 +5,86 @@
 
 import SwiftUI
 
+// MARK: - Glass Segmented Appearance Picker (Dark / Rice White / System)
+struct GlassSegmentedAppearancePicker: View {
+    @Binding var selection: AppThemeAppearance
+    @ObservedObject var loc = LocalizationManager.shared
+    @ObservedObject var theme = ThemeManager.shared
+    @Namespace private var appearancePickerNamespace
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            segmentButton(type: .dark, title: loc.t("theme_dark"), icon: "moon.fill")
+            segmentButton(type: .riceWhite, title: loc.t("theme_rice_white"), icon: "sun.max.fill")
+            segmentButton(type: .system, title: loc.t("theme_system"), icon: "circle.lefthalf.filled")
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12), lineWidth: 0.8)
+                )
+        )
+    }
+    
+    private func segmentButton(type: AppThemeAppearance, title: String, icon: String) -> some View {
+        let isSelected = selection == type
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                selection = type
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                    .foregroundColor(isSelected ? (theme.useLiquidGlass ? ThemeManager.accent : (theme.isLight ? ThemeManager.accent : .white)) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60)))
+                Text(title)
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    .foregroundColor(isSelected ? (theme.isLight ? ThemeManager.primaryText : .white) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70)))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background {
+                if isSelected {
+                    if theme.useLiquidGlass {
+                        if #available(macOS 26.0, *) {
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(theme.useLiquidGlassTint ? ThemeManager.accent.opacity(theme.isLight ? 0.16 : 0.24) : (theme.isLight ? Color.white : Color.white.opacity(0.18)))
+                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 7))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7)
+                                        .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.25), lineWidth: 0.8)
+                                )
+                                .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.2), radius: 3, x: 0, y: 1)
+                                .matchedGeometryEffect(id: "appearanceSelection", in: appearancePickerNamespace)
+                        } else {
+                            selectedBackground
+                        }
+                    } else {
+                        selectedBackground
+                    }
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var selectedBackground: some View {
+        RoundedRectangle(cornerRadius: 7)
+            .fill(theme.isLight ? Color.white : Color.white.opacity(0.16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.25), lineWidth: 0.8)
+            )
+            .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.2), radius: 3, x: 0, y: 1)
+            .matchedGeometryEffect(id: "appearanceSelection", in: appearancePickerNamespace)
+    }
+}
+
 // MARK: - Glass Segmented Font Picker (High Contrast & Liquid Glass)
 struct GlassSegmentedFontPicker: View {
     @Binding var selection: AppFontType
@@ -20,10 +100,10 @@ struct GlassSegmentedFontPicker: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 9)
-                .fill(Color.white.opacity(0.06))
+                .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
                 .overlay(
                     RoundedRectangle(cornerRadius: 9)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                        .stroke(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12), lineWidth: 0.8)
                 )
         )
     }
@@ -39,11 +119,11 @@ struct GlassSegmentedFontPicker: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(theme.useLiquidGlass ? ThemeManager.accent : .white)
+                        .foregroundColor(theme.useLiquidGlass ? ThemeManager.accent : (theme.isLight ? ThemeManager.accent : .white))
                 }
                 Text(title)
                     .font(type == .mincho ? .custom("Hiragino Mincho ProN", size: 12.5) : .system(size: 12.5, weight: isSelected ? .semibold : .medium))
-                    .foregroundColor(isSelected ? .white : Color.white.opacity(0.70))
+                    .foregroundColor(isSelected ? (theme.isLight ? ThemeManager.primaryText : .white) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70)))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
@@ -52,12 +132,13 @@ struct GlassSegmentedFontPicker: View {
                     if theme.useLiquidGlass {
                         if #available(macOS 26.0, *) {
                             RoundedRectangle(cornerRadius: 7)
-                                .fill(theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.24) : Color.white.opacity(0.18))
+                                .fill(theme.useLiquidGlassTint ? ThemeManager.accent.opacity(theme.isLight ? 0.16 : 0.24) : (theme.isLight ? Color.white : Color.white.opacity(0.18)))
                                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 7))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 7)
-                                        .stroke(Color.white.opacity(0.25), lineWidth: 0.8)
+                                        .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.25), lineWidth: 0.8)
                                 )
+                                .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.2), radius: 3, x: 0, y: 1)
                                 .matchedGeometryEffect(id: "fontPickerSelection", in: fontPickerNamespace)
                         } else {
                             selectedBackground
@@ -74,12 +155,12 @@ struct GlassSegmentedFontPicker: View {
     
     private var selectedBackground: some View {
         RoundedRectangle(cornerRadius: 7)
-            .fill(Color.white.opacity(0.16))
+            .fill(theme.isLight ? Color.white : Color.white.opacity(0.16))
             .overlay(
                 RoundedRectangle(cornerRadius: 7)
-                    .stroke(Color.white.opacity(0.25), lineWidth: 0.8)
+                    .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.25), lineWidth: 0.8)
             )
-            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.2), radius: 3, x: 0, y: 1)
             .matchedGeometryEffect(id: "fontPickerSelection", in: fontPickerNamespace)
     }
 }
@@ -96,17 +177,17 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
                 // Background Track
                 if theme.useLiquidGlass {
                     if #available(macOS 26.0, *) {
-                        let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : Color.white
+                        let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
                         let glassStyle: Glass = theme.useLiquidGlassTint
-                            ? .regular.tint(ThemeManager.accent.opacity(0.25))
+                            ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.20 : 0.25))
                             : .regular
                         Capsule()
-                            .fill(configuration.isOn ? tintColor.opacity(0.48) : Color.white.opacity(0.10))
+                            .fill(configuration.isOn ? (theme.useLiquidGlassTint ? tintColor.opacity(0.70) : tintColor.opacity(0.48)) : (theme.isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.10)))
                             .glassEffect(glassStyle, in: Capsule())
                             .frame(width: 44, height: 24)
                             .overlay(
                                 Capsule()
-                                    .stroke(configuration.isOn ? tintColor.opacity(0.7) : Color.white.opacity(0.22), lineWidth: 0.8)
+                                    .stroke(configuration.isOn ? tintColor.opacity(0.7) : (theme.isLight ? Color.black.opacity(0.15) : Color.white.opacity(0.22)), lineWidth: 0.8)
                             )
                     } else {
                         fallbackTrack(isOn: configuration.isOn)
@@ -119,7 +200,7 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
                 Circle()
                     .fill(Color.white)
                     .frame(width: 20, height: 20)
-                    .shadow(color: Color.black.opacity(0.35), radius: 3, x: 0, y: 1.5)
+                    .shadow(color: Color.black.opacity(theme.isLight ? 0.20 : 0.35), radius: 3, x: 0, y: 1.5)
                     .overlay(
                         Circle()
                             .stroke(Color.white.opacity(0.8), lineWidth: 0.5)
@@ -138,16 +219,16 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
         Capsule()
             .fill(
                 isOn
-                    ? (theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.58) : ThemeManager.accent.opacity(0.45))
-                    : Color.white.opacity(0.12)
+                    ? (theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.85) : ThemeManager.accent.opacity(0.70))
+                    : (theme.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.12))
             )
             .frame(width: 44, height: 24)
             .overlay(
                 Capsule()
                     .stroke(
                         isOn
-                            ? (theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.75) : ThemeManager.accent.opacity(0.60))
-                            : Color.white.opacity(0.20),
+                            ? (theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.90) : ThemeManager.accent.opacity(0.80))
+                            : (theme.isLight ? Color.black.opacity(0.16) : Color.white.opacity(0.20)),
                         lineWidth: 0.8
                     )
             )
@@ -184,13 +265,13 @@ struct GlassDropdownPicker<T: Hashable>: View {
                 }
                 Text(currentTitle)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
                 
                 Spacer()
                 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.50))
+                    .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.50))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
@@ -198,11 +279,11 @@ struct GlassDropdownPicker<T: Hashable>: View {
                 if theme.useLiquidGlass {
                     if #available(macOS 26.0, *) {
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.08))
+                            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
                             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                                    .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.18), lineWidth: 0.8)
                             )
                     } else {
                         defaultMenuBackground
@@ -222,10 +303,10 @@ struct GlassDropdownPicker<T: Hashable>: View {
     
     private var defaultMenuBackground: some View {
         RoundedRectangle(cornerRadius: 8)
-            .fill(Color.white.opacity(0.08))
+            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+                    .stroke(theme.isLight ? ThemeManager.border : Color.white.opacity(0.14), lineWidth: 0.8)
             )
     }
 }
@@ -239,7 +320,7 @@ struct SettingsView: View {
     var onClearCache: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             // 1. Language Section
             VStack(alignment: .leading, spacing: 8) {
                 Text(loc.t("language"))
@@ -264,8 +345,19 @@ struct SettingsView: View {
             .padding(12)
             .background(cardBackground)
             
-            // 2. Typography & Visual Section
-            VStack(alignment: .leading, spacing: 14) {
+            // 2. Appearance Section (Dark / Rice White / Follow System)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(loc.t("theme_appearance"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ThemeManager.secondaryText)
+                
+                GlassSegmentedAppearancePicker(selection: $theme.appearance)
+            }
+            .padding(12)
+            .background(cardBackground)
+            
+            // 3. Typography & Visual Section
+            VStack(alignment: .leading, spacing: 12) {
                 Text(loc.t("typography"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(ThemeManager.secondaryText)
@@ -318,12 +410,12 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
-                .padding(.top, 4)
+                .padding(.top, 2)
             }
             .padding(12)
             .background(cardBackground)
             
-            // 3. Data & Account Management
+            // 4. Data & Account Management
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Button(action: onClearCache) {
@@ -333,18 +425,18 @@ struct SettingsView: View {
                             Text(loc.t("clear_cache"))
                                 .font(.system(size: 13, weight: .medium))
                         }
-                        .foregroundColor(Color.white.opacity(0.92))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 7)
                         .background {
                             if theme.useLiquidGlass {
                                 if #available(macOS 26.0, *) {
                                     Capsule()
-                                        .fill(Color.white.opacity(0.08))
+                                        .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
                                         .glassEffect(.regular, in: Capsule())
                                         .overlay(
                                             Capsule()
-                                                .stroke(Color.white.opacity(0.20), lineWidth: 0.8)
+                                                .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.20), lineWidth: 0.8)
                                         )
                                 } else {
                                     defaultClearCacheBackground
@@ -373,11 +465,11 @@ struct SettingsView: View {
                             if theme.useLiquidGlass {
                                 if #available(macOS 26.0, *) {
                                     Capsule()
-                                        .fill(Color.red.opacity(0.25))
+                                        .fill(Color.red.opacity(0.35))
                                         .glassEffect(.regular.tint(Color.red.opacity(0.3)), in: Capsule())
                                         .overlay(
                                             Capsule()
-                                                .stroke(Color.red.opacity(0.45), lineWidth: 0.8)
+                                                .stroke(Color.red.opacity(0.55), lineWidth: 0.8)
                                         )
                                 } else {
                                     defaultSignOutBackground
@@ -405,26 +497,28 @@ struct SettingsView: View {
                 Spacer()
             }
         }
-        .padding(20)
-        .frame(width: 480, height: 420)
+        .padding(.horizontal, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
+        .frame(width: 480, height: 535)
         .background(ThemeManager.background)
     }
     
     private var defaultClearCacheBackground: some View {
         RoundedRectangle(cornerRadius: 6)
-            .fill(Color.white.opacity(0.08))
+            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
+                    .stroke(theme.isLight ? ThemeManager.border : Color.white.opacity(0.16), lineWidth: 0.8)
             )
     }
     
     private var defaultSignOutBackground: some View {
         RoundedRectangle(cornerRadius: 6)
-            .fill(Color.red.opacity(0.22))
+            .fill(Color.red.opacity(0.30))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.red.opacity(0.40), lineWidth: 0.8)
+                    .stroke(Color.red.opacity(0.48), lineWidth: 0.8)
             )
     }
     
@@ -433,18 +527,18 @@ struct SettingsView: View {
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(0.04))
-                    .glassEffect(theme.useLiquidGlassTint ? .regular.tint(ThemeManager.accent.opacity(0.12)) : .regular, in: RoundedRectangle(cornerRadius: 12))
+                    .fill(theme.isLight ? Color.white.opacity(0.60) : Color.white.opacity(0.04))
+                    .glassEffect(theme.useLiquidGlassTint ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.08 : 0.12)) : .regular, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+                            .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.14), lineWidth: 0.8)
                     )
             } else {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(white: 0.10).opacity(0.60))
+                    .fill(theme.isLight ? ThemeManager.cardBackground : Color(white: 0.10).opacity(0.60))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                            .stroke(theme.isLight ? ThemeManager.border : Color.white.opacity(0.12), lineWidth: 0.8)
                     )
             }
         } else {

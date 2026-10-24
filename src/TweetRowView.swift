@@ -110,9 +110,9 @@ struct TweetRowView: View {
             
             // 3. Subtle Row Divider
             Divider()
-                .background(ThemeManager.border)
+                .background(ThemeManager.divider)
         }
-        .background(Color.black)
+        .background(ThemeManager.background)
     }
     
     private func metricItem(icon: String, count: Int) -> some View {

@@ -42,45 +42,50 @@ extension View {
 
 // MARK: - Tweet Skeleton Placeholder View
 struct TweetSkeletonRow: View {
+    @ObservedObject var theme = ThemeManager.shared
+    
     var body: some View {
+        let blockColor = theme.isLight ? Color.black.opacity(0.07) : Color(white: 0.13)
+        let subtleColor = theme.isLight ? Color.black.opacity(0.05) : Color(white: 0.10)
+        
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 // Avatar skeleton
                 Circle()
-                    .fill(Color(white: 0.12))
+                    .fill(blockColor)
                     .frame(width: 44, height: 44)
                 
                 VStack(alignment: .leading, spacing: 8) {
                     // Header skeleton
                     HStack(spacing: 8) {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(Color(white: 0.14))
+                            .fill(blockColor)
                             .frame(width: 100, height: 14)
                         
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(Color(white: 0.10))
+                            .fill(subtleColor)
                             .frame(width: 70, height: 14)
                     }
                     
                     // Text body lines skeleton
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(white: 0.13))
+                        .fill(blockColor)
                         .frame(maxWidth: .infinity)
                         .frame(height: 14)
                     
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(white: 0.13))
+                        .fill(blockColor)
                         .frame(maxWidth: .infinity)
                         .frame(height: 14)
                     
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(white: 0.10))
+                        .fill(subtleColor)
                         .frame(width: 180, height: 14)
                 }
             }
             
             Divider()
-                .background(ThemeManager.border)
+                .background(ThemeManager.divider)
                 .padding(.top, 4)
         }
         .padding(.horizontal, 16)

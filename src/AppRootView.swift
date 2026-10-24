@@ -43,14 +43,28 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
         if isLiquid {
             if #available(macOS 26.0, *) {
                 // Mode A: Native Liquid Glass (SwiftUI macOS 26+ native API)
-                // When tint is enabled: tints with theme accent; when disabled: pure clear transparent glass
                 let glassStyle: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(0.16)).interactive()
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
                     : .regular.interactive()
                 
                 content
+                    .background(
+                        shape.fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.20))
+                    )
                     .glassEffect(glassStyle, in: shape)
-                    .shadow(color: Color.black.opacity(0.35), radius: 14, x: 0, y: 5)
+                    .overlay(
+                        shape.stroke(
+                            theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.20),
+                            lineWidth: 0.75
+                        )
+                        .allowsHitTesting(false)
+                    )
+                    .shadow(
+                        color: Color.black.opacity(theme.isLight ? 0.08 : 0.35),
+                        radius: theme.isLight ? 10 : 14,
+                        x: 0,
+                        y: theme.isLight ? 3 : 5
+                    )
             } else {
                 fallbackFrostedGlass(content: content)
             }
@@ -65,8 +79,11 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
         content
             .background(
                 ZStack {
-                    VisualEffectBackground(material: .sidebar, blendingMode: .withinWindow)
-                    Color(white: 0.08).opacity(0.42)
+                    VisualEffectBackground(
+                        material: theme.isLight ? .headerView : .sidebar,
+                        blendingMode: .withinWindow
+                    )
+                    (theme.isLight ? Color.white.opacity(0.72) : Color(white: 0.08).opacity(0.42))
                 }
                 .clipShape(shape)
             )
@@ -74,7 +91,11 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 shape
                     .stroke(
                         LinearGradient(
-                            colors: [
+                            colors: theme.isLight ? [
+                                Color(hex: "#DED9CB").opacity(0.85),
+                                Color(hex: "#ECE8DC").opacity(0.60),
+                                Color.white.opacity(0.90)
+                            ] : [
                                 Color.white.opacity(0.24),
                                 Color.white.opacity(0.08),
                                 Color.white.opacity(0.16)
@@ -86,7 +107,12 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     )
                     .allowsHitTesting(false)
             )
-            .shadow(color: Color.black.opacity(0.35), radius: 14, x: 0, y: 5)
+            .shadow(
+                color: Color.black.opacity(theme.isLight ? 0.08 : 0.35),
+                radius: theme.isLight ? 10 : 14,
+                x: 0,
+                y: theme.isLight ? 3 : 5
+            )
     }
 }
 
@@ -187,17 +213,17 @@ private struct LiquidGlassCapsule: View {
                 HStack(spacing: 3) {
                     Image(systemName: "sidebar.left")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.88))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.85) : Color.white.opacity(0.88))
                     
                     if nav.showShortcutBadges {
                         Text("⌥`")
                             .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.85))
+                            .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.85))
                             .padding(.horizontal, 3.5)
                             .padding(.vertical, 1.5)
                             .background(
                                 RoundedRectangle(cornerRadius: 3.5)
-                                    .fill(Color.white.opacity(0.12))
+                                    .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
                             )
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
@@ -206,7 +232,7 @@ private struct LiquidGlassCapsule: View {
                 .padding(.horizontal, nav.showShortcutBadges ? 8 : 8)
                 .background(
                     Capsule()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                 )
                 .contentShape(Capsule())
             }
@@ -216,14 +242,14 @@ private struct LiquidGlassCapsule: View {
             
             // Subtle vertical divider
             Rectangle()
-                .fill(Color.white.opacity(0.18))
+                .fill(theme.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.18))
                 .frame(width: 1, height: 16)
                 .padding(.horizontal, 6)
             
             // 2. Center Content: Either the 3 Tabs OR the Inline Liquid Glass Search Field
             ZStack {
                 if !nav.isSearchActive {
-                    // Center Tabs: Home, Notifications, Messages
+                    // Center Tabs: Home, Notifications, Messages (Dynamic Width, No Truncation)
                     HStack(spacing: 3) {
                         ForEach(AppTab.allCases) { tab in
                             let isSelected = selection == tab && !nav.isSearchActive
@@ -238,23 +264,28 @@ private struct LiquidGlassCapsule: View {
                                         .font(.system(size: 12, weight: isSelected ? .bold : .medium))
                                     Text(tabTitle(tab))
                                         .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .layoutPriority(1)
                                     
                                     if nav.showShortcutBadges {
                                         Text(tabShortcut(tab))
                                             .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                                            .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                            .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.9) : (theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40)))
                                             .padding(.horizontal, 3.5)
                                             .padding(.vertical, 1.5)
                                             .background(
                                                 RoundedRectangle(cornerRadius: 3.5)
-                                                    .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                                    .fill(isSelected ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06)))
                                             )
                                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                                     }
                                 }
-                                .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.70))
+                                .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.68) : Color.white.opacity(0.70)))
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .layoutPriority(isSelected ? 2 : 1)
                                 .background {
                                     if isSelected {
                                         activeTabBackground
@@ -277,7 +308,7 @@ private struct LiquidGlassCapsule: View {
                         TextField(loc.t("search_placeholder"), text: $nav.searchQuery)
                             .textFieldStyle(PlainTextFieldStyle())
                             .font(.system(size: 12.5))
-                            .foregroundColor(.white)
+                            .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
                             .focused($isSearchFocused)
                             .onExitCommand {
                                 nav.toggleSearch()
@@ -289,19 +320,19 @@ private struct LiquidGlassCapsule: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 11))
-                                    .foregroundColor(Color.white.opacity(0.55))
+                                    .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
                             }
                             .buttonStyle(PlainButtonStyle())
                             .padding(.trailing, 8)
                         } else {
                             Text("esc")
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundColor(Color.white.opacity(0.40))
+                                .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
                                 .background(
                                     RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.white.opacity(0.08))
+                                        .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
                                 )
                                 .padding(.trailing, 8)
                         }
@@ -324,7 +355,7 @@ private struct LiquidGlassCapsule: View {
             
             // Subtle vertical divider
             Rectangle()
-                .fill(Color.white.opacity(0.18))
+                .fill(theme.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.18))
                 .frame(width: 1, height: 16)
                 .padding(.horizontal, 6)
             
@@ -335,17 +366,17 @@ private struct LiquidGlassCapsule: View {
                 HStack(spacing: 3) {
                     Image(systemName: nav.isSearchActive ? "xmark" : "magnifyingglass")
                         .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundColor(nav.isSearchActive ? ThemeManager.accent : Color.white.opacity(0.85))
+                        .foregroundColor(nav.isSearchActive ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.85) : Color.white.opacity(0.85)))
                     
                     if nav.showShortcutBadges {
                         Text("⌥S")
                             .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(nav.isSearchActive ? ThemeManager.accent : Color.white.opacity(0.85))
+                            .foregroundColor(nav.isSearchActive ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.85)))
                             .padding(.horizontal, 3.5)
                             .padding(.vertical, 1.5)
                             .background(
                                 RoundedRectangle(cornerRadius: 3.5)
-                                    .fill(nav.isSearchActive ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.12))
+                                    .fill(nav.isSearchActive ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12)))
                             )
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
@@ -354,9 +385,9 @@ private struct LiquidGlassCapsule: View {
                 .padding(.horizontal, nav.showShortcutBadges ? 8 : 8)
                 .background {
                     if nav.isSearchActive {
-                        Capsule().fill(Color.white.opacity(0.20))
+                        Capsule().fill(theme.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.20))
                     } else {
-                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     }
                 }
                 .contentShape(Capsule())
@@ -376,20 +407,23 @@ private struct LiquidGlassCapsule: View {
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
                 let glassStyle: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(0.18))
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.18))
                     : .regular
                 Capsule()
                     .fill(
                         theme.useLiquidGlassTint
-                            ? ThemeManager.accent.opacity(0.12)
-                            : Color.white.opacity(0.08)
+                            ? ThemeManager.accent.opacity(theme.isLight ? 0.10 : 0.12)
+                            : (theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
                     )
                     .glassEffect(glassStyle, in: Capsule())
                     .overlay(
                         Capsule()
                             .strokeBorder(
                                 LinearGradient(
-                                    colors: [
+                                    colors: theme.isLight ? [
+                                        Color.black.opacity(0.14),
+                                        Color.black.opacity(0.06)
+                                    ] : [
                                         Color.white.opacity(0.32),
                                         Color.white.opacity(0.10)
                                     ],
@@ -410,10 +444,10 @@ private struct LiquidGlassCapsule: View {
     
     private var fallbackSearchBackground: some View {
         Capsule()
-            .fill(Color.white.opacity(0.09))
+            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.09))
             .overlay(
                 Capsule()
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.75)
+                    .strokeBorder(theme.isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.18), lineWidth: 0.75)
                     .allowsHitTesting(false)
             )
     }
@@ -422,12 +456,12 @@ private struct LiquidGlassCapsule: View {
     private var activeTabBackground: some View {
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
-                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : Color.white
+                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
                 let tabGlass: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(0.20))
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.20))
                     : .regular
                 Capsule()
-                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? 0.24 : 0.16))
+                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.24) : (theme.isLight ? 0.08 : 0.16)))
                     .glassEffect(tabGlass, in: Capsule())
                     .matchedGeometryEffect(id: "capsule-active-tab", in: capsuleTabNamespace)
             } else {
@@ -440,10 +474,10 @@ private struct LiquidGlassCapsule: View {
     
     private var defaultActiveTabBackground: some View {
         Capsule()
-            .fill(ThemeManager.accent.opacity(0.28))
+            .fill(theme.isLight ? ThemeManager.accent.opacity(0.18) : ThemeManager.accent.opacity(0.28))
             .overlay(
                 Capsule()
-                    .stroke(Color.white.opacity(0.25), lineWidth: 0.7)
+                    .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.25), lineWidth: 0.7)
                     .allowsHitTesting(false)
             )
             .matchedGeometryEffect(id: "capsule-active-tab", in: capsuleTabNamespace)
@@ -478,6 +512,7 @@ private struct LiquidGlassSidebar: View {
     @Binding var isExpanded: Bool
     var onOpenSettings: () -> Void
     @ObservedObject var nav = NavigationManager.shared
+    @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @Namespace private var selectionNamespace
     
@@ -487,7 +522,7 @@ private struct LiquidGlassSidebar: View {
             HStack(alignment: .center) {
                 Text("MaX")
                     .font(.system(size: 16.5, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.92))
+                    .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
                 
                 Spacer()
                 
@@ -510,7 +545,7 @@ private struct LiquidGlassSidebar: View {
                                 .padding(.vertical, 1.5)
                                 .background(
                                     RoundedRectangle(cornerRadius: 3.5)
-                                        .fill(ThemeManager.accent.opacity(0.15))
+                                        .fill(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.15))
                                 )
                                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
                         }
@@ -519,7 +554,7 @@ private struct LiquidGlassSidebar: View {
                     .padding(.horizontal, nav.showShortcutBadges ? 6 : 6)
                     .background(
                         Capsule()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     )
                     .contentShape(Capsule())
                 }
@@ -541,24 +576,24 @@ private struct LiquidGlassSidebar: View {
                     HStack(spacing: 10) {
                         Image(systemName: tab.iconName)
                             .font(.system(size: 13.5, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.65))
+                            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
                             .frame(width: 20)
                         
-                        Text(tab.title)
+                        Text(tabTitle(tab))
                             .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                            .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.75))
+                            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.80) : Color.white.opacity(0.75)))
                         
                         Spacer()
                         
                         if nav.showShortcutBadges {
                             Text(tabShortcut(tab))
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.9) : (theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40)))
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1.5)
                                 .background(
                                     RoundedRectangle(cornerRadius: 3.5)
-                                        .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                        .fill(isSelected ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06)))
                                 )
                                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
                         }
@@ -583,23 +618,23 @@ private struct LiquidGlassSidebar: View {
                 HStack(spacing: 10) {
                     Image(systemName: "gearshape")
                         .font(.system(size: 12.5))
-                        .foregroundColor(Color.white.opacity(0.60))
+                        .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60))
                         .frame(width: 20)
-                    Text("Settings")
+                    Text(loc.t("settings"))
                         .font(.system(size: 12.5))
-                        .foregroundColor(Color.white.opacity(0.70))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.85) : Color.white.opacity(0.70))
                     
                     Spacer()
                     
                     if nav.showShortcutBadges {
                         Text("⌘,")
                             .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.40))
+                            .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1.5)
                             .background(
                                 RoundedRectangle(cornerRadius: 3.5)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
                             )
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
@@ -608,7 +643,7 @@ private struct LiquidGlassSidebar: View {
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.04))
+                        .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.04))
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -625,6 +660,20 @@ private struct LiquidGlassSidebar: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
     }
     
+    private func tabTitle(_ tab: AppTab) -> String {
+        switch tab {
+        case .home:
+            let t = loc.t("tab_home")
+            return t.isEmpty ? "Home" : t
+        case .notifications:
+            let t = loc.t("tab_notifications")
+            return t.isEmpty ? "Notifications" : t
+        case .messages:
+            let t = loc.t("tab_messages")
+            return t.isEmpty ? "Messages" : t
+        }
+    }
+    
     private func tabShortcut(_ tab: AppTab) -> String {
         switch tab {
         case .home: return "⌥1"
@@ -637,12 +686,12 @@ private struct LiquidGlassSidebar: View {
     private var sidebarActiveTabBackground: some View {
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
-                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : Color.white
+                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
                 let tabGlass: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(0.22))
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.22))
                     : .regular
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? 0.20 : 0.14))
+                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
                     .glassEffect(tabGlass, in: .rect(cornerRadius: 10))
                     .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)
             } else {
@@ -655,10 +704,10 @@ private struct LiquidGlassSidebar: View {
     
     private var defaultSidebarActiveTabBackground: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(ThemeManager.accent.opacity(0.22))
+            .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.22))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(0.18), lineWidth: 0.6)
+                    .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.18), lineWidth: 0.6)
                     .allowsHitTesting(false)
             )
             .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)

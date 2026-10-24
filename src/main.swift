@@ -23,6 +23,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
         setupMainWindow()
+        NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("MaX_AppearanceDidChange"), object: nil)
+    }
+    
+    @objc private func appearanceDidChange() {
+        let bg = ThemeManager.windowBackgroundColor
+        mainWindow?.backgroundColor = bg
+        settingsWindow?.backgroundColor = bg
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -60,7 +67,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.title = "MaX"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor.black
+        window.backgroundColor = ThemeManager.windowBackgroundColor
         window.isMovableByWindowBackground = true
         window.minSize = NSSize(width: 500, height: 600)
         window.isReleasedWhenClosed = false
@@ -131,7 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         
-        let settingsRect = NSRect(x: 0, y: 0, width: 480, height: 440)
+        let settingsRect = NSRect(x: 0, y: 0, width: 480, height: 535)
         let win = NSWindow(
             contentRect: settingsRect,
             styleMask: [.titled, .closable],
@@ -141,7 +148,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         win.title = LocalizationManager.shared.t("settings")
         win.center()
         win.isReleasedWhenClosed = false
-        win.backgroundColor = NSColor.black
+        win.backgroundColor = ThemeManager.windowBackgroundColor
         
         let settingsView = SettingsView(
             onSignOut: { [weak self] in

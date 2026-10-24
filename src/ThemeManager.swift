@@ -6,6 +6,22 @@
 import SwiftUI
 import AppKit
 
+enum AppThemeAppearance: String, CaseIterable, Identifiable, Codable {
+    case dark = "dark"
+    case riceWhite = "riceWhite"
+    case system = "system"
+    
+    var id: String { rawValue }
+    
+    var displayNameKey: String {
+        switch self {
+        case .dark: return "theme_dark"
+        case .riceWhite: return "theme_rice_white"
+        case .system: return "theme_system"
+        }
+    }
+}
+
 enum AppFontType: String, CaseIterable, Identifiable, Codable {
     case system = "system"
     case mincho = "mincho"
@@ -113,6 +129,13 @@ extension Color {
 final class ThemeManager: ObservableObject {
     static let shared = ThemeManager()
     
+    @Published var appearance: AppThemeAppearance {
+        didSet {
+            UserDefaults.standard.set(appearance.rawValue, forKey: "MaX_Appearance")
+            applyAppearance()
+        }
+    }
+    
     @Published var fontType: AppFontType {
         didSet {
             UserDefaults.standard.set(fontType.rawValue, forKey: "MaX_FontType")
@@ -142,7 +165,39 @@ final class ThemeManager: ObservableObject {
         set { themeColor = newValue }
     }
     
+    var isLight: Bool {
+        switch appearance {
+        case .dark:
+            return false
+        case .riceWhite:
+            return true
+        case .system:
+            return NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+        }
+    }
+    
+    func applyAppearance() {
+        DispatchQueue.main.async {
+            switch self.appearance {
+            case .dark:
+                NSApp?.appearance = NSAppearance(named: .darkAqua)
+            case .riceWhite:
+                NSApp?.appearance = NSAppearance(named: .aqua)
+            case .system:
+                NSApp?.appearance = nil
+            }
+            NotificationCenter.default.post(name: NSNotification.Name("MaX_AppearanceDidChange"), object: nil)
+        }
+    }
+    
     private init() {
+        if let savedApp = UserDefaults.standard.string(forKey: "MaX_Appearance"),
+           let app = AppThemeAppearance(rawValue: savedApp) {
+            self.appearance = app
+        } else {
+            self.appearance = .dark
+        }
+        
         if let savedFont = UserDefaults.standard.string(forKey: "MaX_FontType"),
            let ft = AppFontType(rawValue: savedFont) {
             self.fontType = ft
@@ -153,13 +208,13 @@ final class ThemeManager: ObservableObject {
         if UserDefaults.standard.object(forKey: "MaX_UseLiquidGlass") != nil {
             self.useLiquidGlass = UserDefaults.standard.bool(forKey: "MaX_UseLiquidGlass")
         } else {
-            self.useLiquidGlass = false // Defaults to Liquid Glass Disabled mode as requested
+            self.useLiquidGlass = false
         }
         
         if UserDefaults.standard.object(forKey: "MaX_UseLiquidGlassTint") != nil {
             self.useLiquidGlassTint = UserDefaults.standard.bool(forKey: "MaX_UseLiquidGlassTint")
         } else {
-            self.useLiquidGlassTint = true // Defaults to Tint enabled when Liquid Glass is on
+            self.useLiquidGlassTint = true
         }
         
         if let savedColor = UserDefaults.standard.string(forKey: "MaX_ThemeColor") ?? UserDefaults.standard.string(forKey: "MaX_RefreshAnimationColor"),
@@ -168,15 +223,44 @@ final class ThemeManager: ObservableObject {
         } else {
             self.themeColor = .blue
         }
+        
+        applyAppearance()
     }
     
-    // OLED Dark Theme Colors
-    static let background = Color.black
-    static let cardBackground = Color(red: 0.05, green: 0.05, blue: 0.06)
-    static let border = Color(white: 0.14)
-    static let primaryText = Color.white
-    static let secondaryText = Color(white: 0.58)
-    static let tertiaryText = Color(white: 0.38)
+    // Dynamic Theme Colors: Dark (Obsidian / Pitch Black) vs Rice White (Warm Cream Paper)
+    static var background: Color {
+        shared.isLight ? Color(hex: "#F6F4EE") : Color.black
+    }
+    static var windowBackgroundColor: NSColor {
+        shared.isLight ? NSColor(calibratedRed: 0.965, green: 0.957, blue: 0.933, alpha: 1.0) : NSColor.black
+    }
+    static var cardBackground: Color {
+        shared.isLight ? Color(hex: "#FAF9F5") : Color(red: 0.05, green: 0.05, blue: 0.06)
+    }
+    static var border: Color {
+        shared.isLight ? Color(hex: "#E5E1D5") : Color(white: 0.14)
+    }
+    static var divider: Color {
+        shared.isLight ? Color(hex: "#ECE8DC") : Color.white.opacity(0.08)
+    }
+    static var primaryText: Color {
+        shared.isLight ? Color(hex: "#1A1A1C") : Color.white
+    }
+    static var secondaryText: Color {
+        shared.isLight ? Color(hex: "#666461") : Color(white: 0.58)
+    }
+    static var tertiaryText: Color {
+        shared.isLight ? Color(hex: "#9E9A93") : Color(white: 0.38)
+    }
+    static var subtleIcon: Color {
+        shared.isLight ? Color(hex: "#504E4B") : Color.white.opacity(0.70)
+    }
+    static var glassPillInactive: Color {
+        shared.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)
+    }
+    static var glassBorder: Color {
+        shared.isLight ? Color(hex: "#DED9CB").opacity(0.8) : Color.white.opacity(0.18)
+    }
     
     // Dynamic Accent Color matching current Theme Colour
     static var accent: Color {

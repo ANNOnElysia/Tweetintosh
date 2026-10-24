@@ -477,11 +477,39 @@ final class LocalizationManager: ObservableObject {
                 .traditionalChinese: "{actor} 在貼文中提及了你"
             ],
             "new_posts_available": [
-                .english: "↑ {count} new posts",
-                .japanese: "↑ {count}件の新しい投稿",
-                .korean: "↑ {count}개의 새 게시물",
-                .simplifiedChinese: "↑ {count} 条新推文",
-                .traditionalChinese: "↑ {count} 則新貼文"
+                .english: "{count} new posts",
+                .japanese: "{count}件の新しい投稿",
+                .korean: "{count}개의 새 게시물",
+                .simplifiedChinese: "{count} 条新推文",
+                .traditionalChinese: "{count} 則新貼文"
+            ],
+            "theme_appearance": [
+                .english: "Appearance",
+                .japanese: "外観テーマ",
+                .korean: "화면 테마",
+                .simplifiedChinese: "外观主题",
+                .traditionalChinese: "外觀主題"
+            ],
+            "theme_dark": [
+                .english: "Dark (Obsidian)",
+                .japanese: "ダーク (黒)",
+                .korean: "다크 (블랙)",
+                .simplifiedChinese: "深色 (纯黑)",
+                .traditionalChinese: "深色 (純黑)"
+            ],
+            "theme_rice_white": [
+                .english: "Rice White (Warm Light)",
+                .japanese: "生成り色 (温かみのあるライト)",
+                .korean: "미색 (웜 라이트)",
+                .simplifiedChinese: "米白 (温润浅色)",
+                .traditionalChinese: "米白 (溫潤淺色)"
+            ],
+            "theme_system": [
+                .english: "Follow System",
+                .japanese: "システムに追随",
+                .korean: "시스템 설정 따름",
+                .simplifiedChinese: "跟随系统",
+                .traditionalChinese: "跟隨系統"
             ]
         ]
         

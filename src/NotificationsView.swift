@@ -113,7 +113,7 @@ struct NotificationsView: View {
                             
                             // Subtle divider separating notification items (matching Home)
                             Rectangle()
-                                .fill(Color.white.opacity(0.08))
+                                .fill(ThemeManager.divider)
                                 .frame(height: 0.5)
                         }
                     }
@@ -198,17 +198,17 @@ private struct NotificationFilterCapsuleBar: View {
                             // Shortcut Indicator (⌥Q, ⌥W, ⌥E, ⌥R)
                             Text(filter.shortcutKey)
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.9) : (theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40)))
                                 .padding(.horizontal, 3.5)
                                 .padding(.vertical, 1.5)
                                 .background(
                                     RoundedRectangle(cornerRadius: 3.5)
-                                        .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                        .fill(isSelected ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06)))
                                 )
                                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
                         }
                     }
-                    .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.70))
+                    .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.68) : Color.white.opacity(0.70)))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background {
@@ -237,12 +237,12 @@ private struct NotificationFilterCapsuleBar: View {
     private var activeFilterBackground: some View {
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
-                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : Color.white
+                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
                 let tabGlass: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(0.20))
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.20))
                     : .regular
                 Capsule()
-                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? 0.22 : 0.14))
+                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.22) : (theme.isLight ? 0.08 : 0.14)))
                     .glassEffect(tabGlass, in: Capsule())
                     .matchedGeometryEffect(id: "notif-active-filter", in: filterTabNamespace)
             } else {
@@ -255,10 +255,10 @@ private struct NotificationFilterCapsuleBar: View {
     
     private var defaultActiveBackground: some View {
         Capsule()
-            .fill(ThemeManager.accent.opacity(0.26))
+            .fill(theme.isLight ? ThemeManager.accent.opacity(0.18) : ThemeManager.accent.opacity(0.26))
             .overlay(
                 Capsule()
-                    .stroke(Color.white.opacity(0.22), lineWidth: 0.7)
+                    .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.22), lineWidth: 0.7)
                     .allowsHitTesting(false)
             )
             .matchedGeometryEffect(id: "notif-active-filter", in: filterTabNamespace)
@@ -300,19 +300,19 @@ private struct NotificationRowView: View {
                             .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
                     } else {
                         Circle()
-                            .fill(Color(white: 0.16))
+                            .fill(theme.isLight ? Color.black.opacity(0.08) : Color(white: 0.16))
                             .frame(width: 26, height: 26)
                             .overlay(
                                 Image(systemName: "person.fill")
                                     .font(.system(size: 11))
-                                    .foregroundColor(Color.white.opacity(0.7))
+                                    .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.7))
                             )
                     }
                     
                     // Summary text
                     Text(item.localizedActionSummary)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.92))
+                        .foregroundColor(ThemeManager.primaryText)
                         .lineLimit(2)
                     
                     Spacer()
@@ -327,7 +327,7 @@ private struct NotificationRowView: View {
                 if let reply = item.replyBody {
                     Text(reply)
                         .font(theme.tweetFont(size: 13.5))
-                        .foregroundColor(Color.white.opacity(0.85))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.92) : Color.white.opacity(0.85))
                         .padding(.vertical, 2)
                 }
                 
@@ -335,17 +335,17 @@ private struct NotificationRowView: View {
                 if let targetSnippet = item.targetTweetSnippet {
                     Text(targetSnippet)
                         .font(theme.tweetFont(size: 12.5))
-                        .foregroundColor(Color.white.opacity(0.60))
+                        .foregroundColor(ThemeManager.secondaryText)
                         .lineLimit(2)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.white.opacity(0.04))
+                                .fill(ThemeManager.cardBackground)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.white.opacity(0.08), lineWidth: 0.6)
+                                        .stroke(ThemeManager.border, lineWidth: 0.6)
                                 )
                         )
                 }

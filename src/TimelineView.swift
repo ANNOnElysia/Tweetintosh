@@ -129,7 +129,7 @@ struct NewPostsFloatingPill: View {
             .background(
                 Capsule()
                     .fill(ThemeManager.accent.opacity(0.92))
-                    .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
+                    .shadow(color: Color.black.opacity(theme.isLight ? 0.15 : 0.35), radius: 8, x: 0, y: 4)
                     .overlay(
                         Capsule()
                             .stroke(Color.white.opacity(0.35), lineWidth: 0.8)
@@ -636,17 +636,17 @@ private struct HomeFeedCapsuleBar: View {
                             // Shortcut Indicator (⌥Q, ⌥W)
                             Text(feed.shortcutLetter)
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.85) : Color.white.opacity(0.40))
+                                .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.9) : (theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40)))
                                 .padding(.horizontal, 3.5)
                                 .padding(.vertical, 1.5)
                                 .background(
                                     RoundedRectangle(cornerRadius: 3.5)
-                                        .fill(isSelected ? ThemeManager.accent.opacity(0.16) : Color.white.opacity(0.06))
+                                        .fill(isSelected ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06)))
                                 )
                                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
                         }
                     }
-                    .foregroundColor(isSelected ? ThemeManager.accent : Color.white.opacity(0.70))
+                    .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.68) : Color.white.opacity(0.70)))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background {
@@ -675,12 +675,12 @@ private struct HomeFeedCapsuleBar: View {
     private var activeFeedBackground: some View {
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
-                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : Color.white
+                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
                 let tabGlass: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(0.20))
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.20))
                     : .regular
                 Capsule()
-                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? 0.22 : 0.14))
+                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.22) : (theme.isLight ? 0.08 : 0.14)))
                     .glassEffect(tabGlass, in: Capsule())
                     .matchedGeometryEffect(id: "home-active-feed", in: feedTabNamespace)
             } else {
@@ -693,12 +693,12 @@ private struct HomeFeedCapsuleBar: View {
     
     private var defaultActiveBackground: some View {
         Capsule()
-            .fill(ThemeManager.accent.opacity(0.26))
+            .fill(theme.isLight ? ThemeManager.accent.opacity(0.18) : ThemeManager.accent.opacity(0.26))
             .overlay(
                 Capsule()
-                    .strokeBorder(ThemeManager.accent.opacity(0.50), lineWidth: 0.8)
+                    .strokeBorder(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.50), lineWidth: 0.8)
             )
-            .shadow(color: ThemeManager.accent.opacity(0.25), radius: 6, x: 0, y: 2)
+            .shadow(color: ThemeManager.accent.opacity(theme.isLight ? 0.15 : 0.25), radius: 6, x: 0, y: 2)
             .matchedGeometryEffect(id: "home-active-feed", in: feedTabNamespace)
     }
 }
