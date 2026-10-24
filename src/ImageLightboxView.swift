@@ -6,6 +6,42 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Media Frame Registry (Tracks thumbnail coordinates in AppWindow space)
+final class MediaFrameRegistry {
+    static let shared = MediaFrameRegistry()
+    private var frames: [String: CGRect] = [:]
+    private let lock = NSLock()
+    
+    private init() {}
+    
+    func register(key: String, frame: CGRect) {
+        guard frame.width > 5, frame.height > 5 else { return }
+        lock.lock()
+        frames[key] = frame
+        lock.unlock()
+    }
+    
+    func frame(for key: String) -> CGRect? {
+        lock.lock()
+        defer { lock.unlock() }
+        return frames[key]
+    }
+    
+    func clear() {
+        lock.lock()
+        frames.removeAll()
+        lock.unlock()
+    }
+}
+
+// MARK: - Preference Key for Tracking Media View Geometry
+struct MediaFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
 // MARK: - Lightbox State Manager
 final class LightboxManager: ObservableObject {
     static let shared = LightboxManager()
@@ -33,6 +69,28 @@ final class LightboxManager: ObservableObject {
         return mediaList[currentIndex]
     }
     
+    var currentSourceRect: CGRect {
+        if let media = currentMedia {
+            if let r = MediaFrameRegistry.shared.frame(for: media.mediaUrl), r != .zero {
+                return r
+            }
+            if let r = MediaFrameRegistry.shared.frame(for: media.id), r != .zero {
+                return r
+            }
+        }
+        if currentIndex == initialIndex && sourceRect != .zero {
+            return sourceRect
+        }
+        if sourceRect != .zero && currentIndex >= 0 && currentIndex < mediaList.count {
+            let diff = CGFloat(currentIndex - initialIndex)
+            let spacing: CGFloat = (mediaList.count == 2) ? 8.0 : 10.0
+            let cardW = sourceRect.width
+            let estimatedX = sourceRect.origin.x + diff * (cardW + spacing)
+            return CGRect(x: estimatedX, y: sourceRect.origin.y, width: cardW, height: sourceRect.height)
+        }
+        return .zero
+    }
+    
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
     private var magnifyMonitor: Any?
@@ -48,6 +106,23 @@ final class LightboxManager: ObservableObject {
         self.currentTweet = tweet
         self.isAnimatingOut = false
         self.isZoomExpanded = false
+        
+        // Register initial frame and pre-seed adjacent items if not already registered
+        if sourceRect != .zero {
+            MediaFrameRegistry.shared.register(key: mediaList[initialIndex].mediaUrl, frame: sourceRect)
+            MediaFrameRegistry.shared.register(key: mediaList[initialIndex].id, frame: sourceRect)
+            
+            let spacing: CGFloat = (mediaList.count == 2) ? 8.0 : 10.0
+            let cardW = sourceRect.width
+            for (i, m) in mediaList.enumerated() {
+                if MediaFrameRegistry.shared.frame(for: m.mediaUrl) == nil {
+                    let offset = CGFloat(i - initialIndex) * (cardW + spacing)
+                    let frame = CGRect(x: sourceRect.origin.x + offset, y: sourceRect.origin.y, width: cardW, height: sourceRect.height)
+                    MediaFrameRegistry.shared.register(key: m.mediaUrl, frame: frame)
+                    MediaFrameRegistry.shared.register(key: m.id, frame: frame)
+                }
+            }
+        }
         
         // Ensure all gesture and transform states are cleanly reset to default
         resetTransforms()
@@ -272,16 +347,17 @@ struct ImageLightboxOverlay: View {
                     }
                 }()
                 
-                let hasSourceRect = manager.sourceRect != .zero && (manager.currentIndex == manager.initialIndex)
+                let currentSourceRect = manager.currentSourceRect
+                let hasSourceRect = currentSourceRect != .zero
                 
                 // Exact target width & height: matches thumbnail precisely when collapsed!
-                let targetWidth: CGFloat = manager.isZoomExpanded ? expandedSize.width : (hasSourceRect ? manager.sourceRect.width : expandedSize.width * 0.8)
-                let targetHeight: CGFloat = manager.isZoomExpanded ? expandedSize.height : (hasSourceRect ? manager.sourceRect.height : expandedSize.height * 0.8)
+                let targetWidth: CGFloat = manager.isZoomExpanded ? expandedSize.width : (hasSourceRect ? currentSourceRect.width : expandedSize.width * 0.8)
+                let targetHeight: CGFloat = manager.isZoomExpanded ? expandedSize.height : (hasSourceRect ? currentSourceRect.height : expandedSize.height * 0.8)
                 
                 // Exact target offset: calculates distance from windowFrame center to sourceRect center in "AppWindow" coordinate space
                 // Using windowFrame.midX and windowFrame.midY completely accounts for window safe area insets (e.g. titlebar height)
-                let targetOffsetX: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midX - windowFrame.midX) : 0)
-                let targetOffsetY: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midY - windowFrame.midY) : 0)
+                let targetOffsetX: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (currentSourceRect.midX - windowFrame.midX) : 0)
+                let targetOffsetY: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (currentSourceRect.midY - windowFrame.midY) : 0)
                 
                 let targetCornerRadius: CGFloat = manager.isZoomExpanded ? 8 : 16
                 let targetBorderOpacity: Double = manager.isZoomExpanded ? 0.0 : 1.0

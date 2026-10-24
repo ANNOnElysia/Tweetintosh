@@ -198,7 +198,7 @@ struct TweetDetailView: View {
                     state.isHoveredBack = h
                 }
             }
-            .help(loc.t("nav_back"))
+            .help("\(loc.t("nav_back")) (Esc / ←)")
             
             Spacer()
             
@@ -266,6 +266,7 @@ struct TweetDetailView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .onHover { h in state.isHoveredBack = h }
+            .help("\(loc.t("nav_back")) (Esc / ←)")
             
             Spacer()
             

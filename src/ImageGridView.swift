@@ -196,6 +196,11 @@ struct ImageGridView: View {
             }
         }
         .padding(.top, 4)
+        .onPreferenceChange(MediaFramePreferenceKey.self) { dict in
+            for (key, rect) in dict {
+                MediaFrameRegistry.shared.register(key: key, frame: rect)
+            }
+        }
     }
     
     // MARK: - 1. Single Image (Exact Proportions based on Apple Hardware Physical Profile)
@@ -220,11 +225,13 @@ struct ImageGridView: View {
         .contentShape(Rectangle())
         .overlay(
             GeometryReader { proxy in
+                let rect = proxy.frame(in: .named("AppWindow"))
                 Button(action: {
                     if media.isVideo, let tweet = tweet {
                         VideoLightboxManager.shared.present(tweet: tweet, media: media)
                     } else {
-                        let rect = proxy.frame(in: .named("AppWindow"))
+                        MediaFrameRegistry.shared.register(key: media.mediaUrl, frame: rect)
+                        MediaFrameRegistry.shared.register(key: media.id, frame: rect)
                         LightboxManager.shared.present(
                             mediaList: [media],
                             initialIndex: 0,
@@ -238,6 +245,7 @@ struct ImageGridView: View {
                 }
                 .buttonStyle(.plain)
                 .mediaContextMenu(media: media, tweet: tweet)
+                .preference(key: MediaFramePreferenceKey.self, value: [media.mediaUrl: rect, media.id: rect])
             }
         )
         .mediaContextMenu(media: media, tweet: tweet)
@@ -307,11 +315,13 @@ struct ImageGridView: View {
         .contentShape(Rectangle())
         .overlay(
             GeometryReader { proxy in
+                let rect = proxy.frame(in: .named("AppWindow"))
                 Button(action: {
                     if items[0].isVideo, let tweet = tweet {
                         VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
                     } else {
-                        let rect = proxy.frame(in: .named("AppWindow"))
+                        MediaFrameRegistry.shared.register(key: items[0].mediaUrl, frame: rect)
+                        MediaFrameRegistry.shared.register(key: items[0].id, frame: rect)
                         LightboxManager.shared.present(mediaList: items, initialIndex: 0, sourceRect: rect, tweet: tweet)
                     }
                 }) {
@@ -320,6 +330,7 @@ struct ImageGridView: View {
                 }
                 .buttonStyle(.plain)
                 .mediaContextMenu(media: items[0], tweet: tweet)
+                .preference(key: MediaFramePreferenceKey.self, value: [items[0].mediaUrl: rect, items[0].id: rect])
             }
         )
         .mediaContextMenu(media: items[0], tweet: tweet)
@@ -341,11 +352,13 @@ struct ImageGridView: View {
         .contentShape(Rectangle())
         .overlay(
             GeometryReader { proxy in
+                let rect = proxy.frame(in: .named("AppWindow"))
                 Button(action: {
                     if items[1].isVideo, let tweet = tweet {
                         VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
                     } else {
-                        let rect = proxy.frame(in: .named("AppWindow"))
+                        MediaFrameRegistry.shared.register(key: items[1].mediaUrl, frame: rect)
+                        MediaFrameRegistry.shared.register(key: items[1].id, frame: rect)
                         LightboxManager.shared.present(mediaList: items, initialIndex: 1, sourceRect: rect, tweet: tweet)
                     }
                 }) {
@@ -354,6 +367,7 @@ struct ImageGridView: View {
                 }
                 .buttonStyle(.plain)
                 .mediaContextMenu(media: items[1], tweet: tweet)
+                .preference(key: MediaFramePreferenceKey.self, value: [items[1].mediaUrl: rect, items[1].id: rect])
             }
         )
         .mediaContextMenu(media: items[1], tweet: tweet)
@@ -399,11 +413,13 @@ struct ImageGridView: View {
                     .contentShape(Rectangle())
                     .overlay(
                         GeometryReader { proxy in
+                            let rect = proxy.frame(in: .named("AppWindow"))
                             Button(action: {
                                 if media.isVideo, let tweet = tweet {
                                     VideoLightboxManager.shared.present(tweet: tweet, media: media)
                                 } else {
-                                    let rect = proxy.frame(in: .named("AppWindow"))
+                                    MediaFrameRegistry.shared.register(key: media.mediaUrl, frame: rect)
+                                    MediaFrameRegistry.shared.register(key: media.id, frame: rect)
                                     LightboxManager.shared.present(mediaList: items, initialIndex: idx, sourceRect: rect, tweet: tweet)
                                 }
                             }) {
@@ -412,6 +428,7 @@ struct ImageGridView: View {
                             }
                             .buttonStyle(.plain)
                             .mediaContextMenu(media: media, tweet: tweet)
+                            .preference(key: MediaFramePreferenceKey.self, value: [media.mediaUrl: rect, media.id: rect])
                         }
                     )
                     .mediaContextMenu(media: media, tweet: tweet)

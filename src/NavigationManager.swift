@@ -191,6 +191,16 @@ final class NavigationManager: ObservableObject {
                     }
                 }
                 
+                // Left Arrow (keyCode 123) without modifiers -> Back from Tweet Detail
+                if !hasCmd && !hasOption && !hasCtrl && keyCode == 123 {
+                    if self.selectedTweetDetail != nil && !self.isShowingCompose && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented {
+                        if !self.isTextInputActive() {
+                            self.dismissTweetDetail()
+                            return nil
+                        }
+                    }
+                }
+                
                 // Command + N (keyCode 45) -> Global New Tweet Compose
                 if hasCmd && !hasOption && !hasCtrl && keyCode == 45 {
                     self.openComposer()
@@ -317,5 +327,16 @@ final class NavigationManager: ObservableObject {
                 }
             }
         }
+    }
+    
+    private func isTextInputActive() -> Bool {
+        guard let responder = NSApp.keyWindow?.firstResponder ?? NSApp.mainWindow?.firstResponder else { return false }
+        if let textView = responder as? NSTextView, textView.isEditable {
+            return true
+        }
+        if responder is NSTextField {
+            return true
+        }
+        return false
     }
 }
