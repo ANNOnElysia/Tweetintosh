@@ -150,7 +150,7 @@ final class TrackpadPullCoordinator {
     
     private var eventMonitor: Any?
     private var wheelReleaseTimer: Timer?
-    private let threshold: CGFloat = 52.0
+    private let threshold: CGFloat = 82.0
     private var activeOwner: String?
     
     var onPullProgress: ((CGFloat) -> Void)?
@@ -161,10 +161,10 @@ final class TrackpadPullCoordinator {
     var isRefreshing: Bool = false
     
     // Strict pull activation:
-    // Only when a two-finger downward pull begins (.began) while ALREADY at the very top (isAtTop == true && scrollingDeltaY > 0)
+    // Only when a two-finger downward pull begins (.began) while ALREADY at the very top
     // is a pull-to-refresh session activated.
     // If the scroll began while scrolled down (browsing content upward), isPullGestureActive remains false,
-    // so reaching the top during upward browsing will NEVER accidentally trigger pull-to-refresh.
+    // so reaching the top during upward browsing or momentum will NEVER accidentally trigger pull-to-refresh.
     private var isPullGestureActive: Bool = false
     private var accumulatedPull: CGFloat = 0.0
     private var hasTriggeredHaptic: Bool = false
@@ -201,16 +201,11 @@ final class TrackpadPullCoordinator {
             return rawDelta * 0.85
         }
         let p = max(0.0, currentPull / threshold)
-        // Damping factor:
-        // p = 0.0 (start, line extends from left): factor = 0.68
-        // p = 0.5 (middle, approaching loading word): factor = 0.43
-        // p = 1.0 (loading word cursive drawing): factor = 0.18
-        // p > 1.0 (over threshold): heavy resistance factor <= 0.04
         let factor: CGFloat
         if p <= 1.0 {
-            factor = 0.68 - 0.50 * (p * p)
+            factor = 0.65 - 0.48 * (p * p)
         } else {
-            factor = max(0.03, 0.18 / (1.0 + (p - 1.0) * 3.5))
+            factor = max(0.03, 0.17 / (1.0 + (p - 1.0) * 3.5))
         }
         return rawDelta * factor
     }
@@ -222,9 +217,9 @@ final class TrackpadPullCoordinator {
         let phase = event.phase
         let momentumPhase = event.momentumPhase
         
-        // 1. Gesture Began: strictly check if fingers touched while ALREADY at the top with downward swipe
+        // 1. Gesture Began: strictly check if touch began while ALREADY resting at the top
         if phase == .began {
-            if isAtTop && event.scrollingDeltaY > 0 {
+            if isAtTop {
                 isPullGestureActive = true
                 accumulatedPull = 0
                 hasTriggeredHaptic = false
@@ -240,6 +235,16 @@ final class TrackpadPullCoordinator {
         if phase == .changed {
             if isPullGestureActive && isAtTop {
                 let delta = event.scrollingDeltaY
+                // If scrolling down into content (delta < 0), abort pull gesture immediately to allow natural scrolling
+                if delta < -2.0 && accumulatedPull <= 0 {
+                    isPullGestureActive = false
+                    accumulatedPull = 0
+                    hasTriggeredHaptic = false
+                    onPullProgress?(0)
+                    onCancelPull?()
+                    return
+                }
+                
                 if delta > 0 || accumulatedPull > 0 {
                     let dampedDelta = Self.calculateDampedDelta(rawDelta: delta, currentPull: accumulatedPull, threshold: threshold)
                     accumulatedPull = max(0, accumulatedPull + dampedDelta)
@@ -271,8 +276,8 @@ final class TrackpadPullCoordinator {
             return
         }
         
-        // 3. Gesture Ended: only trigger refresh if this was an active top pull that reached threshold
-        if phase == .ended || momentumPhase == .ended {
+        // 3. Gesture Ended: only deliberate user gesture release triggers refresh (momentum NEVER triggers refresh)
+        if phase == .ended {
             if isPullGestureActive {
                 isPullGestureActive = false
                 if accumulatedPull >= threshold {
@@ -291,8 +296,8 @@ final class TrackpadPullCoordinator {
             return
         }
         
-        // 4. Gesture Cancelled
-        if phase == .cancelled || momentumPhase == .cancelled {
+        // 4. Gesture Cancelled or momentum ended without active touch
+        if phase == .cancelled || momentumPhase == .ended || momentumPhase == .cancelled {
             isPullGestureActive = false
             if accumulatedPull > 0 {
                 accumulatedPull = 0
@@ -307,7 +312,7 @@ final class TrackpadPullCoordinator {
         if phase.isEmpty && momentumPhase.isEmpty {
             if isAtTop && event.scrollingDeltaY > 0 {
                 let delta = event.scrollingDeltaY
-                let dampedDelta = Self.calculateDampedDelta(rawDelta: delta * 2.8, currentPull: accumulatedPull, threshold: threshold)
+                let dampedDelta = Self.calculateDampedDelta(rawDelta: delta * 0.9, currentPull: accumulatedPull, threshold: threshold)
                 accumulatedPull = max(0, accumulatedPull + dampedDelta)
                 if accumulatedPull >= threshold && !hasTriggeredHaptic {
                     hasTriggeredHaptic = true
@@ -316,7 +321,7 @@ final class TrackpadPullCoordinator {
                 onPullProgress?(accumulatedPull)
                 
                 wheelReleaseTimer?.invalidate()
-                let timer = Timer(timeInterval: 0.22, repeats: false) { [weak self] _ in
+                let timer = Timer(timeInterval: 0.28, repeats: false) { [weak self] _ in
                     guard let self = self else { return }
                     let didReachThreshold = self.accumulatedPull >= self.threshold
                     self.accumulatedPull = 0
@@ -378,7 +383,7 @@ struct MainTimelineView: View {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
                 DispatchQueue.main.async {
                     scrollState.pullDistance = distance
-                    scrollState.isPullThresholdExceeded = (distance >= 52.0)
+                    scrollState.isPullThresholdExceeded = (distance >= 82.0)
                 }
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
@@ -431,7 +436,7 @@ struct MainTimelineView: View {
                     
                     // Pull-to-Refresh SVG Dynamic Handwriting Indicator Area (Edge-to-Edge)
                     if viewModel.isRefreshing || scrollState.pullDistance > 2 {
-                        let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / 52.0)
+                        let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / 82.0)
                         let targetH: CGFloat = viewModel.isRefreshing ? 52 : min(52, max(0, scrollState.pullDistance))
                         let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance) / 10.0))
                         
@@ -466,47 +471,6 @@ struct MainTimelineView: View {
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
                 handlePullOffset(offset)
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 4, coordinateSpace: .local)
-                    .onChanged { val in
-                        guard !viewModel.isRefreshing, scrollState.isAtTop, val.translation.height > 0 else { return }
-                        let rawHeight = val.translation.height
-                        let threshold: CGFloat = 52.0
-                        let dist: CGFloat
-                        if rawHeight <= 60 {
-                            dist = rawHeight * 0.62 - (rawHeight * rawHeight) * 0.0025
-                        } else {
-                            dist = 28.2 + (rawHeight - 60) * 0.22
-                        }
-                        scrollState.pullDistance = max(0, dist)
-                        if dist >= threshold {
-                            if !scrollState.hasTriggeredHaptic {
-                                scrollState.hasTriggeredHaptic = true
-                                NSHapticFeedbackManager.defaultPerformer.perform(
-                                    .alignment,
-                                    performanceTime: .now
-                                )
-                            }
-                        } else if dist < threshold && scrollState.hasTriggeredHaptic {
-                            scrollState.hasTriggeredHaptic = false
-                        }
-                    }
-                    .onEnded { val in
-                        guard !viewModel.isRefreshing, scrollState.isAtTop else { return }
-                        if scrollState.pullDistance >= 52.0 {
-                            scrollState.hasTriggeredHaptic = false
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                scrollState.pullDistance = 0
-                            }
-                            viewModel.refresh(silently: false, isUserInitiated: true)
-                        } else {
-                            scrollState.hasTriggeredHaptic = false
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                                scrollState.pullDistance = 0
-                            }
-                        }
-                    }
-            )
         }
     }
     

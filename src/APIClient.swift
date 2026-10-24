@@ -446,6 +446,17 @@ final class APIClient {
         let isBookmarked = (legacy["bookmarked"] as? Bool) ?? ((legacy["bookmarked"] as? NSNumber)?.boolValue ?? false)
         let bookmarkCount = (legacy["bookmark_count"] as? Int) ?? 0
         
+        // Impression / View Count extraction (Twitter GraphQL result["views"] or legacy["ext_views"])
+        var viewCount: Int? = nil
+        let viewsDict = (result["views"] as? [String: Any]) ?? (legacy["ext_views"] as? [String: Any]) ?? (result["ext_views"] as? [String: Any])
+        if let countStr = viewsDict?["count"] as? String, let c = Int(countStr) {
+            viewCount = c
+        } else if let countInt = viewsDict?["count"] as? Int {
+            viewCount = countInt
+        } else if let countNum = viewsDict?["count"] as? NSNumber {
+            viewCount = countNum.intValue
+        }
+        
         // Quoted tweet extraction
         var quotedTweet: Tweet? = nil
         if parseQuoted,
@@ -472,6 +483,7 @@ final class APIClient {
             isRetweeted: isRetweeted,
             isBookmarked: isBookmarked,
             bookmarkCount: bookmarkCount,
+            viewCount: viewCount,
             quotedTweet: quotedTweet.map { QuotedTweetBox(tweet: $0) },
             inReplyToScreenName: inReplyToScreenName,
             inReplyToStatusId: inReplyToStatusId
@@ -981,6 +993,15 @@ final class APIClient {
         let isBookmarked = (tweetObj["bookmarked"] as? Bool) ?? ((tweetObj["bookmarked"] as? NSNumber)?.boolValue ?? false)
         let bookmarkCount = (tweetObj["bookmark_count"] as? Int) ?? 0
         
+        var viewCount: Int? = nil
+        if let extViews = tweetObj["ext_views"] as? [String: Any] {
+            if let countStr = extViews["count"] as? String, let c = Int(countStr) {
+                viewCount = c
+            } else if let countInt = extViews["count"] as? Int {
+                viewCount = countInt
+            }
+        }
+        
         let inReplyToScreenName = tweetObj["in_reply_to_screen_name"] as? String
         let inReplyToStatusId = (tweetObj["in_reply_to_status_id_str"] as? String) ?? (tweetObj["in_reply_to_status_id"] as? NSNumber)?.stringValue
         
@@ -999,6 +1020,7 @@ final class APIClient {
             isRetweeted: isRetweeted,
             isBookmarked: isBookmarked,
             bookmarkCount: bookmarkCount,
+            viewCount: viewCount,
             quotedTweet: nil,
             inReplyToScreenName: inReplyToScreenName,
             inReplyToStatusId: inReplyToStatusId

@@ -115,6 +115,7 @@ struct Tweet: Codable, Hashable, Identifiable {
     var isRetweeted: Bool = false
     var isBookmarked: Bool = false
     var bookmarkCount: Int = 0
+    var viewCount: Int? = nil
     var quotedTweet: QuotedTweetBox? = nil
     var inReplyToScreenName: String? = nil
     var inReplyToStatusId: String? = nil
@@ -128,7 +129,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         case id, text, createdAt, author, media
         case replyCount, retweetCount, favoriteCount
         case isRetweet, retweetedBy
-        case isFavorited, isRetweeted, isBookmarked, bookmarkCount
+        case isFavorited, isRetweeted, isBookmarked, bookmarkCount, viewCount
         case quotedTweet
         case inReplyToScreenName, inReplyToStatusId
         case isPromoted
@@ -149,6 +150,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         isRetweeted: Bool = false,
         isBookmarked: Bool = false,
         bookmarkCount: Int = 0,
+        viewCount: Int? = nil,
         quotedTweet: QuotedTweetBox? = nil,
         inReplyToScreenName: String? = nil,
         inReplyToStatusId: String? = nil,
@@ -168,6 +170,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         self.isRetweeted = isRetweeted
         self.isBookmarked = isBookmarked
         self.bookmarkCount = bookmarkCount
+        self.viewCount = viewCount
         self.quotedTweet = quotedTweet
         self.inReplyToScreenName = inReplyToScreenName
         self.inReplyToStatusId = inReplyToStatusId
@@ -190,6 +193,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         isRetweeted = try container.decodeIfPresent(Bool.self, forKey: .isRetweeted) ?? false
         isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
         bookmarkCount = try container.decodeIfPresent(Int.self, forKey: .bookmarkCount) ?? 0
+        viewCount = try container.decodeIfPresent(Int.self, forKey: .viewCount)
         quotedTweet = try container.decodeIfPresent(QuotedTweetBox.self, forKey: .quotedTweet)
         inReplyToScreenName = try container.decodeIfPresent(String.self, forKey: .inReplyToScreenName)
         inReplyToStatusId = try container.decodeIfPresent(String.self, forKey: .inReplyToStatusId)

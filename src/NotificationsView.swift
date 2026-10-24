@@ -130,28 +130,6 @@ struct NotificationsView: View {
                 TrackpadPullCoordinator.shared.isRefreshing = viewModel.isRefreshing
                 scrollState.isAtTop = isTop
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 4, coordinateSpace: .local)
-                    .onChanged { val in
-                        guard !viewModel.isRefreshing, scrollState.isAtTop, val.translation.height > 0 else { return }
-                        let rawHeight = val.translation.height
-                        let dist = rawHeight <= 60 ? rawHeight * 0.62 - (rawHeight * rawHeight) * 0.0025 : 28.2 + (rawHeight - 60) * 0.22
-                        scrollState.pullDistance = max(0, dist)
-                    }
-                    .onEnded { val in
-                        guard !viewModel.isRefreshing, scrollState.isAtTop else { return }
-                        if scrollState.pullDistance >= 52.0 {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                scrollState.pullDistance = 0
-                            }
-                            viewModel.refresh(silently: false)
-                        } else {
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                                scrollState.pullDistance = 0
-                            }
-                        }
-                    }
-            )
         }
     }
     

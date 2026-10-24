@@ -293,6 +293,7 @@ final class TimelineViewModel: ObservableObject {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             selectedFeed = feed
         }
+        updateActiveTweets()
         TimelineScrollCoordinator.shared.unreadCountAbove = pendingCount(for: feed)
         
         if tweets.isEmpty {
@@ -371,8 +372,11 @@ final class TimelineViewModel: ObservableObject {
                         )
                         self.prefetchMedia(for: payload.tweets)
                     } else if !newOnes.isEmpty {
-                        if isUserInitiated {
-                            // User intentionally pulled down to refresh: prepend new ones immediately!
+                        // Only prepend immediately if user explicitly requested a pull refresh AND is currently at the top of the feed
+                        let shouldPrependImmediately = isUserInitiated && TimelineScrollState.shared.isAtTop
+                        
+                        if shouldPrependImmediately {
+                            // User intentionally pulled down to refresh while at top: prepend new ones immediately!
                             var updated = self.currentFeedTweets(currentFeed)
                             updated.insert(contentsOf: newOnes, at: 0)
                             self.setFeedTweets(updated, for: currentFeed)
@@ -407,7 +411,7 @@ final class TimelineViewModel: ObservableObject {
                                 TimelineScrollCoordinator.shared.unreadCountAbove = 0
                             }
                         } else {
-                            // Auto-fetch / Background refresh:
+                            // Reading in progress or background refresh:
                             // NEVER disrupt the user's reading or push their current tweet down!
                             // Enqueue to pending buffer and show the clean floating pill!
                             self.enqueuePendingTweets(newOnes, for: currentFeed)

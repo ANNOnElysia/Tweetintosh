@@ -123,114 +123,129 @@ struct TweetRowView: View {
                 NavigationManager.shared.openTweetDetail(tweet)
             }
             
-            // 3. Interaction Metrics Bar (Reply, Repost, Like, Bookmark)
+            // 3. Interaction Metrics Bar: Impressions (Views) on Left, Actions on Right
             // Kept outside content onTapGesture to allow direct, uninhibited interaction with buttons & menus
-            HStack(spacing: 32) {
-                // 1. Reply
-                Button(action: { state.isShowingReplySheet = true }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "bubble.left")
-                            .font(.system(size: 12))
-                        if tweet.replyCount > 0 {
-                            Text(formatCount(tweet.replyCount))
-                                .font(.system(size: 12))
-                        }
-                    }
-                    .foregroundColor(state.isReplyHovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
-                    .contentShape(Rectangle())
+            HStack(alignment: .center) {
+                // Left: Impressions / Views Count
+                HStack(spacing: 5) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.system(size: 11.5))
+                    Text(formatCount(tweet.viewCount ?? 0))
+                        .font(.system(size: 11.5))
                 }
-                .buttonStyle(.plain)
-                .onHover { state.isReplyHovered = $0 }
-                .help(loc.t("reply"))
-                
-                // 2. Repost & Quote Menu
-                Menu {
-                    Button(action: {
-                        TimelineViewModel.shared.toggleRetweet(for: tweet)
-                    }) {
-                        Label(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
-                    }
-                    Button(action: {
-                        NavigationManager.shared.openComposer(quoting: tweet)
-                    }) {
-                        Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.2.squarepath")
-                            .font(.system(size: 12, weight: tweet.isRetweeted ? .bold : .regular))
-                        if tweet.retweetCount > 0 {
-                            Text(formatCount(tweet.retweetCount))
-                                .font(.system(size: 12, weight: tweet.isRetweeted ? .semibold : .regular))
-                        }
-                    }
-                    .foregroundColor(
-                        tweet.isRetweeted ? Color(red: 0.0, green: 0.73, blue: 0.49) :
-                        (state.isRepostHovered ? Color(red: 0.0, green: 0.73, blue: 0.49) : ThemeManager.secondaryText)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .onHover { state.isRepostHovered = $0 }
-                .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
-                
-                // 3. Like
-                Button(action: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
-                        state.likeScale = 1.35
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                            state.likeScale = 1.0
-                        }
-                    }
-                    TimelineViewModel.shared.toggleLike(for: tweet)
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: tweet.isFavorited ? "heart.fill" : "heart")
-                            .font(.system(size: 12))
-                            .scaleEffect(state.likeScale)
-                        if tweet.favoriteCount > 0 {
-                            Text(formatCount(tweet.favoriteCount))
-                                .font(.system(size: 12, weight: tweet.isFavorited ? .semibold : .regular))
-                        }
-                    }
-                    .foregroundColor(
-                        tweet.isFavorited ? Color(red: 0.976, green: 0.094, blue: 0.502) :
-                        (state.isLikeHovered ? Color(red: 0.976, green: 0.094, blue: 0.502) : ThemeManager.secondaryText)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { state.isLikeHovered = $0 }
-                .help(tweet.isFavorited ? loc.t("unlike") : loc.t("like"))
-                
-                // 4. Bookmark
-                Button(action: {
-                    TimelineViewModel.shared.toggleBookmark(for: tweet)
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: tweet.isBookmarked ? "bookmark.fill" : "bookmark")
-                            .font(.system(size: 12))
-                        if tweet.bookmarkCount > 0 {
-                            Text(formatCount(tweet.bookmarkCount))
-                                .font(.system(size: 12, weight: tweet.isBookmarked ? .semibold : .regular))
-                        }
-                    }
-                    .foregroundColor(
-                        tweet.isBookmarked ? Color(red: 0.114, green: 0.608, blue: 0.941) :
-                        (state.isBookmarkHovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { state.isBookmarkHovered = $0 }
-                .help(tweet.isBookmarked ? loc.t("remove_bookmark") : loc.t("bookmark"))
+                .foregroundColor(ThemeManager.secondaryText.opacity(0.85))
+                .help(loc.t("views"))
                 
                 Spacer()
+                
+                // Right: Interaction Metrics (Reply, Repost, Like, Bookmark)
+                HStack(spacing: 24) {
+                    // 1. Reply
+                    Button(action: { state.isShowingReplySheet = true }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "bubble.left")
+                                .font(.system(size: 12))
+                            if tweet.replyCount > 0 {
+                                Text(formatCount(tweet.replyCount))
+                                    .font(.system(size: 12))
+                            }
+                        }
+                        .foregroundColor(state.isReplyHovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { state.isReplyHovered = $0 }
+                    .help(loc.t("reply"))
+                    
+                    // 2. Repost & Quote Menu
+                    Menu {
+                        Button(action: {
+                            TimelineViewModel.shared.toggleRetweet(for: tweet)
+                        }) {
+                            Label(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
+                        }
+                        Button(action: {
+                            NavigationManager.shared.openComposer(quoting: tweet)
+                        }) {
+                            Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.2.squarepath")
+                                .font(.system(size: 12, weight: tweet.isRetweeted ? .bold : .regular))
+                            if tweet.retweetCount > 0 {
+                                Text(formatCount(tweet.retweetCount))
+                                    .font(.system(size: 12, weight: tweet.isRetweeted ? .semibold : .regular))
+                            }
+                        }
+                        .foregroundColor(
+                            tweet.isRetweeted ? Color(red: 0.0, green: 0.73, blue: 0.49) :
+                            (state.isRepostHovered ? Color(red: 0.0, green: 0.73, blue: 0.49) : ThemeManager.secondaryText)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .onHover { state.isRepostHovered = $0 }
+                    .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
+                    
+                    // 3. Like
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
+                            state.likeScale = 1.35
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                state.likeScale = 1.0
+                            }
+                        }
+                        TimelineViewModel.shared.toggleLike(for: tweet)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: tweet.isFavorited ? "heart.fill" : "heart")
+                                .font(.system(size: 12))
+                                .scaleEffect(state.likeScale)
+                            if tweet.favoriteCount > 0 {
+                                Text(formatCount(tweet.favoriteCount))
+                                    .font(.system(size: 12, weight: tweet.isFavorited ? .semibold : .regular))
+                            }
+                        }
+                        .foregroundColor(
+                            tweet.isFavorited ? Color(red: 0.976, green: 0.094, blue: 0.502) :
+                            (state.isLikeHovered ? Color(red: 0.976, green: 0.094, blue: 0.502) : ThemeManager.secondaryText)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { state.isLikeHovered = $0 }
+                    .help(tweet.isFavorited ? loc.t("unlike") : loc.t("like"))
+                    
+                    // 4. Bookmark
+                    Button(action: {
+                        TimelineViewModel.shared.toggleBookmark(for: tweet)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: tweet.isBookmarked ? "bookmark.fill" : "bookmark")
+                                .font(.system(size: 12))
+                            if tweet.bookmarkCount > 0 {
+                                Text(formatCount(tweet.bookmarkCount))
+                                    .font(.system(size: 12, weight: tweet.isBookmarked ? .semibold : .regular))
+                            }
+                        }
+                        .foregroundColor(
+                            tweet.isBookmarked ? Color(red: 0.114, green: 0.608, blue: 0.941) :
+                            (state.isBookmarkHovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { state.isBookmarkHovered = $0 }
+                    .help(tweet.isBookmarked ? loc.t("remove_bookmark") : loc.t("bookmark"))
+                }
             }
             .padding(.leading, 66) // Aligns with text column (16 horizontal padding + 40 avatar + 10 spacing)
+            .padding(.trailing, 20)
             .padding(.top, 8)
             .padding(.bottom, 12)
             

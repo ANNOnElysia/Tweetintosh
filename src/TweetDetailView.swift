@@ -377,12 +377,22 @@ struct TweetDetailView: View {
             }
             .padding(.top, 4)
             
-            // Metrics Counter Bar (Reposts, Likes, Bookmarks)
-            if viewModel.focalTweet.retweetCount > 0 || viewModel.focalTweet.favoriteCount > 0 || viewModel.focalTweet.bookmarkCount > 0 {
+            // Metrics Counter Bar (Views, Reposts, Likes, Bookmarks)
+            if viewModel.focalTweet.retweetCount > 0 || viewModel.focalTweet.favoriteCount > 0 || viewModel.focalTweet.bookmarkCount > 0 || (viewModel.focalTweet.viewCount ?? 0) > 0 {
                 Divider()
                     .background(ThemeManager.divider)
                 
                 HStack(spacing: 16) {
+                    if let views = viewModel.focalTweet.viewCount, views > 0 {
+                        HStack(spacing: 4) {
+                            Text(formatCount(views))
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(ThemeManager.primaryText)
+                            Text(loc.t("views"))
+                                .font(.system(size: 13))
+                                .foregroundColor(ThemeManager.secondaryText)
+                        }
+                    }
                     if viewModel.focalTweet.retweetCount > 0 {
                         HStack(spacing: 4) {
                             Text("\(viewModel.focalTweet.retweetCount)")
@@ -960,6 +970,15 @@ struct TweetDetailView: View {
     }
     
     // MARK: - Helpers
+    private func formatCount(_ n: Int) -> String {
+        if n >= 1_000_000 {
+            return String(format: "%.1fM", Double(n) / 1_000_000.0)
+        } else if n >= 1_000 {
+            return String(format: "%.1fK", Double(n) / 1_000.0)
+        }
+        return "\(n)"
+    }
+    
     private func formattedExactDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: loc.currentLanguage.rawValue)
