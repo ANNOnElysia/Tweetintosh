@@ -34,7 +34,7 @@ struct NotificationsView: View {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
                 DispatchQueue.main.async {
                     scrollState.pullDistance = distance
-                    scrollState.isPullThresholdExceeded = (distance >= 52.0)
+                    scrollState.isPullThresholdExceeded = (distance >= 65.0)
                 }
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
@@ -71,37 +71,9 @@ struct NotificationsView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    // Top Geometry anchor for pull offset tracking
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: ScrollOffsetPreferenceKey.self,
-                            value: proxy.frame(in: .named("notifScrollViewSpace")).minY
-                        )
-                    }
-                    .frame(height: 0)
-                    .id("notifTopAnchor")
-                    
                     // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule)
                     Color.clear
                         .frame(height: nav.sidebarExpanded ? 72 : 118)
-                    
-                    // Pull-to-Refresh Indicator
-                    if viewModel.isRefreshing || scrollState.pullDistance > 2 {
-                        let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / 52.0)
-                        let targetH: CGFloat = viewModel.isRefreshing ? 52 : min(52, max(0, scrollState.pullDistance))
-                        let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance) / 10.0))
-                        
-                        SVGRefreshIndicatorView(
-                            pullProgress: pullProg,
-                            isRefreshing: viewModel.isRefreshing,
-                            colorScheme: theme.themeColor
-                        )
-                        .frame(maxWidth: .infinity)
-                        .frame(height: targetH)
-                        .opacity(opac)
-                        .clipped()
-                        .transition(.opacity)
-                    }
                     
                     // Items List or Empty Placeholder
                     if viewModel.filteredItems.isEmpty {
@@ -122,13 +94,30 @@ struct NotificationsView: View {
                     Color.clear
                         .frame(height: 40)
                 }
+                .background(
+                    ScrollViewAccessor { sv in
+                        TrackpadPullCoordinator.shared.attachScrollView(sv)
+                    }
+                )
             }
             .coordinateSpace(name: "notifScrollViewSpace")
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
-                let isTop = (offset >= -2.0)
-                TrackpadPullCoordinator.shared.isAtTop = isTop
-                TrackpadPullCoordinator.shared.isRefreshing = viewModel.isRefreshing
-                scrollState.isAtTop = isTop
+            .overlay(alignment: .top) {
+                if viewModel.isRefreshing || scrollState.pullDistance > 2 {
+                    let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / 65.0)
+                    let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance) / 10.0))
+                    
+                    SVGRefreshIndicatorView(
+                        pullProgress: pullProg,
+                        isRefreshing: viewModel.isRefreshing,
+                        colorScheme: theme.themeColor
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .padding(.top, nav.sidebarExpanded ? 72 : 118)
+                    .opacity(opac)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                }
             }
         }
     }

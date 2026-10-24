@@ -149,8 +149,10 @@ final class TrackpadPullCoordinator {
     static let shared = TrackpadPullCoordinator()
     
     private var eventMonitor: Any?
+    private var boundsObserver: Any?
+    private weak var registeredScrollView: NSScrollView?
     private var wheelReleaseTimer: Timer?
-    private let threshold: CGFloat = 82.0
+    private let threshold: CGFloat = 65.0
     private var activeOwner: String?
     
     var onPullProgress: ((CGFloat) -> Void)?
@@ -160,14 +162,30 @@ final class TrackpadPullCoordinator {
     var isAtTop: Bool = true
     var isRefreshing: Bool = false
     
-    // Strict pull activation:
-    // Only when a two-finger downward pull begins (.began) while ALREADY at the very top
-    // is a pull-to-refresh session activated.
-    // If the scroll began while scrolled down (browsing content upward), isPullGestureActive remains false,
-    // so reaching the top during upward browsing or momentum will NEVER accidentally trigger pull-to-refresh.
-    private var isPullGestureActive: Bool = false
-    private var accumulatedPull: CGFloat = 0.0
+    private var currentOverscroll: CGFloat = 0.0
     private var hasTriggeredHaptic: Bool = false
+    
+    func attachScrollView(_ sv: NSScrollView) {
+        if registeredScrollView === sv { return }
+        registeredScrollView = sv
+        
+        sv.verticalScrollElasticity = .allowed
+        sv.contentView.postsBoundsChangedNotifications = true
+        
+        if let obs = boundsObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        
+        boundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: sv.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleBoundsChanged()
+        }
+        
+        handleBoundsChanged()
+    }
     
     func startMonitoring(owner: String = "default") {
         activeOwner = owner
@@ -186,89 +204,70 @@ final class TrackpadPullCoordinator {
                 NSEvent.removeMonitor(m)
                 eventMonitor = nil
             }
+            if let obs = boundsObserver {
+                NotificationCenter.default.removeObserver(obs)
+                boundsObserver = nil
+            }
+            registeredScrollView = nil
             wheelReleaseTimer?.invalidate()
             wheelReleaseTimer = nil
-            accumulatedPull = 0
-            isPullGestureActive = false
+            currentOverscroll = 0
             hasTriggeredHaptic = false
         }
     }
     
-    // Progressive Damping Curve (阻尼感递增：从一开始到加载条到loading部分阻力越来越大)
-    static func calculateDampedDelta(rawDelta: CGFloat, currentPull: CGFloat, threshold: CGFloat) -> CGFloat {
-        if rawDelta < 0 {
-            // Releasing/rolling back: responsive and smooth
-            return rawDelta * 0.85
+    private func handleBoundsChanged() {
+        guard let sv = registeredScrollView else { return }
+        let y = sv.contentView.bounds.origin.y
+        
+        // Exact 0ms top detection: y <= 0.5 means top tweet is at top of viewport
+        let atTop = (y <= 0.5)
+        self.isAtTop = atTop
+        TimelineScrollState.shared.isAtTop = atTop
+        if atTop {
+            TimelineScrollCoordinator.shared.unreadCountAbove = 0
         }
-        let p = max(0.0, currentPull / threshold)
-        let factor: CGFloat
-        if p <= 1.0 {
-            factor = 0.65 - 0.48 * (p * p)
+        
+        guard !isRefreshing else { return }
+        
+        // Native rubber-band overscroll (only physically negative when pulled down beyond the top)
+        if y < 0.0 {
+            let overscroll = -y
+            currentOverscroll = overscroll
+            onPullProgress?(overscroll)
+            
+            if overscroll >= threshold {
+                if !hasTriggeredHaptic {
+                    hasTriggeredHaptic = true
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                }
+            } else {
+                if hasTriggeredHaptic && overscroll < (threshold - 10.0) {
+                    hasTriggeredHaptic = false
+                }
+            }
         } else {
-            factor = max(0.03, 0.17 / (1.0 + (p - 1.0) * 3.5))
+            if currentOverscroll > 0 {
+                currentOverscroll = 0
+                hasTriggeredHaptic = false
+                onPullProgress?(0)
+            }
         }
-        return rawDelta * factor
     }
     
     private func handleScrollEvent(_ event: NSEvent) {
         guard !isRefreshing else { return }
         guard event.window == NSApp.mainWindow || event.window == nil else { return }
         
-        let phase = event.phase
-        let momentumPhase = event.momentumPhase
-        
-        // 1. Gesture Began: strictly check if touch began while ALREADY resting at the top
-        if phase == .began {
-            if isAtTop {
-                isPullGestureActive = true
-                accumulatedPull = 0
+        // When touch gesture finishes (user lifts two fingers from trackpad)
+        if event.phase == .ended {
+            if currentOverscroll >= threshold {
+                currentOverscroll = 0
                 hasTriggeredHaptic = false
-            } else {
-                isPullGestureActive = false
-                accumulatedPull = 0
-                hasTriggeredHaptic = false
-            }
-            return
-        }
-        
-        // 2. Gesture Changed: only process if the gesture was initiated at the top
-        if phase == .changed {
-            if isPullGestureActive && isAtTop {
-                let delta = event.scrollingDeltaY
-                // If scrolling down into content (delta < 0), abort pull gesture immediately to allow natural scrolling
-                if delta < -2.0 && accumulatedPull <= 0 {
-                    isPullGestureActive = false
-                    accumulatedPull = 0
-                    hasTriggeredHaptic = false
-                    onPullProgress?(0)
-                    onCancelPull?()
-                    return
-                }
-                
-                if delta > 0 || accumulatedPull > 0 {
-                    let dampedDelta = Self.calculateDampedDelta(rawDelta: delta, currentPull: accumulatedPull, threshold: threshold)
-                    accumulatedPull = max(0, accumulatedPull + dampedDelta)
-                    
-                    if accumulatedPull >= threshold {
-                        if !hasTriggeredHaptic {
-                            hasTriggeredHaptic = true
-                            NSHapticFeedbackManager.defaultPerformer.perform(
-                                .alignment,
-                                performanceTime: .now
-                            )
-                        }
-                    } else {
-                        if hasTriggeredHaptic {
-                            hasTriggeredHaptic = false
-                        }
-                    }
-                    
-                    onPullProgress?(accumulatedPull)
-                }
-            } else if !isAtTop && accumulatedPull > 0 {
-                // Moved away from top during pull -> abort immediately
-                isPullGestureActive = false
-                accumulatedPull = 0
+                onPullProgress?(0)
+                onTriggerRefresh?()
+            } else if currentOverscroll > 0 {
+                currentOverscroll = 0
                 hasTriggeredHaptic = false
                 onPullProgress?(0)
                 onCancelPull?()
@@ -276,60 +275,29 @@ final class TrackpadPullCoordinator {
             return
         }
         
-        // 3. Gesture Ended: only deliberate user gesture release triggers refresh (momentum NEVER triggers refresh)
-        if phase == .ended {
-            if isPullGestureActive {
-                isPullGestureActive = false
-                if accumulatedPull >= threshold {
-                    accumulatedPull = 0
-                    hasTriggeredHaptic = false
-                    onPullProgress?(0)
-                    onTriggerRefresh?()
-                } else if accumulatedPull > 0 {
-                    // Pull didn't reach the end -> rewind animation, do not execute refresh!
-                    accumulatedPull = 0
-                    hasTriggeredHaptic = false
-                    onPullProgress?(0)
-                    onCancelPull?()
-                }
-            }
+        if event.phase == .cancelled {
+            currentOverscroll = 0
+            hasTriggeredHaptic = false
+            onPullProgress?(0)
+            onCancelPull?()
             return
         }
         
-        // 4. Gesture Cancelled or momentum ended without active touch
-        if phase == .cancelled || momentumPhase == .ended || momentumPhase == .cancelled {
-            isPullGestureActive = false
-            if accumulatedPull > 0 {
-                accumulatedPull = 0
-                hasTriggeredHaptic = false
-                onPullProgress?(0)
-                onCancelPull?()
-            }
-            return
-        }
-        
-        // 5. Discrete Notched Mouse Wheel support (when phase is empty)
-        if phase.isEmpty && momentumPhase.isEmpty {
-            if isAtTop && event.scrollingDeltaY > 0 {
-                let delta = event.scrollingDeltaY
-                let dampedDelta = Self.calculateDampedDelta(rawDelta: delta * 0.9, currentPull: accumulatedPull, threshold: threshold)
-                accumulatedPull = max(0, accumulatedPull + dampedDelta)
-                if accumulatedPull >= threshold && !hasTriggeredHaptic {
-                    hasTriggeredHaptic = true
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-                }
-                onPullProgress?(accumulatedPull)
-                
+        // Discrete notched mouse wheel support (when phase is empty)
+        if event.phase.isEmpty && event.momentumPhase.isEmpty {
+            if currentOverscroll >= threshold {
                 wheelReleaseTimer?.invalidate()
-                let timer = Timer(timeInterval: 0.28, repeats: false) { [weak self] _ in
+                let timer = Timer(timeInterval: 0.25, repeats: false) { [weak self] _ in
                     guard let self = self else { return }
-                    let didReachThreshold = self.accumulatedPull >= self.threshold
-                    self.accumulatedPull = 0
-                    self.hasTriggeredHaptic = false
-                    self.onPullProgress?(0)
-                    if didReachThreshold {
+                    if self.currentOverscroll >= self.threshold {
+                        self.currentOverscroll = 0
+                        self.hasTriggeredHaptic = false
+                        self.onPullProgress?(0)
                         self.onTriggerRefresh?()
                     } else {
+                        self.currentOverscroll = 0
+                        self.hasTriggeredHaptic = false
+                        self.onPullProgress?(0)
                         self.onCancelPull?()
                     }
                 }
@@ -383,7 +351,7 @@ struct MainTimelineView: View {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
                 DispatchQueue.main.async {
                     scrollState.pullDistance = distance
-                    scrollState.isPullThresholdExceeded = (distance >= 82.0)
+                    scrollState.isPullThresholdExceeded = (distance >= 65.0)
                 }
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
@@ -420,37 +388,9 @@ struct MainTimelineView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    // Geometry anchor at very top for overscroll tracking
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: ScrollOffsetPreferenceKey.self,
-                            value: proxy.frame(in: .named("timelineScrollViewSpace")).minY
-                        )
-                    }
-                    .frame(height: 0)
-                    .id("timelineTopAnchor")
-                    
                     // Top subtle spacing under native navigation (capsule vs sidebar)
                     Color.clear
                         .frame(height: nav.sidebarExpanded ? 36 : 64)
-                    
-                    // Pull-to-Refresh SVG Dynamic Handwriting Indicator Area (Edge-to-Edge)
-                    if viewModel.isRefreshing || scrollState.pullDistance > 2 {
-                        let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / 82.0)
-                        let targetH: CGFloat = viewModel.isRefreshing ? 52 : min(52, max(0, scrollState.pullDistance))
-                        let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance) / 10.0))
-                        
-                        SVGRefreshIndicatorView(
-                            pullProgress: pullProg,
-                            isRefreshing: viewModel.isRefreshing,
-                            colorScheme: theme.themeColor
-                        )
-                        .frame(maxWidth: .infinity)
-                        .frame(height: targetH)
-                        .opacity(opac)
-                        .clipped()
-                        .transition(.opacity)
-                    }
                     
                     // Tweets List
                     ForEach(viewModel.tweets, id: \.id) { tweet in
@@ -464,23 +404,29 @@ struct MainTimelineView: View {
                 .background(
                     ScrollViewAccessor { sv in
                         TimelineScrollCoordinator.shared.registerScrollView(sv)
+                        TrackpadPullCoordinator.shared.attachScrollView(sv)
                     }
                 )
             }
             .coordinateSpace(name: "timelineScrollViewSpace")
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
-                handlePullOffset(offset)
+            .overlay(alignment: .top) {
+                if viewModel.isRefreshing || scrollState.pullDistance > 2 {
+                    let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / 65.0)
+                    let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance) / 10.0))
+                    
+                    SVGRefreshIndicatorView(
+                        pullProgress: pullProg,
+                        isRefreshing: viewModel.isRefreshing,
+                        colorScheme: theme.themeColor
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .padding(.top, nav.sidebarExpanded ? 36 : 64)
+                    .opacity(opac)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                }
             }
-        }
-    }
-    
-    private func handlePullOffset(_ offset: CGFloat) {
-        let isTop = (offset >= -2.0)
-        TrackpadPullCoordinator.shared.isAtTop = isTop
-        TrackpadPullCoordinator.shared.isRefreshing = viewModel.isRefreshing
-        scrollState.isAtTop = isTop
-        if isTop {
-            TimelineScrollCoordinator.shared.unreadCountAbove = 0
         }
     }
     
