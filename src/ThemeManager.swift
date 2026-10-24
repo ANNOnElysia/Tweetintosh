@@ -119,12 +119,6 @@ final class ThemeManager: ObservableObject {
         }
     }
     
-    @Published var enableShimmer: Bool {
-        didSet {
-            UserDefaults.standard.set(enableShimmer, forKey: "MaX_EnableShimmer")
-        }
-    }
-    
     @Published var useLiquidGlass: Bool {
         didSet {
             UserDefaults.standard.set(useLiquidGlass, forKey: "MaX_UseLiquidGlass")
@@ -154,12 +148,6 @@ final class ThemeManager: ObservableObject {
             self.fontType = ft
         } else {
             self.fontType = .system
-        }
-        
-        if UserDefaults.standard.object(forKey: "MaX_EnableShimmer") != nil {
-            self.enableShimmer = UserDefaults.standard.bool(forKey: "MaX_EnableShimmer")
-        } else {
-            self.enableShimmer = true
         }
         
         if UserDefaults.standard.object(forKey: "MaX_UseLiquidGlass") != nil {

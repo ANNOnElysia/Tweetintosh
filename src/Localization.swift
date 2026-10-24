@@ -40,7 +40,15 @@ final class LocalizationManager: ObservableObject {
            let lang = AppLanguage(rawValue: saved) {
             self.currentLanguage = lang
         } else {
-            self.currentLanguage = .english // Default language is English
+            // Intelligent System Locale Detection
+            let matched = Locale.preferredLanguages.compactMap { pref -> AppLanguage? in
+                if pref.hasPrefix("zh-Hans") || pref.hasPrefix("zh-CN") { return .simplifiedChinese }
+                if pref.hasPrefix("zh-Hant") || pref.hasPrefix("zh-TW") || pref.hasPrefix("zh-HK") { return .traditionalChinese }
+                if pref.hasPrefix("ja") { return .japanese }
+                if pref.hasPrefix("ko") { return .korean }
+                return nil
+            }.first
+            self.currentLanguage = matched ?? .simplifiedChinese
         }
     }
     
@@ -229,13 +237,6 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "日文明朝体 (Hiragino Mincho)",
                 .traditionalChinese: "日文明朝體 (Hiragino Mincho)"
             ],
-            "shimmer_effect": [
-                .english: "120Hz ProMotion Skeleton Shimmer",
-                .japanese: "120Hz 高速骨格シマー効果",
-                .korean: "120Hz 고속 스켈레톤 쉬머 효과",
-                .simplifiedChinese: "120Hz 高刷骨架屏微光扫光",
-                .traditionalChinese: "120Hz 高刷骨架屏微光掃光"
-            ],
             "clear_cache": [
                 .english: "Clear Local Cache",
                 .japanese: "ローカルキャッシュを消去",
@@ -375,6 +376,105 @@ final class LocalizationManager: ObservableObject {
                 .korean: "팔로잉",
                 .simplifiedChinese: "正在关注",
                 .traditionalChinese: "正在關注"
+            ],
+            // Notification Action Summaries (Likes, Follows, Reposts, Replies, Mentions)
+            "notif_liked_single": [
+                .english: "{actor} liked your post",
+                .japanese: "{actor}さんがあなたの投稿をいいねしました",
+                .korean: "{actor}님이 회원님의 게시물을 마음에 들어 합니다",
+                .simplifiedChinese: "{actor} 赞了你的推文",
+                .traditionalChinese: "{actor} 喜歡了你的貼文"
+            ],
+            "notif_liked_two": [
+                .english: "{actor1} and {actor2} liked your post",
+                .japanese: "{actor1}さんと{actor2}さんがあなたの投稿をいいねしました",
+                .korean: "{actor1}님과 {actor2}님이 회원님의 게시물을 마음에 들어 합니다",
+                .simplifiedChinese: "{actor1} 和 {actor2} 赞了你的推文",
+                .traditionalChinese: "{actor1} 和 {actor2} 喜歡了你的貼文"
+            ],
+            "notif_liked_many": [
+                .english: "{actor} and {count} others liked your post",
+                .japanese: "{actor}さんと他{count}人があなたの投稿をいいねしました",
+                .korean: "{actor}님 외 {count}명이 회원님의 게시물을 마음에 들어 합니다",
+                .simplifiedChinese: "{actor} 等 {count} 人赞了你的推文",
+                .traditionalChinese: "{actor} 等 {count} 人喜歡了你的貼文"
+            ],
+            "notif_followed_single": [
+                .english: "{actor} followed you",
+                .japanese: "{actor}さんにフォローされました",
+                .korean: "{actor}님이 회원님을 팔로우했습니다",
+                .simplifiedChinese: "{actor} 关注了你",
+                .traditionalChinese: "{actor} 關注了你"
+            ],
+            "notif_followed_two": [
+                .english: "{actor1} and {actor2} followed you",
+                .japanese: "{actor1}さんと{actor2}さんにフォローされました",
+                .korean: "{actor1}님과 {actor2}님이 회원님을 팔로우했습니다",
+                .simplifiedChinese: "{actor1} 和 {actor2} 关注了你",
+                .traditionalChinese: "{actor1} 和 {actor2} 關注了你"
+            ],
+            "notif_followed_many": [
+                .english: "{actor} and {count} others followed you",
+                .japanese: "{actor}さんと他{count}人にフォローされました",
+                .korean: "{actor}님 외 {count}명이 회원님을 팔로우했습니다",
+                .simplifiedChinese: "{actor} 等 {count} 人关注了你",
+                .traditionalChinese: "{actor} 等 {count} 人關注了你"
+            ],
+            "notif_reposted_single": [
+                .english: "{actor} reposted your post",
+                .japanese: "{actor}さんがあなたの投稿をリポストしました",
+                .korean: "{actor}님이 회원님의 게시물을 재게시했습니다",
+                .simplifiedChinese: "{actor} 转发了你的推文",
+                .traditionalChinese: "{actor} 轉發了你的貼文"
+            ],
+            "notif_reposted_two": [
+                .english: "{actor1} and {actor2} reposted your post",
+                .japanese: "{actor1}さんと{actor2}さんがあなたの投稿をリポストしました",
+                .korean: "{actor1}님과 {actor2}님이 회원님의 게시물을 재게시했습니다",
+                .simplifiedChinese: "{actor1} 和 {actor2} 转发了你的推文",
+                .traditionalChinese: "{actor1} 和 {actor2} 轉發了你的貼文"
+            ],
+            "notif_reposted_many": [
+                .english: "{actor} and {count} others reposted your post",
+                .japanese: "{actor}さんと他{count}人があなたの投稿をリポストしました",
+                .korean: "{actor}님 외 {count}명이 회원님의 게시물을 재게시했습니다",
+                .simplifiedChinese: "{actor} 等 {count} 人转发了你的推文",
+                .traditionalChinese: "{actor} 等 {count} 人轉發了你的貼文"
+            ],
+            "notif_replied_single": [
+                .english: "{actor} replied to your post",
+                .japanese: "{actor}さんがあなたの投稿に返信しました",
+                .korean: "{actor}님이 회원님의 게시물에 답글을 남겼습니다",
+                .simplifiedChinese: "{actor} 回复了你的推文",
+                .traditionalChinese: "{actor} 回覆了你的貼文"
+            ],
+            "notif_replied_two": [
+                .english: "{actor1} and {actor2} replied to your post",
+                .japanese: "{actor1}さんと{actor2}さんがあなたの投稿に返信しました",
+                .korean: "{actor1}님과 {actor2}님이 회원님의 게시물에 답글을 남겼습니다",
+                .simplifiedChinese: "{actor1} 和 {actor2} 回复了你的推文",
+                .traditionalChinese: "{actor1} 和 {actor2} 回覆了你的貼文"
+            ],
+            "notif_replied_many": [
+                .english: "{actor} and {count} others replied to your post",
+                .japanese: "{actor}さんと他{count}人があなたの投稿に返信しました",
+                .korean: "{actor}님 외 {count}명이 회원님의 게시물에 답글을 남겼습니다",
+                .simplifiedChinese: "{actor} 等 {count} 人回复了你的推文",
+                .traditionalChinese: "{actor} 等 {count} 人回覆了你的貼文"
+            ],
+            "notif_recent_post": [
+                .english: "Recent post from {actor}",
+                .japanese: "{actor}さんの新しい投稿",
+                .korean: "{actor}님의 최근 게시물",
+                .simplifiedChinese: "{actor} 发布了新推文",
+                .traditionalChinese: "{actor} 發布了新貼文"
+            ],
+            "notif_mentioned_single": [
+                .english: "{actor} mentioned you in a post",
+                .japanese: "{actor}さんが投稿であなたをメンションしました",
+                .korean: "{actor}님이 게시물에서 회원님을 멘션했습니다",
+                .simplifiedChinese: "{actor} 在推文中提及了你",
+                .traditionalChinese: "{actor} 在貼文中提及了你"
             ]
         ]
         
@@ -382,5 +482,13 @@ final class LocalizationManager: ObservableObject {
             return text
         }
         return dict[key]?[.english] ?? key
+    }
+    
+    func format(_ key: String, _ replacements: [String: String]) -> String {
+        var str = t(key)
+        for (k, v) in replacements {
+            str = str.replacingOccurrences(of: "{\(k)}", with: v)
+        }
+        return str
     }
 }

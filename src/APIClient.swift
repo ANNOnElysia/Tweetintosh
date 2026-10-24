@@ -28,6 +28,16 @@ final class APIClient {
     private let bearerToken = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
     private let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
     
+    private var clientLanguageHeader: String {
+        switch LocalizationManager.shared.currentLanguage {
+        case .english: return "en"
+        case .japanese: return "ja"
+        case .korean: return "ko"
+        case .simplifiedChinese: return "zh-cn"
+        case .traditionalChinese: return "zh-tw"
+        }
+    }
+    
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20.0
@@ -95,6 +105,8 @@ final class APIClient {
         request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
         request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
         request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -347,7 +359,8 @@ final class APIClient {
         request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
         request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
         request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
-        request.setValue("en", forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
@@ -427,7 +440,8 @@ final class APIClient {
         request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
         request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
         request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
-        request.setValue("en", forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         

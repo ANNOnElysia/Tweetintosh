@@ -91,6 +91,90 @@ struct NotificationItem: Identifiable, Hashable, Codable {
             return "\(Int(interval / 86400))d"
         }
     }
+    
+    var localizedActionSummary: String {
+        let loc = LocalizationManager.shared
+        
+        // 1. Determine actor names and others count
+        var firstActorName: String = ""
+        var secondActorName: String = ""
+        var otherCount: Int = 0
+        
+        if actors.count >= 1 {
+            firstActorName = actors[0].name
+            if actors.count == 2 {
+                secondActorName = actors[1].name
+            } else if actors.count > 2 {
+                otherCount = actors.count - 1
+            }
+        }
+        
+        // If otherCount wasn't inferred from actors list, check if raw actionSummary has "and N others" or "等 N 人" etc.
+        if otherCount == 0 && !actionSummary.isEmpty {
+            if let regex = try? NSRegularExpression(pattern: #"(?:and|等|他|외)\s*(\d+)"#, options: .caseInsensitive),
+               let match = regex.firstMatch(in: actionSummary, range: NSRange(actionSummary.startIndex..., in: actionSummary)),
+               let range = Range(match.range(at: 1), in: actionSummary),
+               let n = Int(actionSummary[range]) {
+                otherCount = n
+            }
+        }
+        
+        // If actors list was completely empty, fallback by extracting from actionSummary
+        if firstActorName.isEmpty && !actionSummary.isEmpty {
+            firstActorName = actionSummary
+                .replacingOccurrences(of: " liked your post", with: "")
+                .replacingOccurrences(of: " followed you", with: "")
+                .replacingOccurrences(of: " reposted your post", with: "")
+                .replacingOccurrences(of: " retweeted your post", with: "")
+                .replacingOccurrences(of: " replied to your post", with: "")
+                .replacingOccurrences(of: " mentioned you in a post", with: "")
+                .replacingOccurrences(of: "Recent post from ", with: "")
+                .replacingOccurrences(of: " 赞了你的推文", with: "")
+                .replacingOccurrences(of: " 关注了你", with: "")
+                .replacingOccurrences(of: " 转发了你的推文", with: "")
+                .replacingOccurrences(of: " 回复了你的推文", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
+        guard !firstActorName.isEmpty else {
+            return actionSummary
+        }
+        
+        // 2. Detect recent post notification
+        let isRecentPost = type == .mention && (
+            actionSummary.localizedCaseInsensitiveContains("recent post") ||
+            actionSummary.contains("发布了新推文") ||
+            actionSummary.contains("發布了新貼文") ||
+            actionSummary.contains("新しい投稿") ||
+            actionSummary.contains("최근 게시물")
+        )
+        
+        if isRecentPost {
+            return loc.format("notif_recent_post", ["actor": firstActorName])
+        }
+        
+        let prefix: String
+        switch type {
+        case .like:
+            prefix = "notif_liked"
+        case .follow:
+            prefix = "notif_followed"
+        case .retweet:
+            prefix = "notif_reposted"
+        case .reply:
+            prefix = "notif_replied"
+        case .mention:
+            return loc.format("notif_mentioned_single", ["actor": firstActorName])
+        }
+        
+        if otherCount > 0 {
+            return loc.format("\(prefix)_many", ["actor": firstActorName, "count": "\(otherCount)"])
+        } else if !secondActorName.isEmpty {
+            return loc.format("\(prefix)_two", ["actor1": firstActorName, "actor2": secondActorName])
+        } else {
+            return loc.format("\(prefix)_single", ["actor": firstActorName])
+        }
+    }
 }
 
 final class NotificationsViewModel: ObservableObject {

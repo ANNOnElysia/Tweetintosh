@@ -53,18 +53,13 @@ struct SettingsView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 
                 // Native System Toggles with Liquid Glass / Vibrant Theme Adaptation
-                Toggle(loc.t("shimmer_effect"), isOn: $theme.enableShimmer)
-                    .toggleStyle(.switch)
-                    .tint(ThemeManager.accent)
-                    .foregroundColor(ThemeManager.primaryText)
-                
-                Toggle("Use Liquid Glass", isOn: $theme.useLiquidGlass.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                Toggle(loc.t("use_liquid_glass"), isOn: $theme.useLiquidGlass.animation(.spring(response: 0.35, dampingFraction: 0.8)))
                     .toggleStyle(.switch)
                     .tint(ThemeManager.accent)
                     .foregroundColor(ThemeManager.primaryText)
                 
                 if theme.useLiquidGlass {
-                    Toggle("Tint Colour", isOn: $theme.useLiquidGlassTint)
+                    Toggle(loc.t("tint_colour"), isOn: $theme.useLiquidGlassTint)
                         .toggleStyle(.switch)
                         .tint(ThemeManager.accent)
                         .foregroundColor(ThemeManager.primaryText)
@@ -95,17 +90,39 @@ struct SettingsView: View {
                 HStack {
                     Button(action: onClearCache) {
                         Text(loc.t("clear_cache"))
-                            .foregroundColor(.white)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.92))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.white.opacity(0.08))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
+                                    )
+                            )
                     }
-                    .buttonStyle(BorderedButtonStyle())
+                    .buttonStyle(PlainButtonStyle())
                     
                     Spacer()
                     
                     Button(action: onSignOut) {
                         Text(loc.t("sign_out"))
-                            .foregroundColor(.red)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color(red: 1.0, green: 0.38, blue: 0.38))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.red.opacity(0.10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.red.opacity(0.24), lineWidth: 0.8)
+                                    )
+                            )
                     }
-                    .buttonStyle(BorderedButtonStyle())
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             .padding(12)

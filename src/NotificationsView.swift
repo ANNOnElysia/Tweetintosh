@@ -269,6 +269,7 @@ private struct NotificationFilterCapsuleBar: View {
 private struct NotificationRowView: View {
     var item: NotificationItem
     @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject var loc = LocalizationManager.shared
     
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -305,7 +306,7 @@ private struct NotificationRowView: View {
                     }
                     
                     // Summary text
-                    Text(item.actionSummary)
+                    Text(item.localizedActionSummary)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Color.white.opacity(0.92))
                         .lineLimit(2)
