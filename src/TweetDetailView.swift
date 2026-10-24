@@ -148,8 +148,105 @@ struct TweetDetailView: View {
         }
     }
     
-    // MARK: - Top Floating Liquid Glass Navigation Bar
+    // MARK: - Top Floating Navigation Bar (Dual-Mode: Liquid Glass vs Classic Frosted Glass)
+    @ViewBuilder
     private var topNavigationBar: some View {
+        if theme.useLiquidGlass {
+            liquidGlassTopNavigation
+        } else {
+            frostedGlassTopNavigationBar
+        }
+    }
+    
+    // Mode A: Native Liquid Glass Navigation Controls (Strict Apple Glass HIG: Standalone circular droplets with ONLY chevron arrow)
+    private var liquidGlassTopNavigation: some View {
+        HStack {
+            // Liquid Glass Back Button (Only left arrow icon, standalone circular glass droplet)
+            Button(action: onDismiss) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13.5, weight: .bold))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Group {
+                            if #available(macOS 26.0, *) {
+                                let glassStyle: Glass = theme.useLiquidGlassTint
+                                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.18)).interactive()
+                                    : .regular.interactive()
+                                Circle()
+                                    .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
+                                    .glassEffect(glassStyle, in: Circle())
+                            } else {
+                                Circle()
+                                    .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.45))
+                            }
+                        }
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.22),
+                                lineWidth: 0.75
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.35), radius: 10, x: 0, y: 3)
+                    .scaleEffect(state.isHoveredBack ? 1.05 : 1.0)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .onHover { h in
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    state.isHoveredBack = h
+                }
+            }
+            .help(loc.t("nav_back"))
+            
+            Spacer()
+            
+            // Liquid Glass Share / Copy Link Button (standalone circular glass droplet)
+            Button(action: copyTweetLink) {
+                Image(systemName: state.copiedLinkAlert ? "checkmark" : "square.and.arrow.up")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(state.copiedLinkAlert ? Color(hex: "#00BA7C") : ThemeManager.primaryText)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Group {
+                            if #available(macOS 26.0, *) {
+                                let glassStyle: Glass = theme.useLiquidGlassTint
+                                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.18)).interactive()
+                                    : .regular.interactive()
+                                Circle()
+                                    .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
+                                    .glassEffect(glassStyle, in: Circle())
+                            } else {
+                                Circle()
+                                    .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.45))
+                            }
+                        }
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.22),
+                                lineWidth: 0.75
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.35), radius: 10, x: 0, y: 3)
+                    .scaleEffect(state.isHoveredShare ? 1.05 : 1.0)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .onHover { h in
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    state.isHoveredShare = h
+                }
+            }
+            .help(loc.t("copy_link"))
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+    }
+    
+    // Mode B: Classic Frosted Glass Navigation Bar (Gaussian Blur when Liquid Glass is off)
+    private var frostedGlassTopNavigationBar: some View {
         HStack(spacing: 12) {
             // Back Button
             Button(action: onDismiss) {
@@ -610,8 +707,122 @@ struct TweetDetailView: View {
         }
     }
     
-    // MARK: - Bottom Sticky Liquid Glass Reply Dock
+    // MARK: - Bottom Floating Reply Dock (Dual-Mode: Liquid Glass Capsule vs Classic Frosted Glass)
+    @ViewBuilder
     private var bottomReplyDock: some View {
+        if theme.useLiquidGlass {
+            liquidGlassReplyDock
+        } else {
+            frostedGlassReplyDock
+        }
+    }
+    
+    // Mode A: Native Liquid Glass Capsule Reply Dock (macOS 26+ Glass API, specular border, floating capsule)
+    private var liquidGlassReplyDock: some View {
+        HStack(spacing: 10) {
+            // User Avatar Placeholder
+            Circle()
+                .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
+                .frame(width: 30, height: 30)
+                .overlay(
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(ThemeManager.secondaryText)
+                )
+                .overlay(
+                    Circle().stroke(theme.isLight ? Color(hex: "#DED9CB").opacity(0.8) : Color.white.opacity(0.15), lineWidth: 0.5)
+                )
+            
+            // Text Input Field Container (inset liquid glass track)
+            HStack(spacing: 6) {
+                TextField(loc.t("reply_placeholder"), text: $viewModel.quickReplyText)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .font(.system(size: 13))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .focused($isDockInputFocused)
+                    .onSubmit {
+                        viewModel.postQuickReply()
+                    }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.07))
+                    .overlay(
+                        Capsule().stroke(theme.isLight ? Color(hex: "#DED9CB").opacity(0.6) : Color.white.opacity(0.10), lineWidth: 0.5)
+                    )
+            )
+            
+            // Submit Button
+            if !viewModel.quickReplyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(action: {
+                    viewModel.postQuickReply()
+                }) {
+                    if viewModel.isSubmittingReply {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(width: 26, height: 26)
+                    } else {
+                        Group {
+                            if #available(macOS 26.0, *) {
+                                Text(loc.t("post_reply"))
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        Capsule()
+                                            .fill(ThemeManager.accent.opacity(0.85))
+                                            .glassEffect(.regular.tint(ThemeManager.accent.opacity(0.25)).interactive(), in: Capsule())
+                                            .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 0.5))
+                                    )
+                            } else {
+                                Text(loc.t("post_reply"))
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(ThemeManager.accent))
+                            }
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 48)
+        .background(
+            Group {
+                if #available(macOS 26.0, *) {
+                    let glassStyle: Glass = theme.useLiquidGlassTint
+                        ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.18)).interactive()
+                        : .regular.interactive()
+                    Capsule()
+                        .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
+                        .glassEffect(glassStyle, in: Capsule())
+                } else {
+                    Capsule()
+                        .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.5))
+                }
+            }
+        )
+        .overlay(
+            Capsule()
+                .stroke(
+                    theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.22),
+                    lineWidth: 0.75
+                )
+        )
+        .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.35), radius: 14, x: 0, y: 5)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+    
+    // Mode B: Classic Frosted Glass Reply Dock (Gaussian Blur when Liquid Glass is off)
+    private var frostedGlassReplyDock: some View {
         HStack(spacing: 10) {
             // User Avatar Placeholder
             Circle()

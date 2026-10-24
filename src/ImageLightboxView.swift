@@ -247,7 +247,6 @@ struct ImageLightboxOverlay: View {
             GeometryReader { windowGeo in
                 let windowFrame = windowGeo.frame(in: .named("AppWindow"))
                 let windowSize = windowFrame.size
-                let windowCenter = CGPoint(x: windowSize.width / 2.0, y: windowSize.height / 2.0)
                 
                 let currentMedia = manager.currentMedia
                 let mediaRatio: CGFloat = {
@@ -279,8 +278,10 @@ struct ImageLightboxOverlay: View {
                 let targetWidth: CGFloat = manager.isZoomExpanded ? expandedSize.width : (hasSourceRect ? manager.sourceRect.width : expandedSize.width * 0.8)
                 let targetHeight: CGFloat = manager.isZoomExpanded ? expandedSize.height : (hasSourceRect ? manager.sourceRect.height : expandedSize.height * 0.8)
                 
-                let targetOffsetX: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midX - windowCenter.x) : 0)
-                let targetOffsetY: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midY - windowCenter.y) : 0)
+                // Exact target offset: calculates distance from windowFrame center to sourceRect center in "AppWindow" coordinate space
+                // Using windowFrame.midX and windowFrame.midY completely accounts for window safe area insets (e.g. titlebar height)
+                let targetOffsetX: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midX - windowFrame.midX) : 0)
+                let targetOffsetY: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midY - windowFrame.midY) : 0)
                 
                 let targetCornerRadius: CGFloat = manager.isZoomExpanded ? 8 : 16
                 let targetBorderOpacity: Double = manager.isZoomExpanded ? 0.0 : 1.0
@@ -512,6 +513,7 @@ struct ImageLightboxOverlay: View {
     }
     
     private var verticalScale: CGFloat {
+        if manager.isAnimatingOut || !manager.isZoomExpanded { return 1.0 }
         let dragDist = abs(manager.dragOffset.height)
         return max(0.72, 1.0 - dragDist / 1000.0)
     }

@@ -210,7 +210,6 @@ final class ThemeManager: ObservableObject {
         } else {
             self.useLiquidGlass = false
         }
-        
         if UserDefaults.standard.object(forKey: "MaX_UseLiquidGlassTint") != nil {
             self.useLiquidGlassTint = UserDefaults.standard.bool(forKey: "MaX_UseLiquidGlassTint")
         } else {
