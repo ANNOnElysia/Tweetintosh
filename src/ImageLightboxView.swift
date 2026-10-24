@@ -16,6 +16,16 @@ final class LightboxManager: ObservableObject {
     @Published var sourceRect: CGRect = .zero
     @Published var isAnimatingOut: Bool = false
     
+    var currentMedia: TweetMedia? {
+        guard currentIndex >= 0, currentIndex < mediaList.count else { return nil }
+        return mediaList[currentIndex]
+    }
+    
+    private var keyMonitor: Any?
+    private var scrollMonitor: Any?
+    private var accumulatedScrollX: CGFloat = 0
+    private var lastScrollTime = Date()
+    
     func present(mediaList: [TweetMedia], initialIndex: Int, sourceRect: CGRect = .zero) {
         guard !mediaList.isEmpty, initialIndex >= 0, initialIndex < mediaList.count else { return }
         self.mediaList = mediaList
@@ -23,12 +33,15 @@ final class LightboxManager: ObservableObject {
         self.sourceRect = sourceRect
         self.isAnimatingOut = false
         
+        setupEventMonitors()
+        
         withAnimation(.easeInOut(duration: 0.22)) {
             self.isPresented = true
         }
     }
     
     func dismiss() {
+        removeEventMonitors()
         withAnimation(.easeInOut(duration: 0.20)) {
             self.isPresented = false
         }
@@ -40,19 +53,89 @@ final class LightboxManager: ObservableObject {
     }
     
     func next() {
-        if currentIndex < mediaList.count - 1 {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
-                currentIndex += 1
-            }
+        guard currentIndex < mediaList.count - 1 else { return }
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+            currentIndex += 1
         }
     }
     
     func prev() {
-        if currentIndex > 0 {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
-                currentIndex -= 1
+        guard currentIndex > 0 else { return }
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+            currentIndex -= 1
+        }
+    }
+    
+    private func setupEventMonitors() {
+        removeEventMonitors()
+        
+        // 1. Keyboard Arrow Keys (Left / Right / Esc)
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.isPresented else { return event }
+            switch event.keyCode {
+            case 123: // Left Arrow (←)
+                self.prev()
+                return nil
+            case 124: // Right Arrow (→)
+                self.next()
+                return nil
+            case 53: // Esc
+                self.dismiss()
+                return nil
+            default:
+                return event
             }
         }
+        
+        // 2. Trackpad Two-Finger Swipe (scrollWheel)
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self = self, self.isPresented, self.mediaList.count > 1 else { return event }
+            
+            let deltaX = event.scrollingDeltaX
+            if abs(deltaX) > 0.4 {
+                self.accumulatedScrollX += deltaX
+                
+                let threshold: CGFloat = 24.0
+                let now = Date()
+                if now.timeIntervalSince(self.lastScrollTime) > 0.28 {
+                    if self.accumulatedScrollX > threshold {
+                        // Swiped right -> Previous image
+                        self.lastScrollTime = now
+                        self.accumulatedScrollX = 0
+                        self.prev()
+                        return nil
+                    } else if self.accumulatedScrollX < -threshold {
+                        // Swiped left -> Next image
+                        self.lastScrollTime = now
+                        self.accumulatedScrollX = 0
+                        self.next()
+                        return nil
+                    }
+                }
+            }
+            
+            if event.phase == .ended || event.phase == .cancelled {
+                self.accumulatedScrollX = 0
+            }
+            
+            return event
+        }
+    }
+    
+    private func removeEventMonitors() {
+        if let km = keyMonitor {
+            NSEvent.removeMonitor(km)
+            keyMonitor = nil
+        }
+        if let sm = scrollMonitor {
+            NSEvent.removeMonitor(sm)
+            scrollMonitor = nil
+        }
+        accumulatedScrollX = 0
+    }
+    
+    deinit {
+        removeEventMonitors()
     }
 }
 
@@ -63,7 +146,7 @@ final class LightboxDragState: ObservableObject {
     @Published var isDraggingHorizontally = false
 }
 
-// MARK: - Lightbox Overlay View (Restored to previous version with snap & rubber banding)
+// MARK: - Lightbox Overlay View
 struct ImageLightboxOverlay: View {
     @ObservedObject var manager = LightboxManager.shared
     @StateObject private var dragState = LightboxDragState()
@@ -72,6 +155,9 @@ struct ImageLightboxOverlay: View {
         if manager.isPresented {
             GeometryReader { windowGeo in
                 let windowSize = windowGeo.size
+                // 3/4 box dimensions requested by user
+                let boxWidth = windowSize.width * 0.75
+                let boxHeight = windowSize.height * 0.75
                 
                 ZStack {
                     // 1. Dark Backdrop with interactive opacity
@@ -82,46 +168,36 @@ struct ImageLightboxOverlay: View {
                             manager.dismiss()
                         }
                     
-                    // 2. Multi-image Horizontal Track with Magnetic Snap
-                    HStack(spacing: 24) {
-                        ForEach(0..<manager.mediaList.count, id: \.self) { index in
-                            let media = manager.mediaList[index]
-                            
+                    // 2. The 3/4 Bounding Box: matching longest edge of current image
+                    ZStack {
+                        if let currentMedia = manager.currentMedia {
                             CachedAsyncImage(
-                                urlString: originalUrl(media.mediaUrl),
-                                placeholderColor: Color(white: 0.06),
+                                urlString: originalUrl(currentMedia.mediaUrl),
+                                placeholderColor: Color(white: 0.08),
                                 contentMode: .fit
                             )
-                            .frame(width: max(200, windowSize.width - 64), height: max(200, windowSize.height - 72))
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .frame(maxWidth: boxWidth, maxHeight: boxHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .shadow(color: Color.black.opacity(0.50), radius: 24, x: 0, y: 8)
+                            .offset(x: dragState.dragOffset.width, y: dragState.dragOffset.height)
+                            .scaleEffect(verticalScale)
+                            .animation(.spring(response: 0.30, dampingFraction: 0.86), value: manager.currentIndex)
+                            .id(manager.currentIndex)
                         }
                     }
-                    .frame(width: windowSize.width, height: windowSize.height)
-                    // Apply horizontal tracking & vertical gesture offset
-                    .offset(x: -CGFloat(manager.currentIndex) * (windowSize.width - 64 + 24) + dragState.dragOffset.width)
-                    .offset(y: dragState.dragOffset.height)
-                    .scaleEffect(verticalScale)
-                    .gesture(
-                        DragGesture(minimumDistance: 5)
-                            .onChanged { value in
-                                handleDragChanged(value)
-                            }
-                            .onEnded { value in
-                                handleDragEnded(value, windowWidth: windowSize.width - 64)
-                            }
-                    )
+                    .frame(width: boxWidth, height: boxHeight)
                     
-                    // 3. Top Header Bar (Close button & Pagination indicator)
+                    // 3. Top Header Bar (Pagination Capsule + Close Button)
                     VStack {
                         HStack(alignment: .center) {
                             if manager.mediaList.count > 1 {
                                 Text("\(manager.currentIndex + 1) / \(manager.mediaList.count)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(Color(white: 0.85))
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundColor(Color(white: 0.90))
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 6)
-                                    .background(Capsule().fill(Color.black.opacity(0.6)))
+                                    .background(Capsule().fill(Color.black.opacity(0.60)))
+                                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.6))
                                     .padding(.leading, 24)
                             }
                             
@@ -130,11 +206,10 @@ struct ImageLightboxOverlay: View {
                             Button(action: { manager.dismiss() }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 26))
-                                    .foregroundColor(Color(white: 0.8))
+                                    .foregroundColor(Color(white: 0.80))
                                     .padding(20)
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .keyboardShortcut(.cancelAction) // Esc key
                         }
                         .opacity(1.0 - abs(dragState.dragOffset.height) / 100)
                         
@@ -146,16 +221,26 @@ struct ImageLightboxOverlay: View {
                         HStack {
                             if manager.currentIndex > 0 {
                                 chevronButton(icon: "chevron.left") { manager.prev() }
-                                    .padding(.leading, 12)
+                                    .padding(.leading, max(12, (windowSize.width - boxWidth) / 2 - 46))
                             }
                             Spacer()
                             if manager.currentIndex < manager.mediaList.count - 1 {
                                 chevronButton(icon: "chevron.right") { manager.next() }
-                                    .padding(.trailing, 12)
+                                    .padding(.trailing, max(12, (windowSize.width - boxWidth) / 2 - 46))
                             }
                         }
+                        .opacity(1.0 - abs(dragState.dragOffset.height) / 80)
                     }
                 }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 8)
+                        .onChanged { value in
+                            handleDragChanged(value)
+                        }
+                        .onEnded { value in
+                            handleDragEnded(value)
+                        }
+                )
             }
             .transition(.opacity)
             .zIndex(999)
@@ -178,7 +263,6 @@ struct ImageLightboxOverlay: View {
     private func handleDragChanged(_ value: DragGesture.Value) {
         let trans = value.translation
         
-        // Determine primary direction if not decided
         if !dragState.isDraggingVertically && !dragState.isDraggingHorizontally {
             if abs(trans.height) > abs(trans.width) * 1.2 {
                 dragState.isDraggingVertically = true
@@ -188,11 +272,8 @@ struct ImageLightboxOverlay: View {
         }
         
         if dragState.isDraggingVertically {
-            // Track vertical movement for return-to-origin dismiss
             dragState.dragOffset = CGSize(width: 0, height: trans.height)
         } else if dragState.isDraggingHorizontally {
-            // Track horizontal movement for fluid swiping
-            // Add rubber banding at edges
             var dx = trans.width
             if (manager.currentIndex == 0 && dx > 0) || (manager.currentIndex == manager.mediaList.count - 1 && dx < 0) {
                 dx = dx * 0.35 // Rubber band resistance
@@ -201,30 +282,26 @@ struct ImageLightboxOverlay: View {
         }
     }
     
-    private func handleDragEnded(_ value: DragGesture.Value, windowWidth: CGFloat) {
+    private func handleDragEnded(_ value: DragGesture.Value) {
         if dragState.isDraggingVertically {
-            // Vertical dismiss threshold: 65px or downward velocity
             if abs(value.translation.height) > 65 || abs(value.velocity.height) > 400 {
                 manager.dismiss()
             } else {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
                     dragState.dragOffset = .zero
                 }
             }
         } else if dragState.isDraggingHorizontally {
-            // Horizontal magnetic snap threshold: 65px or swipe velocity
             let dx = value.translation.width
             let vx = value.velocity.width
             
-            if (dx < -65 || vx < -300) && manager.currentIndex < manager.mediaList.count - 1 {
-                // Snap to next image
+            if (dx < -40 || vx < -250) && manager.currentIndex < manager.mediaList.count - 1 {
                 manager.next()
-            } else if (dx > 65 || vx > 300) && manager.currentIndex > 0 {
-                // Snap to previous image
+            } else if (dx > 40 || vx > 250) && manager.currentIndex > 0 {
                 manager.prev()
             }
             
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
                 dragState.dragOffset = .zero
             }
         }
