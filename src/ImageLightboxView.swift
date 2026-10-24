@@ -57,6 +57,9 @@ final class LightboxManager: ObservableObject {
     // Zoom & Pan State
     @Published var zoomScale: CGFloat = 1.0
     @Published var panOffset: CGSize = .zero
+    @Published var maxPanLimit: CGSize = .zero
+    var startPanOffset: CGSize = .zero
+    var isPanningZoom: Bool = false
     
     // Dismiss / Swipe Drag State
     @Published var dragOffset: CGSize = .zero
@@ -249,12 +252,14 @@ final class LightboxManager: ObservableObject {
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self = self, self.isPresented else { return event }
             
-            // If currently zoomed in, two-finger scroll smoothly pans the image
+            // If currently zoomed in, two-finger scroll smoothly pans the image within exact image boundaries
             if self.zoomScale > 1.05 {
                 let dx = event.scrollingDeltaX
                 let dy = event.scrollingDeltaY
-                self.panOffset.width += dx
-                self.panOffset.height += dy
+                let limitX = max(40, self.maxPanLimit.width)
+                let limitY = max(40, self.maxPanLimit.height)
+                self.panOffset.width = min(limitX, max(-limitX, self.panOffset.width + dx))
+                self.panOffset.height = min(limitY, max(-limitY, self.panOffset.height + dy))
                 return nil // Prevent background scroll
             }
             
@@ -364,6 +369,22 @@ struct ImageLightboxOverlay: View {
                 
                 let effectiveScale = manager.zoomScale * pinchScale
                 
+                let maxPanX: CGFloat = {
+                    guard effectiveScale > 1.0 else { return 0 }
+                    let scaledW = expandedSize.width * effectiveScale
+                    let edgeLimit = max(0, (scaledW - windowSize.width) / 2 + 40)
+                    let centerLimit = (expandedSize.width * (effectiveScale - 1)) / 2
+                    return max(edgeLimit, centerLimit)
+                }()
+                
+                let maxPanY: CGFloat = {
+                    guard effectiveScale > 1.0 else { return 0 }
+                    let scaledH = expandedSize.height * effectiveScale
+                    let edgeLimit = max(0, (scaledH - windowSize.height) / 2 + 40)
+                    let centerLimit = (expandedSize.height * (effectiveScale - 1)) / 2
+                    return max(edgeLimit, centerLimit)
+                }()
+                
                 ZStack {
                     // 1. Dark Backdrop with interactive opacity
                     Color.black
@@ -456,19 +477,30 @@ struct ImageLightboxOverlay: View {
                                 manager.zoomScale = target
                                 if target <= 1.0 {
                                     manager.panOffset = .zero
+                                } else {
+                                    let limitX = (expandedSize.width * (target - 1)) / 2
+                                    let limitY = (expandedSize.height * (target - 1)) / 2
+                                    manager.panOffset.width = min(limitX, max(-limitX, manager.panOffset.width))
+                                    manager.panOffset.height = min(limitY, max(-limitY, manager.panOffset.height))
                                 }
                             }
                         }
                 )
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 6)
+                    DragGesture(minimumDistance: 4)
                         .onChanged { value in
-                            handleDragChanged(value, boxWidth: maxBoxW, boxHeight: maxBoxH)
+                            handleDragChanged(value, maxPanX: maxPanX, maxPanY: maxPanY)
                         }
                         .onEnded { value in
-                            handleDragEnded(value)
+                            handleDragEnded(value, maxPanX: maxPanX, maxPanY: maxPanY)
                         }
                 )
+                .onChange(of: effectiveScale) {
+                    manager.maxPanLimit = CGSize(width: maxPanX, height: maxPanY)
+                }
+                .onAppear {
+                    manager.maxPanLimit = CGSize(width: maxPanX, height: maxPanY)
+                }
             }
             .transition(.identity)
             .zIndex(999)
@@ -512,13 +544,35 @@ struct ImageLightboxOverlay: View {
     }
     
     // MARK: - Gesture Mechanics
-    private func handleDragChanged(_ value: DragGesture.Value, boxWidth: CGFloat, boxHeight: CGFloat) {
+    private func handleDragChanged(_ value: DragGesture.Value, maxPanX: CGFloat, maxPanY: CGFloat) {
         if manager.zoomScale > 1.05 {
-            let maxPanX = max(0, (boxWidth * (manager.zoomScale - 1)) / 1.5)
-            let maxPanY = max(0, (boxHeight * (manager.zoomScale - 1)) / 1.5)
+            if !manager.isPanningZoom {
+                manager.isPanningZoom = true
+                manager.startPanOffset = manager.panOffset
+            }
+            let targetX = manager.startPanOffset.width + value.translation.width
+            let targetY = manager.startPanOffset.height + value.translation.height
             
-            manager.panOffset.width = min(maxPanX, max(-maxPanX, manager.panOffset.width + value.translation.width * 0.15))
-            manager.panOffset.height = min(maxPanY, max(-maxPanY, manager.panOffset.height + value.translation.height * 0.15))
+            // Apple HIG rubber-band resistance when dragging beyond pan boundaries
+            let clampedX: CGFloat
+            if targetX > maxPanX {
+                clampedX = maxPanX + (targetX - maxPanX) * 0.35
+            } else if targetX < -maxPanX {
+                clampedX = -maxPanX + (targetX + maxPanX) * 0.35
+            } else {
+                clampedX = targetX
+            }
+            
+            let clampedY: CGFloat
+            if targetY > maxPanY {
+                clampedY = maxPanY + (targetY - maxPanY) * 0.35
+            } else if targetY < -maxPanY {
+                clampedY = -maxPanY + (targetY + maxPanY) * 0.35
+            } else {
+                clampedY = targetY
+            }
+            
+            manager.panOffset = CGSize(width: clampedX, height: clampedY)
             return
         }
         
@@ -542,8 +596,14 @@ struct ImageLightboxOverlay: View {
         }
     }
     
-    private func handleDragEnded(_ value: DragGesture.Value) {
+    private func handleDragEnded(_ value: DragGesture.Value, maxPanX: CGFloat, maxPanY: CGFloat) {
         if manager.zoomScale > 1.05 {
+            manager.isPanningZoom = false
+            let finalX = min(maxPanX, max(-maxPanX, manager.panOffset.width))
+            let finalY = min(maxPanY, max(-maxPanY, manager.panOffset.height))
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                manager.panOffset = CGSize(width: finalX, height: finalY)
+            }
             return
         }
         
