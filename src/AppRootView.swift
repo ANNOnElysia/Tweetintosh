@@ -191,12 +191,14 @@ struct AppRootView: View {
             
             // Full-Window Lightbox Overlay (covers entire window including top bar)
             ImageLightboxOverlay()
+                .ignoresSafeArea()
                 .zIndex(999)
             
             // Full-Window Video Lightbox Overlay (native AVPlayer + subtitles + quality control)
             VideoLightboxOverlay()
                 .zIndex(1000)
         }
+        .coordinateSpace(name: "AppWindow")
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
         .sheet(isPresented: $nav.isShowingCompose) {
             TweetComposerSheet(quotedTweet: nav.composeQuotedTweet)

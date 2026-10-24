@@ -12,6 +12,7 @@ final class LightboxManager: ObservableObject {
     
     @Published var isPresented: Bool = false
     @Published var mediaList: [TweetMedia] = []
+    @Published var initialIndex: Int = 0
     @Published var currentIndex: Int = 0
     @Published var isAnimatingOut: Bool = false
     @Published var sourceRect: CGRect = .zero
@@ -40,6 +41,7 @@ final class LightboxManager: ObservableObject {
     func present(mediaList: [TweetMedia], initialIndex: Int, sourceRect: CGRect = .zero) {
         guard !mediaList.isEmpty, initialIndex >= 0, initialIndex < mediaList.count else { return }
         self.mediaList = mediaList
+        self.initialIndex = initialIndex
         self.currentIndex = initialIndex
         self.sourceRect = sourceRect
         self.isAnimatingOut = false
@@ -50,8 +52,10 @@ final class LightboxManager: ObservableObject {
         setupEventMonitors()
         
         self.isPresented = true
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-            self.isZoomExpanded = true
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                self.isZoomExpanded = true
+            }
         }
     }
     
@@ -65,6 +69,8 @@ final class LightboxManager: ObservableObject {
     }
     
     func dismiss() {
+        guard isPresented && !isAnimatingOut else { return }
+        self.isAnimatingOut = true
         removeEventMonitors()
         withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
             self.isZoomExpanded = false
@@ -78,6 +84,7 @@ final class LightboxManager: ObservableObject {
             self.isAnimatingOut = false
             self.mediaList = []
             self.currentIndex = 0
+            self.initialIndex = 0
             self.resetTransforms()
         }
     }
@@ -236,23 +243,47 @@ struct ImageLightboxOverlay: View {
     var body: some View {
         if manager.isPresented {
             GeometryReader { windowGeo in
-                let windowSize = windowGeo.size
-                // 3/4 box dimensions requested by user
-                let boxWidth = windowSize.width * 0.75
-                let boxHeight = windowSize.height * 0.75
+                let windowFrame = windowGeo.frame(in: .named("AppWindow"))
+                let windowSize = windowFrame.size
                 let windowCenter = CGPoint(x: windowSize.width / 2.0, y: windowSize.height / 2.0)
                 
-                // Pure rect-tracking zoom: calculate offset and scale from sourceRect
-                let hasSourceRect = manager.sourceRect != .zero
-                let sourceScale: CGFloat = hasSourceRect ? max(0.08, min(manager.sourceRect.width / boxWidth, manager.sourceRect.height / boxHeight)) : 0.85
-                let sourceOffsetX: CGFloat = hasSourceRect ? (manager.sourceRect.midX - windowCenter.x) : 0
-                let sourceOffsetY: CGFloat = hasSourceRect ? (manager.sourceRect.midY - windowCenter.y) : 0
+                let currentMedia = manager.currentMedia
+                let mediaRatio: CGFloat = {
+                    if let m = currentMedia, m.aspectRatio > 0 {
+                        return m.aspectRatio
+                    }
+                    return 1.0
+                }()
                 
-                let animScale: CGFloat = manager.isZoomExpanded ? 1.0 : sourceScale
-                let animOffsetX: CGFloat = manager.isZoomExpanded ? 0 : sourceOffsetX
-                let animOffsetY: CGFloat = manager.isZoomExpanded ? 0 : sourceOffsetY
+                // 3/4 box dimensions requested by user
+                let maxBoxW = windowSize.width * 0.75
+                let maxBoxH = windowSize.height * 0.75
                 
-                let effectiveScale = manager.zoomScale * pinchScale * animScale
+                let expandedSize: CGSize = {
+                    if maxBoxW / maxBoxH > mediaRatio {
+                        let h = maxBoxH
+                        let w = h * mediaRatio
+                        return CGSize(width: w, height: h)
+                    } else {
+                        let w = maxBoxW
+                        let h = w / mediaRatio
+                        return CGSize(width: w, height: h)
+                    }
+                }()
+                
+                let hasSourceRect = manager.sourceRect != .zero && (manager.currentIndex == manager.initialIndex)
+                
+                // Exact target width & height: matches thumbnail precisely when collapsed!
+                let targetWidth: CGFloat = manager.isZoomExpanded ? expandedSize.width : (hasSourceRect ? manager.sourceRect.width : expandedSize.width * 0.8)
+                let targetHeight: CGFloat = manager.isZoomExpanded ? expandedSize.height : (hasSourceRect ? manager.sourceRect.height : expandedSize.height * 0.8)
+                
+                let targetOffsetX: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midX - windowCenter.x) : 0)
+                let targetOffsetY: CGFloat = manager.isZoomExpanded ? 0 : (hasSourceRect ? (manager.sourceRect.midY - windowCenter.y) : 0)
+                
+                let targetCornerRadius: CGFloat = manager.isZoomExpanded ? 8 : 16
+                let targetBorderOpacity: Double = manager.isZoomExpanded ? 0.0 : 1.0
+                
+                let effectiveScale = manager.zoomScale * pinchScale
                 
                 ZStack {
                     // 1. Dark Backdrop with interactive opacity
@@ -270,30 +301,31 @@ struct ImageLightboxOverlay: View {
                             }
                         }
                     
-                    // 2. The 3/4 Bounding Box: matching longest edge of current image
-                    ZStack {
-                        if let currentMedia = manager.currentMedia {
-                            CachedAsyncImage(
-                                urlString: originalUrl(currentMedia.mediaUrl),
-                                placeholderColor: Color(white: 0.08),
-                                contentMode: .fit
-                            )
-                            .frame(maxWidth: boxWidth, maxHeight: boxHeight)
-                            .clipShape(RoundedRectangle(cornerRadius: manager.isZoomExpanded ? 8 : 16, style: .continuous))
-                            .shadow(color: Color.black.opacity(manager.isZoomExpanded ? 0.50 : 0.0), radius: 24, x: 0, y: 8)
-                            .scaleEffect(effectiveScale * verticalScale)
-                            .offset(
-                                x: (manager.zoomScale > 1.05 ? manager.panOffset.width : manager.dragOffset.width) + animOffsetX,
-                                y: (manager.zoomScale > 1.05 ? manager.panOffset.height : manager.dragOffset.height) + animOffsetY
-                            )
-                            .animation(.spring(response: 0.30, dampingFraction: 0.86), value: manager.currentIndex)
-                            .id(manager.currentIndex)
-                            .onTapGesture(count: 2) {
-                                manager.toggleZoom()
-                            }
+                    // 2. The Zooming Image Container (exact frame & corner radius matching timeline card)
+                    if let currentMedia = currentMedia {
+                        CachedAsyncImage(
+                            urlString: originalUrl(currentMedia.mediaUrl),
+                            placeholderColor: Color(white: 0.08),
+                            contentMode: .fill
+                        )
+                        .frame(width: max(1, targetWidth), height: max(1, targetHeight))
+                        .clipShape(RoundedRectangle(cornerRadius: targetCornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: targetCornerRadius, style: .continuous)
+                                .stroke(ThemeManager.border.opacity(targetBorderOpacity), lineWidth: 0.6)
+                        )
+                        .shadow(color: Color.black.opacity(manager.isZoomExpanded ? 0.50 : 0.0), radius: 24, x: 0, y: 8)
+                        .scaleEffect(effectiveScale * verticalScale)
+                        .offset(
+                            x: (manager.zoomScale > 1.05 ? manager.panOffset.width : manager.dragOffset.width) + targetOffsetX,
+                            y: (manager.zoomScale > 1.05 ? manager.panOffset.height : manager.dragOffset.height) + targetOffsetY
+                        )
+                        .animation(.spring(response: 0.30, dampingFraction: 0.86), value: manager.currentIndex)
+                        .id(manager.currentIndex)
+                        .onTapGesture(count: 2) {
+                            manager.toggleZoom()
                         }
                     }
-                    .frame(width: boxWidth, height: boxHeight)
                     
                     // 3. Top Header Bar (Pagination Capsule / Zoom % + Close Button)
                     VStack {
@@ -321,17 +353,18 @@ struct ImageLightboxOverlay: View {
                         HStack {
                             if manager.currentIndex > 0 {
                                 chevronButton(icon: "chevron.left") { manager.prev() }
-                                    .padding(.leading, max(12, (windowSize.width - boxWidth) / 2 - 46))
+                                    .padding(.leading, max(12, (windowSize.width - maxBoxW) / 2 - 46))
                             }
                             Spacer()
                             if manager.currentIndex < manager.mediaList.count - 1 {
                                 chevronButton(icon: "chevron.right") { manager.next() }
-                                    .padding(.trailing, max(12, (windowSize.width - boxWidth) / 2 - 46))
+                                    .padding(.trailing, max(12, (windowSize.width - maxBoxW) / 2 - 46))
                             }
                         }
                         .opacity(manager.isZoomExpanded ? headerOpacity : 0.0)
                     }
                 }
+                .frame(width: windowSize.width, height: windowSize.height)
                 .simultaneousGesture(
                     MagnificationGesture()
                         .updating($pinchScale) { val, state, _ in
@@ -350,7 +383,7 @@ struct ImageLightboxOverlay: View {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 6)
                         .onChanged { value in
-                            handleDragChanged(value, boxWidth: boxWidth, boxHeight: boxHeight)
+                            handleDragChanged(value, boxWidth: maxBoxW, boxHeight: maxBoxH)
                         }
                         .onEnded { value in
                             handleDragEnded(value)
@@ -436,8 +469,6 @@ struct ImageLightboxOverlay: View {
         
         if manager.isDraggingVertically {
             if abs(value.translation.height) > 65 || abs(value.velocity.height) > 400 {
-                // Must explicitly reset dragOffset so subsequent opens are clean
-                manager.dragOffset = .zero
                 manager.dismiss()
             } else {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {

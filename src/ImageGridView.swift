@@ -220,20 +220,22 @@ struct ImageGridView: View {
         .contentShape(Rectangle())
         .overlay(
             GeometryReader { proxy in
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if media.isVideo, let tweet = tweet {
-                            VideoLightboxManager.shared.present(tweet: tweet, media: media)
-                        } else {
-                            let rect = proxy.frame(in: .global)
-                            LightboxManager.shared.present(
-                                mediaList: [media],
-                                initialIndex: 0,
-                                sourceRect: rect
-                            )
-                        }
+                Button(action: {
+                    if media.isVideo, let tweet = tweet {
+                        VideoLightboxManager.shared.present(tweet: tweet, media: media)
+                    } else {
+                        let rect = proxy.frame(in: .named("AppWindow"))
+                        LightboxManager.shared.present(
+                            mediaList: [media],
+                            initialIndex: 0,
+                            sourceRect: rect
+                        )
                     }
+                }) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         )
         
@@ -302,16 +304,18 @@ struct ImageGridView: View {
         .contentShape(Rectangle())
         .overlay(
             GeometryReader { proxy in
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if items[0].isVideo, let tweet = tweet {
-                            VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
-                        } else {
-                            let rect = proxy.frame(in: .global)
-                            LightboxManager.shared.present(mediaList: items, initialIndex: 0, sourceRect: rect)
-                        }
+                Button(action: {
+                    if items[0].isVideo, let tweet = tweet {
+                        VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
+                    } else {
+                        let rect = proxy.frame(in: .named("AppWindow"))
+                        LightboxManager.shared.present(mediaList: items, initialIndex: 0, sourceRect: rect)
                     }
+                }) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         )
         
@@ -332,16 +336,18 @@ struct ImageGridView: View {
         .contentShape(Rectangle())
         .overlay(
             GeometryReader { proxy in
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if items[1].isVideo, let tweet = tweet {
-                            VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
-                        } else {
-                            let rect = proxy.frame(in: .global)
-                            LightboxManager.shared.present(mediaList: items, initialIndex: 1, sourceRect: rect)
-                        }
+                Button(action: {
+                    if items[1].isVideo, let tweet = tweet {
+                        VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
+                    } else {
+                        let rect = proxy.frame(in: .named("AppWindow"))
+                        LightboxManager.shared.present(mediaList: items, initialIndex: 1, sourceRect: rect)
                     }
+                }) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         )
         
@@ -386,16 +392,18 @@ struct ImageGridView: View {
                     .contentShape(Rectangle())
                     .overlay(
                         GeometryReader { proxy in
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if media.isVideo, let tweet = tweet {
-                                        VideoLightboxManager.shared.present(tweet: tweet, media: media)
-                                    } else {
-                                        let rect = proxy.frame(in: .global)
-                                        LightboxManager.shared.present(mediaList: items, initialIndex: idx, sourceRect: rect)
-                                    }
+                            Button(action: {
+                                if media.isVideo, let tweet = tweet {
+                                    VideoLightboxManager.shared.present(tweet: tweet, media: media)
+                                } else {
+                                    let rect = proxy.frame(in: .named("AppWindow"))
+                                    LightboxManager.shared.present(mediaList: items, initialIndex: idx, sourceRect: rect)
                                 }
+                            }) {
+                                Color.clear
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     )
                     
