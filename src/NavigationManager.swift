@@ -38,6 +38,22 @@ final class NavigationManager: ObservableObject {
     @Published var isSearchActive: Bool = false
     @Published var searchQuery: String = ""
     @Published var selectedTweetDetail: Tweet? = nil
+    @Published var isShowingCompose: Bool = false
+    @Published var composeQuotedTweet: Tweet? = nil
+    
+    func openComposer(quoting tweet: Tweet? = nil) {
+        DispatchQueue.main.async {
+            self.composeQuotedTweet = tweet
+            self.isShowingCompose = true
+        }
+    }
+    
+    func dismissComposer() {
+        DispatchQueue.main.async {
+            self.isShowingCompose = false
+            self.composeQuotedTweet = nil
+        }
+    }
     
     func openTweetDetail(_ tweet: Tweet) {
         DispatchQueue.main.async {
@@ -161,6 +177,10 @@ final class NavigationManager: ObservableObject {
                 
                 // If Esc key is pressed
                 if keyCode == 53 {
+                    if self.isShowingCompose {
+                        self.dismissComposer()
+                        return nil
+                    }
                     if self.selectedTweetDetail != nil {
                         self.dismissTweetDetail()
                         return nil
@@ -169,6 +189,12 @@ final class NavigationManager: ObservableObject {
                         self.toggleSearch()
                         return nil
                     }
+                }
+                
+                // Command + N (keyCode 45) -> Global New Tweet Compose
+                if hasCmd && !hasOption && !hasCtrl && keyCode == 45 {
+                    self.openComposer()
+                    return nil
                 }
                 
                 // Command + [ (keyCode 33) -> Back from Tweet Detail

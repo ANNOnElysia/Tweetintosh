@@ -191,13 +191,22 @@ struct AppRootView: View {
             
             // Full-Window Lightbox Overlay (covers entire window including top bar)
             ImageLightboxOverlay()
+                .ignoresSafeArea()
                 .zIndex(999)
             
             // Full-Window Video Lightbox Overlay (native AVPlayer + subtitles + quality control)
             VideoLightboxOverlay()
                 .zIndex(1000)
+            
+            // Global App Toast Overlay (Action Feedback: Copy, Save, Retweet)
+            AppToastOverlay()
+                .zIndex(9999)
         }
+        .coordinateSpace(name: "AppWindow")
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
+        .sheet(isPresented: $nav.isShowingCompose) {
+            TweetComposerSheet(quotedTweet: nav.composeQuotedTweet)
+        }
     }
 
     @ViewBuilder private var destination: some View {
@@ -643,6 +652,45 @@ private struct LiquidGlassSidebar: View {
             
             Spacer()
             
+            // New Post Button
+            Button(action: {
+                nav.openComposer()
+            }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 20)
+                    Text(loc.t("new_post"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    if nav.showShortcutBadges {
+                        Text("⌘N")
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3.5)
+                                    .fill(Color.white.opacity(0.25))
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
+                }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(ThemeManager.accent)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 8)
+            .padding(.bottom, 2)
+            
             // Bottom Settings Button
             Button(action: onOpenSettings) {
                 HStack(spacing: 10) {
@@ -1018,5 +1066,42 @@ struct NewDestinationPlaceholderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeManager.background.ignoresSafeArea())
+    }
+}
+
+// MARK: - App Toast Notification Overlay
+struct AppToastOverlay: View {
+    @ObservedObject var toast = AppToastManager.shared
+    
+    var body: some View {
+        if !toast.message.isEmpty {
+            VStack {
+                Spacer()
+                HStack(spacing: 8) {
+                    if let icon = toast.icon {
+                        Image(systemName: icon)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    Text(toast.message)
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(
+                    Capsule()
+                        .fill(Color(white: 0.12).opacity(0.95))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.8))
+                        .shadow(color: Color.black.opacity(0.4), radius: 12, x: 0, y: 5)
+                )
+                .padding(.bottom, 36)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .opacity
+                ))
+            }
+            .animation(.spring(response: 0.28, dampingFraction: 0.82), value: toast.message)
+            .allowsHitTesting(false)
+        }
     }
 }

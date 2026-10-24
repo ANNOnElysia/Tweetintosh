@@ -645,6 +645,38 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
+    func postTweet(
+        text: String,
+        quoting tweet: Tweet? = nil,
+        completion: @escaping (Result<String, APIError>) -> Void
+    ) {
+        let attachmentUrl = tweet.map { "https://x.com/\($0.author.screenName)/status/\($0.id)" }
+        
+        if let quotingTweet = tweet {
+            mutateTweet(id: quotingTweet.id) { t in
+                t.retweetCount += 1
+            }
+        }
+        
+        APIClient.shared.createTweet(text: text, attachmentUrl: attachmentUrl) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let newTweetId):
+                    completion(.success(newTweetId))
+                case .failure(let error):
+                    if let quotingTweet = tweet {
+                        self.mutateTweet(id: quotingTweet.id) { t in
+                            t.retweetCount = max(0, t.retweetCount - 1)
+                        }
+                    }
+                    self.errorMessage = error.localizedDescription
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
     private func prefetchMedia(for tweetsList: [Tweet]) {
         var urlsToFetch: [String] = []
         for tweet in tweetsList.prefix(15) {

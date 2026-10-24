@@ -523,9 +523,16 @@ struct VideoLightboxOverlay: View {
                         }
                     
                     // 2. Full-Window Immersive Video Player Layer
-                    NativePlayerView(player: manager.player)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black)
+                    if let media = manager.currentMedia {
+                        NativePlayerView(player: manager.player)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.black)
+                            .mediaContextMenu(media: media, tweet: manager.currentTweet)
+                    } else {
+                        NativePlayerView(player: manager.player)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.black)
+                    }
                     
                     // 3. Center Screen Play/Pause Indicator (Dead Center, No Overlap)
                     if !manager.isPlaying {

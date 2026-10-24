@@ -166,24 +166,18 @@ struct ReplyComposerSheet: View {
                     .font(.system(size: 14))
                     .foregroundColor(ThemeManager.accent)
             }
+            .padding(.top, 2)
             
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack(alignment: .topLeading) {
-                    if state.replyText.isEmpty {
-                        Text(loc.t("reply_placeholder"))
-                            .font(.system(size: 14))
-                            .foregroundColor(ThemeManager.secondaryText.opacity(0.7))
-                            .padding(.top, 8)
-                            .padding(.leading, 5)
-                    }
-                    
-                    TextEditor(text: $state.replyText)
-                        .font(.system(size: 14))
-                        .scrollContentBackgroundHidden()
-                        .background(Color.clear)
-                        .frame(minHeight: 110)
-                }
-            }
+            TextField(
+                loc.t("reply_placeholder"),
+                text: $state.replyText,
+                axis: .vertical
+            )
+            .textFieldStyle(.plain)
+            .font(.system(size: 14))
+            .foregroundColor(ThemeManager.primaryText)
+            .lineLimit(5...10)
+            .frame(minHeight: 110, alignment: .topLeading)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)

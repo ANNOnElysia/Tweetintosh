@@ -272,6 +272,41 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "撤销转推",
                 .traditionalChinese: "取消轉推"
             ],
+            "quote_tweet": [
+                .english: "Quote",
+                .japanese: "引用",
+                .korean: "인용",
+                .simplifiedChinese: "引用推文",
+                .traditionalChinese: "引用貼文"
+            ],
+            "new_post": [
+                .english: "New Post",
+                .japanese: "ポストする",
+                .korean: "게시하기",
+                .simplifiedChinese: "发推",
+                .traditionalChinese: "發文"
+            ],
+            "post_action": [
+                .english: "Post",
+                .japanese: "ポスト",
+                .korean: "게시",
+                .simplifiedChinese: "发布",
+                .traditionalChinese: "發布"
+            ],
+            "post_placeholder": [
+                .english: "What is happening?!",
+                .japanese: "いまどうしてる？",
+                .korean: "무슨 일이 일어나고 있나요?",
+                .simplifiedChinese: "有什么新鲜事？",
+                .traditionalChinese: "發生了什麼事？"
+            ],
+            "quote_placeholder": [
+                .english: "Add a comment...",
+                .japanese: "コメントを追加...",
+                .korean: "의견 추가하기...",
+                .simplifiedChinese: "添加评论...",
+                .traditionalChinese: "新增留言..."
+            ],
             "like": [
                 .english: "Like",
                 .japanese: "いいね",
@@ -790,6 +825,104 @@ final class LocalizationManager: ObservableObject {
                 .korean: "화질이 변경되었습니다: {quality}",
                 .simplifiedChinese: "画质已切换为: {quality}",
                 .traditionalChinese: "畫質已切換為: {quality}"
+            ],
+            "copy_image": [
+                .english: "Copy Image",
+                .japanese: "画像をコピー",
+                .korean: "이미지 복사",
+                .simplifiedChinese: "复制图片",
+                .traditionalChinese: "複製圖片"
+            ],
+            "copy_original_image": [
+                .english: "Copy Original Image",
+                .japanese: "原寸画像をコピー",
+                .korean: "원본 이미지 복사",
+                .simplifiedChinese: "复制原图",
+                .traditionalChinese: "複製原圖"
+            ],
+            "save_image_as": [
+                .english: "Save Image As...",
+                .japanese: "画像を別名で保存...",
+                .korean: "다른 이름으로 이미지 저장...",
+                .simplifiedChinese: "保存图片...",
+                .traditionalChinese: "儲存圖片..."
+            ],
+            "save_video_as": [
+                .english: "Save Video As...",
+                .japanese: "動画を別名で保存...",
+                .korean: "다른 이름으로 동영상 저장...",
+                .simplifiedChinese: "保存视频...",
+                .traditionalChinese: "儲存影片..."
+            ],
+            "copy_media_link": [
+                .english: "Copy Media Link",
+                .japanese: "メディアのリンクをコピー",
+                .korean: "미디어 링크 복사",
+                .simplifiedChinese: "保存 URL",
+                .traditionalChinese: "儲存 URL"
+            ],
+            "copy_video_link": [
+                .english: "Copy Video Link",
+                .japanese: "動画リンクをコピー",
+                .korean: "동영상 링크 복사",
+                .simplifiedChinese: "复制视频链接",
+                .traditionalChinese: "複製影片連結"
+            ],
+            "image_copied": [
+                .english: "Original image copied to clipboard",
+                .japanese: "原寸画像をクリップボードにコピーしました",
+                .korean: "원본 이미지가 클립보드에 복사되었습니다",
+                .simplifiedChinese: "原图已复制到剪贴板",
+                .traditionalChinese: "原圖已複製至剪貼簿"
+            ],
+            "image_saved": [
+                .english: "Original image saved successfully",
+                .japanese: "原寸画像を保存しました",
+                .korean: "원본 이미지가 저장되었습니다",
+                .simplifiedChinese: "原图已保存",
+                .traditionalChinese: "原圖已儲存"
+            ],
+            "video_saved": [
+                .english: "Video saved successfully",
+                .japanese: "動画を保存しました",
+                .korean: "동영상이 저장되었습니다",
+                .simplifiedChinese: "视频已保存",
+                .traditionalChinese: "影片已儲存"
+            ],
+            "media_link_copied": [
+                .english: "Media URL copied to clipboard",
+                .japanese: "メディアURLをコピーしました",
+                .korean: "미디어 URL이 복사되었습니다",
+                .simplifiedChinese: "媒体链接已复制到剪贴板",
+                .traditionalChinese: "媒體連結已複製至剪貼簿"
+            ],
+            "fetching_original_image": [
+                .english: "Fetching original image...",
+                .japanese: "原寸画像を取得中...",
+                .korean: "원본 이미지를 가져오는 중...",
+                .simplifiedChinese: "正在获取原图...",
+                .traditionalChinese: "正在取得原圖..."
+            ],
+            "downloading_media": [
+                .english: "Downloading original media...",
+                .japanese: "メディアをダウンロード中...",
+                .korean: "미디어를 다운로드하는 중...",
+                .simplifiedChinese: "正在下载媒体...",
+                .traditionalChinese: "正在下載媒體..."
+            ],
+            "repost": [
+                .english: "Repost",
+                .japanese: "リポスト",
+                .korean: "재게시",
+                .simplifiedChinese: "转帖",
+                .traditionalChinese: "轉貼"
+            ],
+            "share": [
+                .english: "Share...",
+                .japanese: "共有...",
+                .korean: "공유...",
+                .simplifiedChinese: "分享...",
+                .traditionalChinese: "分享..."
             ]
         ]
         
@@ -805,5 +938,51 @@ final class LocalizationManager: ObservableObject {
             str = str.replacingOccurrences(of: "{\(k)}", with: v)
         }
         return str
+    }
+    
+    func formatReplyContext(mentions: [String]) -> String {
+        guard !mentions.isEmpty else { return "" }
+        switch currentLanguage {
+        case .simplifiedChinese:
+            if mentions.count == 1 {
+                return "回复 \(mentions[0])"
+            } else if mentions.count == 2 {
+                return "回复 \(mentions[0]) 和 \(mentions[1])"
+            } else {
+                return "回复 \(mentions[0])、\(mentions[1]) 等"
+            }
+        case .traditionalChinese:
+            if mentions.count == 1 {
+                return "回覆 \(mentions[0])"
+            } else if mentions.count == 2 {
+                return "回覆 \(mentions[0]) 與 \(mentions[1])"
+            } else {
+                return "回覆 \(mentions[0])、\(mentions[1]) 等"
+            }
+        case .japanese:
+            if mentions.count == 1 {
+                return "返信先: \(mentions[0])さん"
+            } else if mentions.count == 2 {
+                return "返信先: \(mentions[0])さん、\(mentions[1])さん"
+            } else {
+                return "返信先: \(mentions[0])さん、他\(mentions.count - 1)人"
+            }
+        case .korean:
+            if mentions.count == 1 {
+                return "\(mentions[0])님에게 보내는 답글"
+            } else {
+                return "\(mentions.joined(separator: ", "))님에게 보내는 답글"
+            }
+        case .english:
+            fallthrough
+        default:
+            if mentions.count == 1 {
+                return "Replying to \(mentions[0])"
+            } else if mentions.count == 2 {
+                return "Replying to \(mentions[0]) and \(mentions[1])"
+            } else {
+                return "Replying to \(mentions[0]), \(mentions[1]) and \(mentions.count - 2) others"
+            }
+        }
     }
 }
