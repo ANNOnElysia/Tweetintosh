@@ -10,6 +10,7 @@ enum APIError: LocalizedError {
     case invalidResponse
     case networkError(Error)
     case parseError
+    case serverError(String)
     
     var errorDescription: String? {
         switch self {
@@ -17,6 +18,7 @@ enum APIError: LocalizedError {
         case .invalidResponse: return "Received invalid response from server."
         case .networkError(let err): return err.localizedDescription
         case .parseError: return "Failed to parse timeline data."
+        case .serverError(let msg): return msg
         }
     }
 }
@@ -391,6 +393,10 @@ final class APIClient {
         let replyCount = (legacy["reply_count"] as? Int) ?? 0
         let retweetCount = (legacy["retweet_count"] as? Int) ?? 0
         let favoriteCount = (legacy["favorite_count"] as? Int) ?? 0
+        let isFavorited = (legacy["favorited"] as? Bool) ?? ((legacy["favorited"] as? NSNumber)?.boolValue ?? false)
+        let isRetweeted = (legacy["retweeted"] as? Bool) ?? ((legacy["retweeted"] as? NSNumber)?.boolValue ?? false)
+        let isBookmarked = (legacy["bookmarked"] as? Bool) ?? ((legacy["bookmarked"] as? NSNumber)?.boolValue ?? false)
+        let bookmarkCount = (legacy["bookmark_count"] as? Int) ?? 0
         
         return Tweet(
             id: restId,
@@ -402,7 +408,11 @@ final class APIClient {
             retweetCount: retweetCount,
             favoriteCount: favoriteCount,
             isRetweet: isRetweet,
-            retweetedBy: retweetedBy
+            retweetedBy: retweetedBy,
+            isFavorited: isFavorited,
+            isRetweeted: isRetweeted,
+            isBookmarked: isBookmarked,
+            bookmarkCount: bookmarkCount
         )
     }
     
@@ -904,6 +914,10 @@ final class APIClient {
         let replyCount = (tweetObj["reply_count"] as? Int) ?? 0
         let retweetCount = (tweetObj["retweet_count"] as? Int) ?? 0
         let favoriteCount = (tweetObj["favorite_count"] as? Int) ?? 0
+        let isFavorited = (tweetObj["favorited"] as? Bool) ?? ((tweetObj["favorited"] as? NSNumber)?.boolValue ?? false)
+        let isRetweeted = (tweetObj["retweeted"] as? Bool) ?? ((tweetObj["retweeted"] as? NSNumber)?.boolValue ?? false)
+        let isBookmarked = (tweetObj["bookmarked"] as? Bool) ?? ((tweetObj["bookmarked"] as? NSNumber)?.boolValue ?? false)
+        let bookmarkCount = (tweetObj["bookmark_count"] as? Int) ?? 0
         
         return Tweet(
             id: idStr,
@@ -915,7 +929,11 @@ final class APIClient {
             retweetCount: retweetCount,
             favoriteCount: favoriteCount,
             isRetweet: isRetweet,
-            retweetedBy: retweetedBy
+            retweetedBy: retweetedBy,
+            isFavorited: isFavorited,
+            isRetweeted: isRetweeted,
+            isBookmarked: isBookmarked,
+            bookmarkCount: bookmarkCount
         )
     }
     
@@ -1110,5 +1128,287 @@ final class APIClient {
                 ownerHandle: ownerHandle
             )
         }
+    }
+    
+    // MARK: - Tweet Engagement Mutations
+    
+    private func performGraphQLMutation(
+        endpoint: String,
+        body: [String: Any],
+        referer: String = "https://x.com/home",
+        successCheck: @escaping ([String: Any]) -> Bool,
+        completion: @escaping (Result<Void, APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(referer, forHTTPHeaderField: "referer")
+        
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            completion(.failure(.parseError))
+            return
+        }
+        request.httpBody = httpBody
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.invalidResponse))
+                return
+            }
+            guard (200...299).contains(httpResponse.statusCode), let data = data else {
+                completion(.failure(.serverError("HTTP \(httpResponse.statusCode)")))
+                return
+            }
+            do {
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    completion(.failure(.parseError))
+                    return
+                }
+                if let errors = json["errors"] as? [[String: Any]], !errors.isEmpty {
+                    let msg = errors.compactMap { $0["message"] as? String }.joined(separator: ", ")
+                    completion(.failure(.serverError(msg.isEmpty ? "Action rejected by server" : msg)))
+                    return
+                }
+                guard let dataObj = json["data"] as? [String: Any], successCheck(dataObj) else {
+                    completion(.failure(.serverError("Unexpected server response")))
+                    return
+                }
+                completion(.success(()))
+            } catch {
+                completion(.failure(.parseError))
+            }
+        }
+        task.resume()
+    }
+    
+    /// Like a tweet
+    func favoriteTweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "lI07N6Otwv1PhnEgXILM7A"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/FavoriteTweet"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["favorite_tweet"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Remove like from a tweet
+    func unfavoriteTweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "ZYKSe-w7KEslx3JhSIk5LA"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/UnfavoriteTweet"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["unfavorite_tweet"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Retweet a tweet
+    func retweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "mbRO74GrOvSfRcJnlMapnQ"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/CreateRetweet"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id, "dark_request": false],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { $0["create_retweet"] != nil },
+            completion: completion
+        )
+    }
+    
+    /// Remove retweet from a tweet
+    func unretweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "ZyZigVsNiFO6v1dEks1eWg"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/DeleteRetweet"
+        let body: [String: Any] = [
+            "variables": ["source_tweet_id": id, "tweet_id": id, "dark_request": false],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { $0["unretweet"] != nil },
+            completion: completion
+        )
+    }
+    
+    /// Bookmark a tweet
+    func bookmark(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "aoDbu3RHznuiSkQ9aNM67Q"
+        // Note: Production Twitter maps CreateBookmark directly to the query ID without action name suffix
+        let endpoint = "https://x.com/i/api/graphql/\(qid)"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["tweet_bookmark_put"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Remove bookmark from a tweet
+    func unbookmark(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "Wlmlj2-xzyS1GN3a6cj-mQ"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/DeleteBookmark"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["tweet_bookmark_delete"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Reply to a tweet
+    func reply(to tweetId: String, text: String, completion: @escaping (Result<String, APIError>) -> Void) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        let qid = "5CVj-J0FZWyGgJpcjeBJEA"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/CreateTweet"
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://x.com/compose/post", forHTTPHeaderField: "referer")
+        
+        let features: [String: Any] = [
+            "premium_content_api_read_enabled": false,
+            "communities_web_enable_tweet_community_results_fetch": true,
+            "c9s_tweet_anatomy_moderator_badge_enabled": true,
+            "responsive_web_grok_analyze_button_fetch_trends_enabled": false,
+            "responsive_web_grok_analyze_post_followups_enabled": false,
+            "responsive_web_jetfuel_frame": true,
+            "responsive_web_edit_tweet_api_enabled": true,
+            "graphql_is_translatable_rweb_tweet_is_translatable_enabled": true,
+            "view_counts_everywhere_api_enabled": true,
+            "longform_notetweets_consumption_enabled": true,
+            "responsive_web_twitter_article_tweet_consumption_enabled": true,
+            "tweet_awards_web_tipping_enabled": false,
+            "freedom_of_speech_not_reach_fetch_enabled": true,
+            "standardized_nudges_misinfo": true,
+            "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+            "longform_notetweets_rich_text_read_enabled": true,
+            "longform_notetweets_inline_media_enabled": true,
+            "responsive_web_graphql_timeline_navigation_enabled": true,
+            "responsive_web_enhance_cards_enabled": false
+        ]
+        
+        let variables: [String: Any] = [
+            "tweet_text": text,
+            "reply": [
+                "in_reply_to_tweet_id": tweetId,
+                "exclude_reply_user_ids": []
+            ],
+            "dark_request": false,
+            "media": [
+                "media_entities": [],
+                "possibly_sensitive": false
+            ],
+            "semantic_annotation_ids": []
+        ]
+        
+        let body: [String: Any] = [
+            "variables": variables,
+            "features": features,
+            "queryId": qid
+        ]
+        
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            completion(.failure(.parseError))
+            return
+        }
+        request.httpBody = httpBody
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.invalidResponse))
+                return
+            }
+            guard (200...299).contains(httpResponse.statusCode), let data = data else {
+                completion(.failure(.serverError("HTTP \(httpResponse.statusCode)")))
+                return
+            }
+            do {
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    completion(.failure(.parseError))
+                    return
+                }
+                if let errors = json["errors"] as? [[String: Any]], !errors.isEmpty {
+                    let msg = errors.compactMap { $0["message"] as? String }.joined(separator: ", ")
+                    completion(.failure(.serverError(msg.isEmpty ? "Reply failed" : msg)))
+                    return
+                }
+                guard let dataObj = json["data"] as? [String: Any],
+                      let createTweet = dataObj["create_tweet"] as? [String: Any],
+                      let tweetResults = createTweet["tweet_results"] as? [String: Any],
+                      let result = tweetResults["result"] as? [String: Any],
+                      let restId = result["rest_id"] as? String ?? (result["legacy"] as? [String: Any])?["id_str"] as? String else {
+                    completion(.failure(.serverError("Tweet created but no ID returned")))
+                    return
+                }
+                completion(.success(restId))
+            } catch {
+                completion(.failure(.parseError))
+            }
+        }
+        task.resume()
     }
 }

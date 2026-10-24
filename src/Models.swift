@@ -94,6 +94,68 @@ struct Tweet: Codable, Hashable, Identifiable {
     var isRetweet: Bool
     var retweetedBy: String?
     
+    var isFavorited: Bool = false
+    var isRetweeted: Bool = false
+    var isBookmarked: Bool = false
+    var bookmarkCount: Int = 0
+    
+    enum CodingKeys: String, CodingKey {
+        case id, text, createdAt, author, media
+        case replyCount, retweetCount, favoriteCount
+        case isRetweet, retweetedBy
+        case isFavorited, isRetweeted, isBookmarked, bookmarkCount
+    }
+    
+    init(
+        id: String,
+        text: String,
+        createdAt: Date,
+        author: TweetUser,
+        media: [TweetMedia],
+        replyCount: Int,
+        retweetCount: Int,
+        favoriteCount: Int,
+        isRetweet: Bool,
+        retweetedBy: String?,
+        isFavorited: Bool = false,
+        isRetweeted: Bool = false,
+        isBookmarked: Bool = false,
+        bookmarkCount: Int = 0
+    ) {
+        self.id = id
+        self.text = text
+        self.createdAt = createdAt
+        self.author = author
+        self.media = media
+        self.replyCount = replyCount
+        self.retweetCount = retweetCount
+        self.favoriteCount = favoriteCount
+        self.isRetweet = isRetweet
+        self.retweetedBy = retweetedBy
+        self.isFavorited = isFavorited
+        self.isRetweeted = isRetweeted
+        self.isBookmarked = isBookmarked
+        self.bookmarkCount = bookmarkCount
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        author = try container.decode(TweetUser.self, forKey: .author)
+        media = try container.decode([TweetMedia].self, forKey: .media)
+        replyCount = try container.decode(Int.self, forKey: .replyCount)
+        retweetCount = try container.decode(Int.self, forKey: .retweetCount)
+        favoriteCount = try container.decode(Int.self, forKey: .favoriteCount)
+        isRetweet = try container.decode(Bool.self, forKey: .isRetweet)
+        retweetedBy = try container.decodeIfPresent(String.self, forKey: .retweetedBy)
+        isFavorited = try container.decodeIfPresent(Bool.self, forKey: .isFavorited) ?? false
+        isRetweeted = try container.decodeIfPresent(Bool.self, forKey: .isRetweeted) ?? false
+        isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
+        bookmarkCount = try container.decodeIfPresent(Int.self, forKey: .bookmarkCount) ?? 0
+    }
+    
     // Clean text: strip trailing media t.co links when media is present
     var cleanText: String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)

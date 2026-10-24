@@ -1,0 +1,289 @@
+//
+//  ReplyComposerSheet.swift
+//  MaX - Headless Data-driven Client
+//
+
+import SwiftUI
+import AppKit
+
+final class ReplyComposerState: ObservableObject {
+    @Published var replyText: String = ""
+    @Published var isSending: Bool = false
+    @Published var errorMessage: String? = nil
+}
+
+struct ReplyComposerSheet: View {
+    let tweet: Tweet
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject var loc = LocalizationManager.shared
+    @StateObject private var state = ReplyComposerState()
+    
+    private let characterLimit = 280
+    
+    private var remainingCharacters: Int {
+        characterLimit - state.replyText.count
+    }
+    
+    private var canSend: Bool {
+        let trimmed = state.replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && remainingCharacters >= 0 && !state.isSending
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            headerBar
+            
+            Divider()
+                .background(ThemeManager.divider)
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    originalTweetSnippet
+                    composerInputRow
+                    
+                    if let error = state.errorMessage {
+                        errorBanner(error)
+                    }
+                }
+            }
+            
+            Divider()
+                .background(ThemeManager.divider)
+            
+            bottomControlsBar
+        }
+        .frame(width: 520, height: 340)
+        .background(ThemeManager.background)
+    }
+    
+    // MARK: - Subviews
+    
+    private var headerBar: some View {
+        HStack {
+            Button(action: { dismiss() }) {
+                Text(loc.t("cancel"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(ThemeManager.secondaryText)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.escape, modifiers: [])
+            
+            Spacer()
+            
+            Text(loc.t("reply"))
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(ThemeManager.primaryText)
+            
+            Spacer()
+            
+            Button(action: submitReply) {
+                HStack(spacing: 6) {
+                    if state.isSending {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.65)
+                            .frame(width: 14, height: 14)
+                    }
+                    Text(loc.t("post_reply"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(canSend ? ThemeManager.accent : ThemeManager.accent.opacity(0.4))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSend)
+            .keyboardShortcut(.return, modifiers: [.command])
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+    }
+    
+    private var originalTweetSnippet: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 4) {
+                CachedAsyncImage(urlString: tweet.author.avatarUrl)
+                    .frame(width: 34, height: 34)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
+                
+                Rectangle()
+                    .fill(ThemeManager.divider)
+                    .frame(width: 2)
+                    .frame(maxHeight: .infinity)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Text(tweet.author.name)
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundColor(ThemeManager.primaryText)
+                        .lineLimit(1)
+                    
+                    Text(tweet.author.formattedHandle)
+                        .font(.system(size: 12.5))
+                        .foregroundColor(ThemeManager.secondaryText)
+                        .lineLimit(1)
+                    
+                    Text("·")
+                        .font(.system(size: 12.5))
+                        .foregroundColor(ThemeManager.secondaryText)
+                    
+                    Text(tweet.relativeTime)
+                        .font(.system(size: 12.5))
+                        .foregroundColor(ThemeManager.secondaryText)
+                }
+                
+                if !tweet.cleanText.isEmpty {
+                    Text(tweet.cleanText)
+                        .font(.system(size: 13))
+                        .foregroundColor(ThemeManager.primaryText.opacity(0.85))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                
+                Text(loc.t("replying_to").replacingOccurrences(of: "{author}", with: tweet.author.formattedHandle))
+                    .font(.system(size: 12))
+                    .foregroundColor(ThemeManager.accent)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+    }
+    
+    private var composerInputRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(ThemeManager.accent.opacity(0.15))
+                    .frame(width: 34, height: 34)
+                Image(systemName: "person.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(ThemeManager.accent)
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack(alignment: .topLeading) {
+                    if state.replyText.isEmpty {
+                        Text(loc.t("reply_placeholder"))
+                            .font(.system(size: 14))
+                            .foregroundColor(ThemeManager.secondaryText.opacity(0.7))
+                            .padding(.top, 8)
+                            .padding(.leading, 5)
+                    }
+                    
+                    TextEditor(text: $state.replyText)
+                        .font(.system(size: 14))
+                        .scrollContentBackgroundHidden()
+                        .background(Color.clear)
+                        .frame(minHeight: 110)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+    }
+    
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+                .foregroundColor(.red)
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundColor(.red)
+                .lineLimit(2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+    
+    private var progressRatio: CGFloat {
+        let count = Double(state.replyText.count)
+        let limit = Double(characterLimit)
+        return CGFloat(min(max(count / limit, 0.0), 1.0))
+    }
+    
+    private var progressColor: Color {
+        if remainingCharacters < 0 {
+            return Color.red
+        } else if remainingCharacters <= 20 {
+            return Color.orange
+        } else {
+            return ThemeManager.accent
+        }
+    }
+    
+    private var bottomControlsBar: some View {
+        HStack {
+            Text("⌘ + Enter")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(ThemeManager.secondaryText.opacity(0.6))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(ThemeManager.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            
+            Spacer()
+            
+            HStack(spacing: 6) {
+                if remainingCharacters <= 20 {
+                    Text("\(remainingCharacters)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(remainingCharacters < 0 ? .red : .orange)
+                }
+                
+                Circle()
+                    .stroke(ThemeManager.divider, lineWidth: 2)
+                    .frame(width: 18, height: 18)
+                    .overlay(
+                        Circle()
+                            .trim(from: 0, to: progressRatio)
+                            .stroke(progressColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(ThemeManager.background)
+    }
+    
+    private func submitReply() {
+        let textToSend = state.replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !textToSend.isEmpty else { return }
+        
+        state.isSending = true
+        state.errorMessage = nil
+        
+        TimelineViewModel.shared.postReply(to: tweet, text: textToSend) { result in
+            DispatchQueue.main.async {
+                self.state.isSending = false
+                switch result {
+                case .success:
+                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    self.dismiss()
+                case .failure(let err):
+                    self.state.errorMessage = err.localizedDescription
+                }
+            }
+        }
+    }
+}
+
+// Extension to safely hide TextEditor scroll content background across macOS versions
+private extension View {
+    @ViewBuilder
+    func scrollContentBackgroundHidden() -> some View {
+        if #available(macOS 13.0, *) {
+            self.scrollContentBackground(.hidden)
+        } else {
+            self
+        }
+    }
+}

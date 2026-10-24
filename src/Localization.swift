@@ -265,12 +265,75 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "转推",
                 .traditionalChinese: "轉推"
             ],
+            "undo_retweet": [
+                .english: "Undo Repost",
+                .japanese: "リポストを取り消す",
+                .korean: "재게시 취소",
+                .simplifiedChinese: "撤销转推",
+                .traditionalChinese: "取消轉推"
+            ],
             "like": [
                 .english: "Like",
                 .japanese: "いいね",
                 .korean: "마음에 들어요",
                 .simplifiedChinese: "喜欢",
                 .traditionalChinese: "喜歡"
+            ],
+            "unlike": [
+                .english: "Unlike",
+                .japanese: "いいねを取り消す",
+                .korean: "좋아요 취소",
+                .simplifiedChinese: "取消喜欢",
+                .traditionalChinese: "取消喜歡"
+            ],
+            "bookmark": [
+                .english: "Bookmark",
+                .japanese: "ブックマーク",
+                .korean: "북마크",
+                .simplifiedChinese: "添加书签",
+                .traditionalChinese: "加入書籤"
+            ],
+            "bookmarked": [
+                .english: "Bookmarked",
+                .japanese: "ブックマーク済み",
+                .korean: "북마크됨",
+                .simplifiedChinese: "已加书签",
+                .traditionalChinese: "已加書籤"
+            ],
+            "remove_bookmark": [
+                .english: "Remove Bookmark",
+                .japanese: "ブックマークを削除",
+                .korean: "북마크 삭제",
+                .simplifiedChinese: "移除书签",
+                .traditionalChinese: "移除書籤"
+            ],
+            "replying_to": [
+                .english: "Replying to {author}",
+                .japanese: "{author}に返信中",
+                .korean: "{author}님에게 답글 남기는 중",
+                .simplifiedChinese: "回复给 {author}",
+                .traditionalChinese: "回覆給 {author}"
+            ],
+            "reply_placeholder": [
+                .english: "Post your reply...",
+                .japanese: "返信をポスト...",
+                .korean: "답글 게시하기...",
+                .simplifiedChinese: "发布你的回复...",
+                .traditionalChinese: "發布你的回覆..."
+            ],
+            "post_reply": [
+                .english: "Reply",
+                .japanese: "返信",
+                .korean: "답글",
+                .simplifiedChinese: "回复",
+                .traditionalChinese: "回覆"
+            ],
+            "cancel": [
+                .english: "Cancel",
+                .japanese: "キャンセル",
+                .korean: "취소",
+                .simplifiedChinese: "取消",
+                .traditionalChinese: "取消"
             ],
             "theme_colour": [
                 .english: "Theme Colour",

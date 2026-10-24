@@ -500,6 +500,151 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Tweet Mutation & Cross-Feed Synchronization
+    
+    func mutateTweet(id: String, transform: (inout Tweet) -> Void) {
+        // 1. Mutate in For You
+        if let idx = forYouTweets.firstIndex(where: { $0.id == id }) {
+            transform(&forYouTweets[idx])
+        }
+        // 2. Mutate in Following
+        if let idx = followingTweets.firstIndex(where: { $0.id == id }) {
+            transform(&followingTweets[idx])
+        }
+        // 3. Mutate in Lists
+        for (listId, list) in listTweets {
+            if let idx = list.firstIndex(where: { $0.id == id }) {
+                var copy = list
+                transform(&copy[idx])
+                listTweets[listId] = copy
+            }
+        }
+        // 4. Mutate in active displayed list
+        if let idx = tweets.firstIndex(where: { $0.id == id }) {
+            transform(&tweets[idx])
+        }
+    }
+    
+    // MARK: - Optimistic Engagement Actions
+    
+    func toggleLike(for tweet: Tweet) {
+        let tweetId = tweet.id
+        let willFavorite = !tweet.isFavorited
+        
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        
+        mutateTweet(id: tweetId) { t in
+            t.isFavorited = willFavorite
+            t.favoriteCount = max(0, t.favoriteCount + (willFavorite ? 1 : -1))
+        }
+        
+        let completion: (Result<Void, APIError>) -> Void = { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure(let error) = result {
+                    // Rollback on failure
+                    self.mutateTweet(id: tweetId) { t in
+                        t.isFavorited = !willFavorite
+                        t.favoriteCount = max(0, t.favoriteCount + (!willFavorite ? 1 : -1))
+                    }
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+        
+        if willFavorite {
+            APIClient.shared.favoriteTweet(id: tweetId, completion: completion)
+        } else {
+            APIClient.shared.unfavoriteTweet(id: tweetId, completion: completion)
+        }
+    }
+    
+    func toggleRetweet(for tweet: Tweet) {
+        let tweetId = tweet.id
+        let willRetweet = !tweet.isRetweeted
+        
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        
+        mutateTweet(id: tweetId) { t in
+            t.isRetweeted = willRetweet
+            t.retweetCount = max(0, t.retweetCount + (willRetweet ? 1 : -1))
+        }
+        
+        let completion: (Result<Void, APIError>) -> Void = { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure(let error) = result {
+                    self.mutateTweet(id: tweetId) { t in
+                        t.isRetweeted = !willRetweet
+                        t.retweetCount = max(0, t.retweetCount + (!willRetweet ? 1 : -1))
+                    }
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+        
+        if willRetweet {
+            APIClient.shared.retweet(id: tweetId, completion: completion)
+        } else {
+            APIClient.shared.unretweet(id: tweetId, completion: completion)
+        }
+    }
+    
+    func toggleBookmark(for tweet: Tweet) {
+        let tweetId = tweet.id
+        let willBookmark = !tweet.isBookmarked
+        
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        
+        mutateTweet(id: tweetId) { t in
+            t.isBookmarked = willBookmark
+            t.bookmarkCount = max(0, t.bookmarkCount + (willBookmark ? 1 : -1))
+        }
+        
+        let completion: (Result<Void, APIError>) -> Void = { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure(let error) = result {
+                    self.mutateTweet(id: tweetId) { t in
+                        t.isBookmarked = !willBookmark
+                        t.bookmarkCount = max(0, t.bookmarkCount + (!willBookmark ? 1 : -1))
+                    }
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+        
+        if willBookmark {
+            APIClient.shared.bookmark(id: tweetId, completion: completion)
+        } else {
+            APIClient.shared.unbookmark(id: tweetId, completion: completion)
+        }
+    }
+    
+    func postReply(to tweet: Tweet, text: String, completion: @escaping (Result<String, APIError>) -> Void) {
+        let tweetId = tweet.id
+        
+        mutateTweet(id: tweetId) { t in
+            t.replyCount += 1
+        }
+        
+        APIClient.shared.reply(to: tweetId, text: text) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let newTweetId):
+                    completion(.success(newTweetId))
+                case .failure(let error):
+                    self.mutateTweet(id: tweetId) { t in
+                        t.replyCount = max(0, t.replyCount - 1)
+                    }
+                    self.errorMessage = error.localizedDescription
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
     private func prefetchMedia(for tweetsList: [Tweet]) {
         var urlsToFetch: [String] = []
         for tweet in tweetsList.prefix(15) {
