@@ -289,7 +289,7 @@ final class APIClient {
         return parseGraphQLTweetResult(result, dateFormatter: dateFormatter)
     }
     
-    func parseGraphQLTweetResult(_ rawResult: [String: Any], dateFormatter: DateFormatter) -> Tweet? {
+    func parseGraphQLTweetResult(_ rawResult: [String: Any], dateFormatter: DateFormatter, parseQuoted: Bool = true) -> Tweet? {
         var result = rawResult
         // Unwrap TweetWithVisibilityResults
         if let inner = result["tweet"] as? [String: Any] {
@@ -402,6 +402,14 @@ final class APIClient {
         let isBookmarked = (legacy["bookmarked"] as? Bool) ?? ((legacy["bookmarked"] as? NSNumber)?.boolValue ?? false)
         let bookmarkCount = (legacy["bookmark_count"] as? Int) ?? 0
         
+        // Quoted tweet extraction
+        var quotedTweet: Tweet? = nil
+        if parseQuoted,
+           let quotedObj = (result["quoted_status_result"] as? [String: Any]) ?? (legacy["quoted_status_result"] as? [String: Any]),
+           let quotedRaw = quotedObj["result"] as? [String: Any] {
+            quotedTweet = parseGraphQLTweetResult(quotedRaw, dateFormatter: dateFormatter, parseQuoted: false)
+        }
+        
         return Tweet(
             id: restId,
             text: fullText,
@@ -416,7 +424,8 @@ final class APIClient {
             isFavorited: isFavorited,
             isRetweeted: isRetweeted,
             isBookmarked: isBookmarked,
-            bookmarkCount: bookmarkCount
+            bookmarkCount: bookmarkCount,
+            quotedTweet: quotedTweet.map { QuotedTweetBox(tweet: $0) }
         )
     }
     
@@ -1305,6 +1314,16 @@ final class APIClient {
     
     /// Reply to a tweet
     func reply(to tweetId: String, text: String, completion: @escaping (Result<String, APIError>) -> Void) {
+        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, completion: completion)
+    }
+    
+    /// Create a new tweet (standalone post, reply, or quote post)
+    func createTweet(
+        text: String,
+        replyToTweetId: String? = nil,
+        attachmentUrl: String? = nil,
+        completion: @escaping (Result<String, APIError>) -> Void
+    ) {
         guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
             completion(.failure(.unauthenticated))
             return
@@ -1351,12 +1370,8 @@ final class APIClient {
             "responsive_web_enhance_cards_enabled": false
         ]
         
-        let variables: [String: Any] = [
+        var variables: [String: Any] = [
             "tweet_text": text,
-            "reply": [
-                "in_reply_to_tweet_id": tweetId,
-                "exclude_reply_user_ids": []
-            ],
             "dark_request": false,
             "media": [
                 "media_entities": [],
@@ -1364,6 +1379,17 @@ final class APIClient {
             ],
             "semantic_annotation_ids": []
         ]
+        
+        if let replyTo = replyToTweetId, !replyTo.isEmpty {
+            variables["reply"] = [
+                "in_reply_to_tweet_id": replyTo,
+                "exclude_reply_user_ids": []
+            ]
+        }
+        
+        if let attach = attachmentUrl, !attach.isEmpty {
+            variables["attachment_url"] = attach
+        }
         
         let body: [String: Any] = [
             "variables": variables,

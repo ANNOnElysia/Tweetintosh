@@ -1,0 +1,103 @@
+//
+//  QuotedTweetCard.swift
+//  MaX - Headless Data-driven Client
+//
+
+import SwiftUI
+import AppKit
+
+final class QuotedCardState: ObservableObject {
+    @Published var isHovered: Bool = false
+}
+
+struct QuotedTweetCard: View {
+    let tweet: Tweet
+    var isInteractive: Bool = true
+    @ObservedObject var theme = ThemeManager.shared
+    @StateObject private var state = QuotedCardState()
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 1. Author Header
+            HStack(spacing: 6) {
+                if let avatarUrl = tweet.author.avatarUrl {
+                    CachedAsyncImage(urlString: avatarUrl)
+                        .frame(width: 20, height: 20)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(ThemeManager.border.opacity(0.6), lineWidth: 0.5))
+                } else {
+                    Circle()
+                        .fill(ThemeManager.secondaryText.opacity(0.2))
+                        .frame(width: 20, height: 20)
+                }
+                
+                Text(tweet.author.name)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .lineLimit(1)
+                
+                Text(tweet.author.formattedHandle)
+                    .font(.system(size: 12))
+                    .foregroundColor(ThemeManager.secondaryText)
+                    .lineLimit(1)
+                
+                Text("·")
+                    .font(.system(size: 12))
+                    .foregroundColor(ThemeManager.secondaryText)
+                
+                Text(tweet.relativeTime)
+                    .font(.system(size: 12))
+                    .foregroundColor(ThemeManager.secondaryText)
+                
+                Spacer()
+            }
+            
+            // 2. Tweet Text Content
+            if !tweet.cleanText.isEmpty {
+                Text(tweet.cleanText)
+                    .font(theme.tweetFont(size: 13))
+                    .lineSpacing(theme.lineSpacing() * 0.8)
+                    .foregroundColor(ThemeManager.primaryText.opacity(0.92))
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            
+            // 3. Media Preview (if available)
+            if !tweet.media.isEmpty {
+                quotedMediaPreview
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(theme.isLight ? Color.black.opacity(state.isHovered ? 0.04 : 0.02) : Color.white.opacity(state.isHovered ? 0.06 : 0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(state.isHovered ? ThemeManager.accent.opacity(0.4) : ThemeManager.border.opacity(0.7), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .onHover { hovering in
+            if isInteractive {
+                state.isHovered = hovering
+            }
+        }
+        .onTapGesture {
+            if isInteractive {
+                NavigationManager.shared.openTweetDetail(tweet)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var quotedMediaPreview: some View {
+        let firstMedia = tweet.media[0]
+        CachedAsyncImage(urlString: firstMedia.previewUrl)
+            .aspectRatio(contentMode: .fill)
+            .frame(height: 140)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}

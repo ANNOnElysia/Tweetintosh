@@ -80,6 +80,23 @@ struct TweetUser: Codable, Hashable, Identifiable {
     }
 }
 
+final class QuotedTweetBox: Codable, Hashable {
+    let tweet: Tweet
+    init(tweet: Tweet) { self.tweet = tweet }
+    static func == (lhs: QuotedTweetBox, rhs: QuotedTweetBox) -> Bool { lhs.tweet == rhs.tweet }
+    func hash(into hasher: inout Hasher) { hasher.combine(tweet) }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.tweet = try container.decode(Tweet.self)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(tweet)
+    }
+}
+
 struct Tweet: Codable, Hashable, Identifiable {
     var id: String
     var text: String
@@ -98,12 +115,18 @@ struct Tweet: Codable, Hashable, Identifiable {
     var isRetweeted: Bool = false
     var isBookmarked: Bool = false
     var bookmarkCount: Int = 0
+    var quotedTweet: QuotedTweetBox? = nil
+    
+    var quoted: Tweet? {
+        quotedTweet?.tweet
+    }
     
     enum CodingKeys: String, CodingKey {
         case id, text, createdAt, author, media
         case replyCount, retweetCount, favoriteCount
         case isRetweet, retweetedBy
         case isFavorited, isRetweeted, isBookmarked, bookmarkCount
+        case quotedTweet
     }
     
     init(
@@ -120,7 +143,8 @@ struct Tweet: Codable, Hashable, Identifiable {
         isFavorited: Bool = false,
         isRetweeted: Bool = false,
         isBookmarked: Bool = false,
-        bookmarkCount: Int = 0
+        bookmarkCount: Int = 0,
+        quotedTweet: QuotedTweetBox? = nil
     ) {
         self.id = id
         self.text = text
@@ -136,6 +160,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         self.isRetweeted = isRetweeted
         self.isBookmarked = isBookmarked
         self.bookmarkCount = bookmarkCount
+        self.quotedTweet = quotedTweet
     }
     
     init(from decoder: Decoder) throws {
@@ -154,12 +179,13 @@ struct Tweet: Codable, Hashable, Identifiable {
         isRetweeted = try container.decodeIfPresent(Bool.self, forKey: .isRetweeted) ?? false
         isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
         bookmarkCount = try container.decodeIfPresent(Int.self, forKey: .bookmarkCount) ?? 0
+        quotedTweet = try container.decodeIfPresent(QuotedTweetBox.self, forKey: .quotedTweet)
     }
     
-    // Clean text: strip trailing media t.co links when media is present
+    // Clean text: strip trailing media or quote t.co links when media or quote is present
     var cleanText: String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !media.isEmpty {
+        if !media.isEmpty || quotedTweet != nil {
             // Remove trailing https://t.co/xxxxxx URL from the text body (even with whitespace)
             if let range = result.range(of: #"https:\/\/t\.co\/[A-Za-z0-9]+\s*$"#, options: .regularExpression) {
                 result.removeSubrange(range)

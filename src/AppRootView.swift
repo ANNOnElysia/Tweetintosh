@@ -198,6 +198,9 @@ struct AppRootView: View {
                 .zIndex(1000)
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
+        .sheet(isPresented: $nav.isShowingCompose) {
+            TweetComposerSheet(quotedTweet: nav.composeQuotedTweet)
+        }
     }
 
     @ViewBuilder private var destination: some View {
@@ -642,6 +645,45 @@ private struct LiquidGlassSidebar: View {
             }
             
             Spacer()
+            
+            // New Post Button
+            Button(action: {
+                nav.openComposer()
+            }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 20)
+                    Text(loc.t("new_post"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    if nav.showShortcutBadges {
+                        Text("⌘N")
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3.5)
+                                    .fill(Color.white.opacity(0.25))
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
+                }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(ThemeManager.accent)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 8)
+            .padding(.bottom, 2)
             
             // Bottom Settings Button
             Button(action: onOpenSettings) {

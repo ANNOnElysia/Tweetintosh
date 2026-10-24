@@ -239,8 +239,8 @@ struct TweetDetailView: View {
             }
             
             // Tweet Body Text (Large, crisp typography)
-            if !viewModel.focalTweet.text.isEmpty {
-                Text(viewModel.focalTweet.text)
+            if !viewModel.focalTweet.cleanText.isEmpty {
+                Text(viewModel.focalTweet.cleanText)
                     .font(theme.tweetFont(size: 17))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineSpacing(5)
@@ -251,6 +251,12 @@ struct TweetDetailView: View {
             if !viewModel.focalTweet.media.isEmpty {
                 ImageGridView(mediaList: viewModel.focalTweet.media, tweet: viewModel.focalTweet)
                     .padding(.top, 4)
+            }
+            
+            // Embedded Quoted Tweet (if any)
+            if let quoted = viewModel.focalTweet.quoted {
+                QuotedTweetCard(tweet: quoted)
+                    .padding(.top, 6)
             }
             
             // Formatted Date & Time
@@ -329,16 +335,26 @@ struct TweetDetailView: View {
             
             Spacer()
             
-            // Retweet Button
-            actionButton(
-                icon: "arrow.2.squarepath",
-                activeIcon: "arrow.2.squarepath",
-                count: viewModel.focalTweet.retweetCount,
-                isActive: viewModel.focalTweet.isRetweeted,
-                activeColor: Color(hex: "#00BA7C")
-            ) {
-                viewModel.toggleRetweet(for: viewModel.focalTweet)
+            // Retweet & Quote Menu
+            Menu {
+                Button(action: {
+                    viewModel.toggleRetweet(for: viewModel.focalTweet)
+                }) {
+                    Label(viewModel.focalTweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
+                }
+                Button(action: {
+                    NavigationManager.shared.openComposer(quoting: viewModel.focalTweet)
+                }) {
+                    Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
+                }
+            } label: {
+                Image(systemName: "arrow.2.squarepath")
+                    .font(.system(size: 18))
+                    .foregroundColor(viewModel.focalTweet.isRetweeted ? Color(hex: "#00BA7C") : ThemeManager.secondaryText)
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help(viewModel.focalTweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
             
             Spacer()
             
@@ -477,6 +493,12 @@ struct TweetDetailView: View {
                             .padding(.top, 4)
                     }
                     
+                    // Embedded Quoted Tweet (if any)
+                    if let quoted = tweet.quoted {
+                        QuotedTweetCard(tweet: quoted)
+                            .padding(.top, 4)
+                    }
+                    
                     // Reply Action Bar (Compact)
                     HStack(spacing: 24) {
                         // Reply to this reply
@@ -496,10 +518,19 @@ struct TweetDetailView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         
-                        // Retweet
-                        Button(action: {
-                            viewModel.toggleRetweet(for: tweet)
-                        }) {
+                        // Retweet & Quote Menu
+                        Menu {
+                            Button(action: {
+                                viewModel.toggleRetweet(for: tweet)
+                            }) {
+                                Label(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
+                            }
+                            Button(action: {
+                                NavigationManager.shared.openComposer(quoting: tweet)
+                            }) {
+                                Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
+                            }
+                        } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.2.squarepath")
                                     .font(.system(size: 12))
@@ -510,7 +541,8 @@ struct TweetDetailView: View {
                             }
                             .foregroundColor(tweet.isRetweeted ? Color(hex: "#00BA7C") : ThemeManager.secondaryText)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
                         
                         // Like
                         Button(action: {

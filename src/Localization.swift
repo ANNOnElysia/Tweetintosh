@@ -272,6 +272,41 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "撤销转推",
                 .traditionalChinese: "取消轉推"
             ],
+            "quote_tweet": [
+                .english: "Quote",
+                .japanese: "引用",
+                .korean: "인용",
+                .simplifiedChinese: "引用推文",
+                .traditionalChinese: "引用貼文"
+            ],
+            "new_post": [
+                .english: "New Post",
+                .japanese: "ポストする",
+                .korean: "게시하기",
+                .simplifiedChinese: "发推",
+                .traditionalChinese: "發文"
+            ],
+            "post_action": [
+                .english: "Post",
+                .japanese: "ポスト",
+                .korean: "게시",
+                .simplifiedChinese: "发布",
+                .traditionalChinese: "發布"
+            ],
+            "post_placeholder": [
+                .english: "What is happening?!",
+                .japanese: "いまどうしてる？",
+                .korean: "무슨 일이 일어나고 있나요?",
+                .simplifiedChinese: "有什么新鲜事？",
+                .traditionalChinese: "發生了什麼事？"
+            ],
+            "quote_placeholder": [
+                .english: "Add a comment...",
+                .japanese: "コメントを追加...",
+                .korean: "의견 추가하기...",
+                .simplifiedChinese: "添加评论...",
+                .traditionalChinese: "新增留言..."
+            ],
             "like": [
                 .english: "Like",
                 .japanese: "いいね",
