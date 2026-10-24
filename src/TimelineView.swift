@@ -152,7 +152,7 @@ final class TrackpadPullCoordinator {
     private var boundsObserver: Any?
     private weak var registeredScrollView: NSScrollView?
     private var wheelReleaseTimer: Timer?
-    private let threshold: CGFloat = 65.0
+    private let threshold: CGFloat = 38.0
     private var activeOwner: String?
     
     var onPullProgress: ((CGFloat) -> Void)?
@@ -351,7 +351,7 @@ struct MainTimelineView: View {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
                 DispatchQueue.main.async {
                     scrollState.pullDistance = distance
-                    scrollState.isPullThresholdExceeded = (distance >= 65.0)
+                    scrollState.isPullThresholdExceeded = (distance >= 38.0)
                 }
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
@@ -410,18 +410,18 @@ struct MainTimelineView: View {
             }
             .coordinateSpace(name: "timelineScrollViewSpace")
             .overlay(alignment: .top) {
-                if viewModel.isRefreshing || scrollState.pullDistance > 2 {
-                    let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / 65.0)
-                    let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance) / 10.0))
+                if viewModel.isRefreshing || scrollState.pullDistance > 8 {
+                    let threshold: CGFloat = 38.0
+                    let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / threshold)
+                    let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance - 8) / 12.0))
                     
                     SVGRefreshIndicatorView(
                         pullProgress: pullProg,
                         isRefreshing: viewModel.isRefreshing,
                         colorScheme: theme.themeColor
                     )
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .padding(.top, nav.sidebarExpanded ? 36 : 64)
+                    .frame(width: 130, height: 28)
+                    .padding(.top, (nav.sidebarExpanded ? 16 : 46) + min(20, scrollState.pullDistance * 0.35))
                     .opacity(opac)
                     .allowsHitTesting(false)
                     .transition(.opacity)

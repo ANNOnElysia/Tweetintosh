@@ -115,8 +115,7 @@ final class SVGRefreshIndicatorNSView: NSView {
             startLoopAnimationIfNeeded()
         } else {
             stopLoopAnimation()
-            // During pull down: Line extends out from the left edge (X = 0) towards the cursive word
-            let targetEnd = min(cursiveEndFraction, max(0.0, progress * cursiveEndFraction))
+            let targetEnd = min(1.0, max(0.0, progress))
             shapeLayer.strokeStart = 0.0
             shapeLayer.strokeEnd = targetEnd
         }
@@ -178,32 +177,27 @@ final class SVGRefreshIndicatorNSView: NSView {
         }
     }
     
-    // MARK: - Dynamic Edge-to-Edge Stretched Path Generation
+    // MARK: - Dynamic Centered Cursive Word Path Generation
     private func rebuildEdgeToEdgePath(width: CGFloat, height: CGFloat) {
         // Cursive word intrinsic height is 414.94, width is 779.66
-        let targetWordHeight = min(36.0, height * 0.72)
+        let targetWordHeight = min(28.0, height * 0.75)
         let s = targetWordHeight / 414.94
         let scaledWordWidth = 779.66 * s
         
-        // Word horizontally centered
+        // Word horizontally and vertically centered
         let wordStartX = (width - scaledWordWidth) / 2.0
         let wordCenterY = height / 2.0
         
         let xOffset = wordStartX - 522.67 * s
         let yOffset = wordCenterY - 584.47 * s
         
-        let startY = 620.00 * s + yOffset
-        let endY = 552.00 * s + yOffset
-        
         let path = CGMutablePath()
         
-        // 1. Start from the absolute left border of the window!
-        path.move(to: CGPoint(x: 0, y: startY))
+        // Start directly at the first stroke of cursive "loading" (no edge-to-edge straight lines!)
+        let startPt = CGPoint(x: 522.67 * s + xOffset, y: 620.00 * s + yOffset)
+        path.move(to: startPt)
         
-        // 2. Straight line leading to the cursive word start
-        path.addLine(to: CGPoint(x: wordStartX, y: startY))
-        
-        // 3. Middle cursive "loading" curves
+        // Middle cursive "loading" curves
         for seg in Self.middleCurves {
             let cp1 = CGPoint(x: seg.cp1.x * s + xOffset, y: seg.cp1.y * s + yOffset)
             let cp2 = CGPoint(x: seg.cp2.x * s + xOffset, y: seg.cp2.y * s + yOffset)
@@ -211,20 +205,11 @@ final class SVGRefreshIndicatorNSView: NSView {
             path.addCurve(to: p3, control1: cp1, control2: cp2)
         }
         
-        // 4. Straight line extending all the way to the absolute right border of the window!
-        path.addLine(to: CGPoint(x: width, y: endY))
-        
         // Flip Y to be upright in AppKit layer
         var flip = CGAffineTransform(translationX: 0, y: height).scaledBy(x: 1.0, y: -1.0)
         if let flipped = path.copy(using: &flip) {
             shapeLayer.path = flipped
         }
-        
-        // Compute path length fractions
-        let cursiveLength = 3165.16 * s
-        let totalLength = (width - scaledWordWidth) + cursiveLength
-        let wordEndLen = wordStartX + cursiveLength
-        self.cursiveEndFraction = min(0.95, max(0.65, wordEndLen / max(1.0, totalLength)))
     }
 }
 
