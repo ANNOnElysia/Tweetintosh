@@ -18,10 +18,10 @@ enum AppLanguage: String, CaseIterable, Identifiable, Codable {
     var displayName: String {
         switch self {
         case .english: return "English"
-        case .japanese: return "日本語 (Japanese)"
-        case .korean: return "한국어 (Korean)"
-        case .simplifiedChinese: return "简体中文 (Simplified Chinese)"
-        case .traditionalChinese: return "繁體中文 (Traditional Chinese)"
+        case .japanese: return "日本語"
+        case .korean: return "한국어"
+        case .simplifiedChinese: return "简体中文"
+        case .traditionalChinese: return "繁體中文"
         }
     }
 }
@@ -224,18 +224,18 @@ final class LocalizationManager: ObservableObject {
                 .traditionalChinese: "排版與字族"
             ],
             "font_system": [
-                .english: "macOS System Default",
-                .japanese: "macOS システム標準",
-                .korean: "macOS 시스템 기본",
-                .simplifiedChinese: "macOS 系统默认",
-                .traditionalChinese: "macOS 系統預設"
+                .english: "System",
+                .japanese: "システム標準",
+                .korean: "시스템 기본",
+                .simplifiedChinese: "系统默认",
+                .traditionalChinese: "系統預設"
             ],
             "font_mincho": [
-                .english: "Hiragino Mincho (Serif Magazine)",
-                .japanese: "ヒラギノ明朝 (Hiragino Mincho)",
-                .korean: "히라기노 명조 (Hiragino Mincho)",
-                .simplifiedChinese: "日文明朝体 (Hiragino Mincho)",
-                .traditionalChinese: "日文明朝體 (Hiragino Mincho)"
+                .english: "Hiragino Mincho",
+                .japanese: "ヒラギノ明朝",
+                .korean: "히라기노 명조",
+                .simplifiedChinese: "日文明朝体",
+                .traditionalChinese: "日文明朝體"
             ],
             "clear_cache": [
                 .english: "Clear Local Cache",
@@ -325,15 +325,15 @@ final class LocalizationManager: ObservableObject {
                 .english: "Use Liquid Glass",
                 .japanese: "リキッドグラスを使用",
                 .korean: "리퀴드 글래스 사용",
-                .simplifiedChinese: "启用液态玻璃 (Liquid Glass)",
-                .traditionalChinese: "啟用液態玻璃 (Liquid Glass)"
+                .simplifiedChinese: "启用液态玻璃",
+                .traditionalChinese: "啟用液態玻璃"
             ],
             "tint_colour": [
                 .english: "Tint Colour",
-                .japanese: "ティントカラー (Tint)",
-                .korean: "틴트 색상 (Tint)",
-                .simplifiedChinese: "色调着色 (Tint Colour)",
-                .traditionalChinese: "色調著色 (Tint Colour)"
+                .japanese: "ティントカラー",
+                .korean: "틴트 색상",
+                .simplifiedChinese: "色调着色",
+                .traditionalChinese: "色調著色"
             ],
             "time_just_now": [
                 .english: "just now",
@@ -491,23 +491,23 @@ final class LocalizationManager: ObservableObject {
                 .traditionalChinese: "外觀主題"
             ],
             "theme_dark": [
-                .english: "Dark (Obsidian)",
-                .japanese: "ダーク (黒)",
-                .korean: "다크 (블랙)",
-                .simplifiedChinese: "深色 (纯黑)",
-                .traditionalChinese: "深色 (純黑)"
+                .english: "Dark",
+                .japanese: "ダーク",
+                .korean: "다크",
+                .simplifiedChinese: "深色",
+                .traditionalChinese: "深色"
             ],
             "theme_rice_white": [
-                .english: "Rice White (Warm Light)",
-                .japanese: "生成り色 (温かみのあるライト)",
-                .korean: "미색 (웜 라이트)",
-                .simplifiedChinese: "米白 (温润浅色)",
-                .traditionalChinese: "米白 (溫潤淺色)"
+                .english: "Rice White",
+                .japanese: "生成り色",
+                .korean: "미색",
+                .simplifiedChinese: "米白",
+                .traditionalChinese: "米白"
             ],
             "theme_system": [
-                .english: "Follow System",
-                .japanese: "システムに追随",
-                .korean: "시스템 설정 따름",
+                .english: "System",
+                .japanese: "システム",
+                .korean: "시스템",
                 .simplifiedChinese: "跟随系统",
                 .traditionalChinese: "跟隨系統"
             ]

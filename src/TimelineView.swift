@@ -372,14 +372,18 @@ struct MainTimelineView: View {
             // Floating New Posts Pill (shown when new posts arrive above the user's current reading position)
             if scrollCoordinator.unreadCountAbove > 0 && viewModel.isAuthenticated {
                 NewPostsFloatingPill(count: scrollCoordinator.unreadCountAbove) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        viewModel.applyPendingTweets(for: viewModel.selectedFeed)
+                    }
                     scrollCoordinator.scrollToTop()
                 }
                 .padding(.top, nav.sidebarExpanded ? 64 : 110)
                 .zIndex(55)
             }
             
-            // Native Full-Resolution Lightbox Overlay
+            // Native Full-Resolution Lightbox Overlay (Smooth Opacity Crossfade)
             ImageLightboxOverlay()
+                .animation(.easeInOut(duration: 0.22), value: LightboxManager.shared.isPresented)
         }
         .onAppear {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in

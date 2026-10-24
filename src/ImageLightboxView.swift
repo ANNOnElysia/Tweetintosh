@@ -23,17 +23,16 @@ final class LightboxManager: ObservableObject {
         self.sourceRect = sourceRect
         self.isAnimatingOut = false
         
-        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+        withAnimation(.easeInOut(duration: 0.22)) {
             self.isPresented = true
         }
     }
     
     func dismiss() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            self.isAnimatingOut = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        withAnimation(.easeInOut(duration: 0.20)) {
             self.isPresented = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
             self.isAnimatingOut = false
             self.mediaList = []
             self.currentIndex = 0
@@ -95,7 +94,7 @@ struct ImageLightboxOverlay: View {
                             )
                             .frame(width: max(200, windowSize.width - 64), height: max(200, windowSize.height - 72))
                             .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: manager.isAnimatingOut ? 16 : 6))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
                     }
                     .frame(width: windowSize.width, height: windowSize.height)
@@ -137,13 +136,13 @@ struct ImageLightboxOverlay: View {
                             .buttonStyle(PlainButtonStyle())
                             .keyboardShortcut(.cancelAction) // Esc key
                         }
-                        .opacity(manager.isAnimatingOut ? 0 : (1.0 - abs(dragState.dragOffset.height) / 100))
+                        .opacity(1.0 - abs(dragState.dragOffset.height) / 100)
                         
                         Spacer()
                     }
                     
                     // 4. Subtle Navigation Chevrons for multi-image
-                    if manager.mediaList.count > 1 && !manager.isAnimatingOut {
+                    if manager.mediaList.count > 1 {
                         HStack {
                             if manager.currentIndex > 0 {
                                 chevronButton(icon: "chevron.left") { manager.prev() }
@@ -235,13 +234,11 @@ struct ImageLightboxOverlay: View {
     }
     
     private var backdropOpacity: Double {
-        if manager.isAnimatingOut { return 0.0 }
         let dragDist = abs(dragState.dragOffset.height)
         return max(0.0, min(0.94, 0.94 - Double(dragDist) / 360.0))
     }
     
     private var verticalScale: CGFloat {
-        if manager.isAnimatingOut { return 0.7 }
         let dragDist = abs(dragState.dragOffset.height)
         return max(0.72, 1.0 - dragDist / 1000.0)
     }
