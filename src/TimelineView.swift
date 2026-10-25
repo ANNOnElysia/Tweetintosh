@@ -13,6 +13,42 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
+// MARK: - 120Hz Real-time Scroll FPS & Frame Delivery Monitor
+final class ScrollFPSMonitor: ObservableObject {
+    static let shared = ScrollFPSMonitor()
+    
+    @Published var currentFPS: Double = 120.0
+    @Published var minFPS: Double = 120.0
+    @Published var isScrolling: Bool = false
+    
+    private var frameCount: Int = 0
+    private var lastTime: CFTimeInterval = 0
+    private var scrollStopTimer: Timer?
+    
+    func onScrollFrame() {
+        let now = CACurrentMediaTime()
+        if !isScrolling {
+            isScrolling = true
+            frameCount = 0
+            lastTime = now
+        }
+        frameCount += 1
+        let delta = now - lastTime
+        if delta >= 0.5 {
+            let fps = Double(frameCount) / delta
+            currentFPS = min(120.0, max(0.0, fps))
+            minFPS = min(minFPS, currentFPS)
+            frameCount = 0
+            lastTime = now
+        }
+        
+        scrollStopTimer?.invalidate()
+        scrollStopTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
+            self?.isScrolling = false
+        }
+    }
+}
+
 final class TimelineScrollState: ObservableObject {
     static let shared = TimelineScrollState()
     @Published var pullDistance: CGFloat = 0.0
@@ -152,7 +188,7 @@ final class TrackpadPullCoordinator {
     private var boundsObserver: Any?
     private weak var registeredScrollView: NSScrollView?
     private var wheelReleaseTimer: Timer?
-    private let threshold: CGFloat = 38.0
+    private let threshold: CGFloat = 45.0
     private var activeOwner: String?
     
     var onPullProgress: ((CGFloat) -> Void)?
@@ -169,8 +205,16 @@ final class TrackpadPullCoordinator {
         if registeredScrollView === sv { return }
         registeredScrollView = sv
         
+        sv.automaticallyAdjustsContentInsets = false
+        sv.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         sv.verticalScrollElasticity = .allowed
         sv.contentView.postsBoundsChangedNotifications = true
+        
+        // 120Hz ProMotion Hardware Acceleration Configurations
+        sv.wantsLayer = true
+        sv.contentView.wantsLayer = true
+        sv.contentView.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        sv.canDrawConcurrently = true
         
         if let obs = boundsObserver {
             NotificationCenter.default.removeObserver(obs)
@@ -218,21 +262,26 @@ final class TrackpadPullCoordinator {
     
     private func handleBoundsChanged() {
         guard let sv = registeredScrollView else { return }
-        let y = sv.contentView.bounds.origin.y
+        ScrollFPSMonitor.shared.onScrollFrame()
         
-        // Exact 0ms top detection: y <= 0.5 means top tweet is at top of viewport
-        let atTop = (y <= 0.5)
-        self.isAtTop = atTop
-        TimelineScrollState.shared.isAtTop = atTop
-        if atTop {
+        let y = sv.contentView.bounds.origin.y
+        let restingTopY = -sv.safeAreaInsets.top
+        
+        // Exact 0ms top detection: y <= restingTopY + 0.5 means top tweet is at top of viewport
+        let atTop = (y <= restingTopY + 0.5)
+        if self.isAtTop != atTop {
+            self.isAtTop = atTop
+            TimelineScrollState.shared.isAtTop = atTop
+        }
+        if atTop && TimelineScrollCoordinator.shared.unreadCountAbove != 0 {
             TimelineScrollCoordinator.shared.unreadCountAbove = 0
         }
         
         guard !isRefreshing else { return }
         
-        // Native rubber-band overscroll (only physically negative when pulled down beyond the top)
-        if y < 0.0 {
-            let overscroll = -y
+        // Native rubber-band overscroll (only physically negative when pulled down beyond the resting top)
+        if y < (restingTopY - 0.5) {
+            let overscroll = restingTopY - y
             currentOverscroll = overscroll
             onPullProgress?(overscroll)
             
@@ -308,12 +357,43 @@ final class TrackpadPullCoordinator {
     }
 }
 
+// MARK: - Isolated 120Hz Pull-to-Refresh Indicator Overlay
+private struct TimelinePullRefreshIndicatorOverlay: View {
+    @ObservedObject var scrollState = TimelineScrollState.shared
+    @ObservedObject var viewModel = TimelineViewModel.shared
+    @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject var nav = NavigationManager.shared
+    
+    var body: some View {
+        if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
+            let baseTop: CGFloat = nav.sidebarExpanded ? 36 : 64
+            let pullDist = viewModel.isRefreshing ? 40.0 : scrollState.pullDistance
+            let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / 40.0))
+            let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(pullDist - 2.0) / 8.0))
+            
+            // Pure GPU translation offset to avoid subpixel frame resizing passes
+            let offsetY: CGFloat = baseTop + (pullDist - 40.0) / 2.0
+            
+            SVGRefreshIndicatorView(
+                pullProgress: pullProg,
+                isRefreshing: viewModel.isRefreshing,
+                colorScheme: theme.themeColor
+            )
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .offset(y: offsetY)
+            .opacity(opac)
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+}
+
 struct MainTimelineView: View {
     @ObservedObject var viewModel = TimelineViewModel.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var nav = NavigationManager.shared
-    @ObservedObject var scrollState = TimelineScrollState.shared
     @ObservedObject var scrollCoordinator = TimelineScrollCoordinator.shared
     
     var onOpenSettings: () -> Void
@@ -349,26 +429,20 @@ struct MainTimelineView: View {
         }
         .onAppear {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
-                DispatchQueue.main.async {
-                    scrollState.pullDistance = distance
-                    scrollState.isPullThresholdExceeded = (distance >= 38.0)
-                }
+                TimelineScrollState.shared.pullDistance = distance
+                TimelineScrollState.shared.isPullThresholdExceeded = (distance >= 45.0)
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
-                DispatchQueue.main.async {
-                    scrollState.isPullThresholdExceeded = false
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        scrollState.pullDistance = 0
-                    }
-                    viewModel.refresh(silently: false, isUserInitiated: true)
+                TimelineScrollState.shared.isPullThresholdExceeded = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    TimelineScrollState.shared.pullDistance = 0
                 }
+                viewModel.refresh(silently: false, isUserInitiated: true)
             }
             TrackpadPullCoordinator.shared.onCancelPull = {
-                DispatchQueue.main.async {
-                    scrollState.isPullThresholdExceeded = false
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        scrollState.pullDistance = 0
-                    }
+                TimelineScrollState.shared.isPullThresholdExceeded = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    TimelineScrollState.shared.pullDistance = 0
                 }
             }
             TrackpadPullCoordinator.shared.startMonitoring(owner: "Timeline")
@@ -388,9 +462,11 @@ struct MainTimelineView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    // Top subtle spacing under native navigation (capsule vs sidebar)
+                    // Top spacing under native navigation (capsule vs sidebar)
+                    // During refreshing, expands by 40pt so tweets stay pushed down to accommodate the 40pt animation!
                     Color.clear
-                        .frame(height: nav.sidebarExpanded ? 36 : 64)
+                        .frame(height: (nav.sidebarExpanded ? 36 : 64) + (viewModel.isRefreshing ? 40 : 0))
+                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
                     
                     // Tweets List
                     ForEach(viewModel.tweets, id: \.id) { tweet in
@@ -410,22 +486,7 @@ struct MainTimelineView: View {
             }
             .coordinateSpace(name: "timelineScrollViewSpace")
             .overlay(alignment: .top) {
-                if viewModel.isRefreshing || scrollState.pullDistance > 8 {
-                    let threshold: CGFloat = 38.0
-                    let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / threshold)
-                    let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance - 8) / 12.0))
-                    
-                    SVGRefreshIndicatorView(
-                        pullProgress: pullProg,
-                        isRefreshing: viewModel.isRefreshing,
-                        colorScheme: theme.themeColor
-                    )
-                    .frame(width: 130, height: 28)
-                    .padding(.top, (nav.sidebarExpanded ? 16 : 46) + min(20, scrollState.pullDistance * 0.35))
-                    .opacity(opac)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-                }
+                TimelinePullRefreshIndicatorOverlay()
             }
         }
     }

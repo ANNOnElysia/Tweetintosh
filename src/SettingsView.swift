@@ -315,6 +315,7 @@ struct GlassDropdownPicker<T: Hashable>: View {
 struct SettingsView: View {
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject var mediaCache = MediaCacheManager.shared
     
     var onSignOut: () -> Void
     var onClearCache: () -> Void
@@ -448,7 +449,7 @@ struct SettingsView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "trash")
                                 .font(.system(size: 11, weight: .semibold))
-                            Text(loc.t("clear_cache"))
+                            Text(mediaCache.formattedCacheSize == "0 B" ? loc.t("clear_cache") : "\(loc.t("clear_cache")) (\(mediaCache.formattedCacheSize))")
                                 .font(.system(size: 13, weight: .medium))
                         }
                         .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))

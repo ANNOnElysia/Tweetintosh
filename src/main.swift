@@ -154,6 +154,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             onSignOut: { [weak self] in
                 CredentialsManager.shared.clearCredentials()
                 TimelineCacheManager.shared.clearCache()
+                NotificationCacheManager.shared.clearCache()
+                MediaCacheManager.shared.clearAllCache()
                 self?.settingsWindow?.close()
                 self?.mainWindow?.close()
                 self?.mainWindow = nil
@@ -161,6 +163,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             },
             onClearCache: {
                 TimelineCacheManager.shared.clearCache()
+                NotificationCacheManager.shared.clearCache()
+                MediaCacheManager.shared.clearAllCache()
             }
         )
         

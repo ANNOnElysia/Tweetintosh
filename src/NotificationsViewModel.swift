@@ -254,6 +254,7 @@ final class NotificationsViewModel: ObservableObject {
             self.items = snapshot.items
             self.topCursor = snapshot.topCursor
             self.bottomCursor = snapshot.bottomCursor
+            prefetchMedia(for: snapshot.items)
         }
         
         // 2. Refresh live notifications from network
@@ -290,7 +291,7 @@ final class NotificationsViewModel: ObservableObject {
         let startTime = Date()
         APIClient.shared.fetchNotifications { [weak self] result in
             let elapsed = Date().timeIntervalSince(startTime)
-            let remainingDelay = max(0.0, 1.2 - elapsed)
+            let remainingDelay = max(0.0, 2.4 - elapsed)
             
             DispatchQueue.main.asyncAfter(deadline: .now() + (silently ? 0 : remainingDelay)) {
                 guard let self = self else { return }
@@ -303,6 +304,7 @@ final class NotificationsViewModel: ObservableObject {
                         self.items = data.items
                         self.topCursor = data.topCursor
                         self.bottomCursor = data.bottomCursor
+                        self.prefetchMedia(for: data.items)
                         NotificationCacheManager.shared.saveSnapshot(
                             items: data.items,
                             topCursor: data.topCursor,
@@ -339,6 +341,7 @@ final class NotificationsViewModel: ObservableObject {
                     }
                     self.items = current
                     self.bottomCursor = data.bottomCursor
+                    self.prefetchMedia(for: data.items)
                     NotificationCacheManager.shared.saveSnapshot(
                         items: current,
                         topCursor: self.topCursor,
@@ -347,6 +350,18 @@ final class NotificationsViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    private func prefetchMedia(for notifItems: [NotificationItem]) {
+        var urls: [String] = []
+        for item in notifItems.prefix(40) {
+            for actor in item.actors {
+                if let avatar = actor.avatarUrl {
+                    urls.append(avatar)
+                }
+            }
+        }
+        MediaCacheManager.shared.prefetchImages(urls: urls)
     }
     
     private func loadMockNotifications() {

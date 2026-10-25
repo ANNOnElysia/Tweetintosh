@@ -125,6 +125,25 @@ struct Tweet: Codable, Hashable, Identifiable {
         quotedTweet?.tweet
     }
     
+    // Cached precomputed strings for zero-cost 120Hz scrolling
+    var displayBodyText: String = ""
+    var replyContextText: String? = nil
+    var cleanText: String { displayBodyText }
+    
+    private static let mmmDDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+    
+    private static let leadingMentionRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: #"^(@[A-Za-z0-9_]{1,50})\s*"#)
+    }()
+    
+    private static let trailingTCoRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: #"(?:https?:\/\/t\.co\/[A-Za-z0-9]+|https?:\/\/[^\s]+)\s*$"#)
+    }()
+    
     enum CodingKeys: String, CodingKey {
         case id, text, createdAt, author, media
         case replyCount, retweetCount, favoriteCount
@@ -175,6 +194,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         self.inReplyToScreenName = inReplyToScreenName
         self.inReplyToStatusId = inReplyToStatusId
         self.isPromoted = isPromoted
+        computeParsedTexts()
     }
     
     init(from decoder: Decoder) throws {
@@ -198,6 +218,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         inReplyToScreenName = try container.decodeIfPresent(String.self, forKey: .inReplyToScreenName)
         inReplyToStatusId = try container.decodeIfPresent(String.self, forKey: .inReplyToStatusId)
         isPromoted = try container.decodeIfPresent(Bool.self, forKey: .isPromoted) ?? false
+        computeParsedTexts()
     }
     
     // Clean text breakdown: strips trailing media t.co URLs and extracts leading reply mentions
@@ -206,14 +227,18 @@ struct Tweet: Codable, Hashable, Identifiable {
         let body: String
     }
     
-    var textBreakdown: TextBreakdown {
+    private mutating func computeParsedTexts() {
         var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // 1. Strip trailing media or quote t.co URLs when media or quote is present
         if !media.isEmpty || quotedTweet != nil {
-            while let range = raw.range(of: #"(?:https?:\/\/t\.co\/[A-Za-z0-9]+|https?:\/\/[^\s]+)\s*$"#, options: .regularExpression) {
-                raw.removeSubrange(range)
-                raw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let tcoRegex = Self.trailingTCoRegex {
+                while true {
+                    let nsRaw = raw as NSString
+                    let match = tcoRegex.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length))
+                    guard let m = match, m.range.location != NSNotFound else { break }
+                    raw = nsRaw.substring(to: m.range.location).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
         }
         
@@ -221,7 +246,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         var mentions: [String] = []
         var remainder = raw
         
-        if let regex = try? NSRegularExpression(pattern: #"^(@[A-Za-z0-9_]{1,50})\s*"#) {
+        if let regex = Self.leadingMentionRegex {
             while true {
                 let nsRemainder = remainder as NSString
                 guard let match = regex.firstMatch(in: remainder, range: NSRange(location: 0, length: nsRemainder.length)),
@@ -239,26 +264,16 @@ struct Tweet: Codable, Hashable, Identifiable {
             mentions.append("@" + replyScreenName)
         }
         
-        return TextBreakdown(mentions: mentions, body: remainder)
+        self.displayBodyText = remainder
+        self.replyContextText = mentions.isEmpty ? nil : LocalizationManager.shared.formatReplyContext(mentions: mentions)
+    }
+    
+    var textBreakdown: TextBreakdown {
+        TextBreakdown(mentions: [], body: displayBodyText)
     }
     
     var replyMentions: [String] {
-        textBreakdown.mentions
-    }
-    
-    var replyContextText: String? {
-        let mentions = replyMentions
-        guard !mentions.isEmpty else { return nil }
-        return LocalizationManager.shared.formatReplyContext(mentions: mentions)
-    }
-    
-    var displayBodyText: String {
-        textBreakdown.body
-    }
-    
-    // Clean text: strip trailing media or quote t.co links when media or quote is present
-    var cleanText: String {
-        displayBodyText
+        []
     }
     
     // Relative time string helper
@@ -275,9 +290,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         } else if interval < 86400 * 7 {
             return "\(Int(interval / 86400))d"
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d"
-            return formatter.string(from: createdAt)
+            return Self.mmmDDateFormatter.string(from: createdAt)
         }
     }
 }

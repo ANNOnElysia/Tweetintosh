@@ -333,7 +333,8 @@ final class TimelineViewModel: ObservableObject {
             seenTweetIds: seenIdsToSend
         ) { [weak self] result in
             let elapsed = Date().timeIntervalSince(startTime)
-            let remainingDelay = max(0.0, 1.2 - elapsed)
+            let minDisplayDuration: Double = isUserInitiated ? 2.4 : 1.2
+            let remainingDelay = max(0.0, minDisplayDuration - elapsed)
             
             DispatchQueue.main.asyncAfter(deadline: .now() + (silently ? 0 : remainingDelay)) {
                 guard let self = self else { return }
@@ -700,19 +701,6 @@ final class TimelineViewModel: ObservableObject {
     }
     
     private func prefetchMedia(for tweetsList: [Tweet]) {
-        var urlsToFetch: [String] = []
-        for tweet in tweetsList.prefix(15) {
-            if let avatar = tweet.author.avatarUrl {
-                urlsToFetch.append(avatar)
-            }
-            for media in tweet.media {
-                if media.mediaUrl.contains("pbs.twimg.com/media") && !media.mediaUrl.contains("?") {
-                    urlsToFetch.append("\(media.mediaUrl)?format=jpg&name=medium")
-                } else {
-                    urlsToFetch.append(media.mediaUrl)
-                }
-            }
-        }
-        ImageCache.shared.prefetch(urls: urlsToFetch)
+        MediaCacheManager.shared.prefetchTweetsMedia(tweetsList, maxTweets: 60)
     }
 }

@@ -284,9 +284,20 @@ final class VideoLightboxManager: ObservableObject {
             targetUrlStr = matchVariant(in: videoInfo.sortedMp4Variants, targetBitrate: 256000)
         }
         
-        guard let urlStr = targetUrlStr, let url = URL(string: urlStr) else { return }
+        guard let urlStr = targetUrlStr else { return }
         
-        let item = AVPlayerItem(url: url)
+        let item: AVPlayerItem
+        if let cachedLocal = MediaCacheManager.shared.cachedVideoURL(for: urlStr) {
+            item = AVPlayerItem(url: cachedLocal)
+        } else if quality == .auto, let highestUrl = videoInfo.highestBitrateVariant?.url,
+                  let cachedHighest = MediaCacheManager.shared.cachedVideoURL(for: highestUrl) {
+            item = AVPlayerItem(url: cachedHighest)
+        } else if let remoteURL = URL(string: urlStr) {
+            item = AVPlayerItem(url: remoteURL)
+        } else {
+            return
+        }
+        
         if quality == .auto {
             item.preferredPeakBitRate = 0
         }

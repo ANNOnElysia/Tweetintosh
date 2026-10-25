@@ -41,41 +41,23 @@ final class TimelineLayoutState: ObservableObject {
 // MARK: - Image Memory & Disk Cache
 final class ImageCache {
     static let shared = ImageCache()
-    private let cache = NSCache<NSString, NSImage>()
-    private let prefetchQueue = DispatchQueue(label: "com.antigravity.max.prefetch", qos: .utility)
     
-    private init() {
-        cache.countLimit = 350
-        cache.totalCostLimit = 1024 * 1024 * 140 // 140 MB memory limit
-    }
+    private init() {}
     
     func image(for url: String) -> NSImage? {
-        return cache.object(forKey: url as NSString)
+        MediaCacheManager.shared.image(for: url)
     }
     
     func setImage(_ image: NSImage, for url: String) {
-        cache.setObject(image, forKey: url as NSString)
+        MediaCacheManager.shared.storeImage(image, rawData: nil, for: url)
     }
     
     func prefetch(urls: [String]) {
-        prefetchQueue.async { [weak self] in
-            guard let self = self else { return }
-            for urlStr in urls {
-                if self.image(for: urlStr) != nil { continue }
-                guard let url = URL(string: urlStr) else { continue }
-                
-                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-                URLSession.shared.dataTask(with: request) { data, _, _ in
-                    if let data = data, let img = NSImage(data: data) {
-                        self.setImage(img, for: urlStr)
-                    }
-                }.resume()
-            }
-        }
+        MediaCacheManager.shared.prefetchImages(urls: urls)
     }
 }
 
-// MARK: - Image Loader (Sync Cache Hit)
+// MARK: - Image Loader (Sync Cache Hit & Offloaded Disk/Network)
 final class ImageLoader: ObservableObject {
     @Published var loadedImage: NSImage?
     @Published var isLoading = false
@@ -83,8 +65,11 @@ final class ImageLoader: ObservableObject {
     
     init(urlString: String?) {
         self.currentUrl = urlString
-        if let urlStr = urlString, let cached = ImageCache.shared.image(for: urlStr) {
-            self.loadedImage = cached
+        if let urlStr = urlString {
+            // Immediate frame-0 hit if already decoded in memory
+            if let mem = MediaCacheManager.shared.memoryImage(for: urlStr) {
+                self.loadedImage = mem
+            }
         }
     }
     
@@ -92,9 +77,10 @@ final class ImageLoader: ObservableObject {
         guard let urlStr = urlString else { return }
         self.currentUrl = urlStr
         
-        if let cached = ImageCache.shared.image(for: urlStr) {
+        // 1. Memory cache hit -> synchronous frame-0 return without flicker
+        if let mem = MediaCacheManager.shared.memoryImage(for: urlStr) {
             if self.loadedImage == nil {
-                self.loadedImage = cached
+                self.loadedImage = mem
             }
             return
         }
@@ -102,28 +88,49 @@ final class ImageLoader: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         
-        guard let url = URL(string: urlStr) else {
-            isLoading = false
-            return
-        }
-        
-        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+        // 2. Offload disk lookup and network I/O to background queue to guarantee 120Hz smooth scrolling
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            if let data = data, let img = NSImage(data: data) {
-                ImageCache.shared.setImage(img, for: urlStr)
+            
+            // Check disk cache first
+            if let diskImg = MediaCacheManager.shared.diskImage(for: urlStr) {
                 DispatchQueue.main.async {
                     if self.currentUrl == urlStr {
-                        self.loadedImage = img
+                        self.loadedImage = diskImg
                     }
                     self.isLoading = false
                 }
-            } else {
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                }
+                return
             }
-        }.resume()
+            
+            // 3. Network fetch
+            guard let url = URL(string: urlStr) else {
+                DispatchQueue.main.async { self.isLoading = false }
+                return
+            }
+            
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
+            URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+                guard let self = self else { return }
+                if let data = data, let img = NSImage(data: data) {
+                    // Pre-decode bitmap on background thread to prevent main-thread decompression hitches
+                    if let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                        _ = cg.width
+                    }
+                    MediaCacheManager.shared.storeImage(img, rawData: data, for: urlStr)
+                    DispatchQueue.main.async {
+                        if self.currentUrl == urlStr {
+                            self.loadedImage = img
+                        }
+                        self.isLoading = false
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                    }
+                }
+            }.resume()
+        }
     }
 }
 
@@ -154,7 +161,9 @@ struct CachedAsyncImage: View {
                     .overlay(
                         Group {
                             if loader.isLoading {
-                                GrowingArcIndicator(color: Color(white: 0.28), lineWidth: 1.5, size: 16)
+                                ProgressView()
+                                    .scaleEffect(0.65)
+                                    .opacity(0.35)
                             }
                         }
                     )
@@ -196,11 +205,6 @@ struct ImageGridView: View {
             }
         }
         .padding(.top, 4)
-        .onPreferenceChange(MediaFramePreferenceKey.self) { dict in
-            for (key, rect) in dict {
-                MediaFrameRegistry.shared.register(key: key, frame: rect)
-            }
-        }
     }
     
     // MARK: - 1. Single Image (Exact Proportions based on Apple Hardware Physical Profile)
@@ -245,7 +249,6 @@ struct ImageGridView: View {
                 }
                 .buttonStyle(.plain)
                 .mediaContextMenu(media: media, tweet: tweet)
-                .preference(key: MediaFramePreferenceKey.self, value: [media.mediaUrl: rect, media.id: rect])
             }
         )
         .mediaContextMenu(media: media, tweet: tweet)
@@ -330,7 +333,6 @@ struct ImageGridView: View {
                 }
                 .buttonStyle(.plain)
                 .mediaContextMenu(media: items[0], tweet: tweet)
-                .preference(key: MediaFramePreferenceKey.self, value: [items[0].mediaUrl: rect, items[0].id: rect])
             }
         )
         .mediaContextMenu(media: items[0], tweet: tweet)
@@ -367,7 +369,6 @@ struct ImageGridView: View {
                 }
                 .buttonStyle(.plain)
                 .mediaContextMenu(media: items[1], tweet: tweet)
-                .preference(key: MediaFramePreferenceKey.self, value: [items[1].mediaUrl: rect, items[1].id: rect])
             }
         )
         .mediaContextMenu(media: items[1], tweet: tweet)
@@ -428,7 +429,6 @@ struct ImageGridView: View {
                             }
                             .buttonStyle(.plain)
                             .mediaContextMenu(media: media, tweet: tweet)
-                            .preference(key: MediaFramePreferenceKey.self, value: [media.mediaUrl: rect, media.id: rect])
                         }
                     )
                     .mediaContextMenu(media: media, tweet: tweet)

@@ -6,12 +6,41 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Isolated 120Hz Notifications Pull-to-Refresh Indicator Overlay
+private struct NotificationsPullRefreshIndicatorOverlay: View {
+    @ObservedObject var scrollState = TimelineScrollState.shared
+    @ObservedObject var viewModel = NotificationsViewModel.shared
+    @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject var nav = NavigationManager.shared
+    
+    var body: some View {
+        if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
+            let baseTop: CGFloat = nav.sidebarExpanded ? 72 : 118
+            let pullDist = viewModel.isRefreshing ? 40.0 : scrollState.pullDistance
+            let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / 40.0))
+            let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(pullDist - 2.0) / 8.0))
+            let offsetY: CGFloat = baseTop + (pullDist - 40.0) / 2.0
+            
+            SVGRefreshIndicatorView(
+                pullProgress: pullProg,
+                isRefreshing: viewModel.isRefreshing,
+                colorScheme: theme.themeColor
+            )
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .offset(y: offsetY)
+            .opacity(opac)
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+}
+
 struct NotificationsView: View {
     @ObservedObject var viewModel = NotificationsViewModel.shared
     @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
-    @StateObject private var scrollState = TimelineScrollState()
     
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
@@ -32,26 +61,20 @@ struct NotificationsView: View {
         }
         .onAppear {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
-                DispatchQueue.main.async {
-                    scrollState.pullDistance = distance
-                    scrollState.isPullThresholdExceeded = (distance >= 38.0)
-                }
+                TimelineScrollState.shared.pullDistance = distance
+                TimelineScrollState.shared.isPullThresholdExceeded = (distance >= 45.0)
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
-                DispatchQueue.main.async {
-                    scrollState.isPullThresholdExceeded = false
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        scrollState.pullDistance = 0
-                    }
-                    viewModel.refresh(silently: false)
+                TimelineScrollState.shared.isPullThresholdExceeded = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    TimelineScrollState.shared.pullDistance = 0
                 }
+                viewModel.refresh(silently: false)
             }
             TrackpadPullCoordinator.shared.onCancelPull = {
-                DispatchQueue.main.async {
-                    scrollState.isPullThresholdExceeded = false
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        scrollState.pullDistance = 0
-                    }
+                TimelineScrollState.shared.isPullThresholdExceeded = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    TimelineScrollState.shared.pullDistance = 0
                 }
             }
             TrackpadPullCoordinator.shared.startMonitoring(owner: "Notifications")
@@ -72,8 +95,10 @@ struct NotificationsView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule)
+                    // During refreshing, expands by 40pt so items stay pushed down for the 40pt animation area!
                     Color.clear
-                        .frame(height: nav.sidebarExpanded ? 72 : 118)
+                        .frame(height: (nav.sidebarExpanded ? 72 : 118) + (viewModel.isRefreshing ? 40 : 0))
+                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
                     
                     // Items List or Empty Placeholder
                     if viewModel.filteredItems.isEmpty {
@@ -102,22 +127,7 @@ struct NotificationsView: View {
             }
             .coordinateSpace(name: "notifScrollViewSpace")
             .overlay(alignment: .top) {
-                if viewModel.isRefreshing || scrollState.pullDistance > 8 {
-                    let threshold: CGFloat = 38.0
-                    let pullProg = viewModel.isRefreshing ? 1.0 : min(1.0, scrollState.pullDistance / threshold)
-                    let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(scrollState.pullDistance - 8) / 12.0))
-                    
-                    SVGRefreshIndicatorView(
-                        pullProgress: pullProg,
-                        isRefreshing: viewModel.isRefreshing,
-                        colorScheme: theme.themeColor
-                    )
-                    .frame(width: 130, height: 28)
-                    .padding(.top, (nav.sidebarExpanded ? 50 : 96) + min(20, scrollState.pullDistance * 0.35))
-                    .opacity(opac)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-                }
+                NotificationsPullRefreshIndicatorOverlay()
             }
         }
     }
