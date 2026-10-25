@@ -8,7 +8,7 @@
 import Foundation
 import os
 
-private let graphQLLog = Logger(subsystem: "com.antigravity.max", category: "graphql")
+private let graphQLLog = Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
 
 // MARK: - Models
 
@@ -95,7 +95,7 @@ final class GraphQLOperationIDs {
         ]
     ]
 
-    private let defaultsKey = "MaX_GraphQLOperationIDs"
+    private let defaultsKey = "Tweetintosh_GraphQLOperationIDs"
     private let lock = NSLock()
     private var working: [String: String]
     private var discovered: [String: String] = [:]

@@ -604,7 +604,7 @@ struct MainTimelineView: View {
         .onDisappear {
             TrackpadPullCoordinator.shared.stopMonitoring(owner: "Timeline")
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MaX_RefreshTimeline"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_RefreshTimeline"))) { _ in
             if nav.currentTab == .home {
                 viewModel.reloadFromShortcut()
             }

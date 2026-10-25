@@ -131,39 +131,39 @@ final class ThemeManager: ObservableObject {
     
     @Published var appearance: AppThemeAppearance {
         didSet {
-            UserDefaults.standard.set(appearance.rawValue, forKey: "MaX_Appearance")
+            UserDefaults.standard.set(appearance.rawValue, forKey: "Tweetintosh_Appearance")
             applyAppearance()
         }
     }
     
     @Published var fontType: AppFontType {
         didSet {
-            UserDefaults.standard.set(fontType.rawValue, forKey: "MaX_FontType")
+            UserDefaults.standard.set(fontType.rawValue, forKey: "Tweetintosh_FontType")
         }
     }
     
     @Published var useLiquidGlass: Bool {
         didSet {
-            UserDefaults.standard.set(useLiquidGlass, forKey: "MaX_UseLiquidGlass")
+            UserDefaults.standard.set(useLiquidGlass, forKey: "Tweetintosh_UseLiquidGlass")
         }
     }
     
     @Published var useLiquidGlassTint: Bool {
         didSet {
-            UserDefaults.standard.set(useLiquidGlassTint, forKey: "MaX_UseLiquidGlassTint")
+            UserDefaults.standard.set(useLiquidGlassTint, forKey: "Tweetintosh_UseLiquidGlassTint")
         }
     }
     
     @Published var themeColor: AppThemeColor {
         didSet {
-            UserDefaults.standard.set(themeColor.rawValue, forKey: "MaX_ThemeColor")
+            UserDefaults.standard.set(themeColor.rawValue, forKey: "Tweetintosh_ThemeColor")
         }
     }
     
     @Published var showPromotedPosts: Bool {
         didSet {
-            UserDefaults.standard.set(showPromotedPosts, forKey: "MaX_ShowPromotedPosts")
-            NotificationCenter.default.post(name: NSNotification.Name("MaX_PromotedPostsSettingDidChange"), object: nil)
+            UserDefaults.standard.set(showPromotedPosts, forKey: "Tweetintosh_ShowPromotedPosts")
+            NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_PromotedPostsSettingDidChange"), object: nil)
         }
     }
     
@@ -193,45 +193,45 @@ final class ThemeManager: ObservableObject {
             case .system:
                 NSApp?.appearance = nil
             }
-            NotificationCenter.default.post(name: NSNotification.Name("MaX_AppearanceDidChange"), object: nil)
+            NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
         }
     }
     
     private init() {
-        if let savedApp = UserDefaults.standard.string(forKey: "MaX_Appearance"),
+        if let savedApp = UserDefaults.standard.string(forKey: "Tweetintosh_Appearance"),
            let app = AppThemeAppearance(rawValue: savedApp) {
             self.appearance = app
         } else {
             self.appearance = .dark
         }
         
-        if let savedFont = UserDefaults.standard.string(forKey: "MaX_FontType"),
+        if let savedFont = UserDefaults.standard.string(forKey: "Tweetintosh_FontType"),
            let ft = AppFontType(rawValue: savedFont) {
             self.fontType = ft
         } else {
             self.fontType = .system
         }
         
-        if UserDefaults.standard.object(forKey: "MaX_UseLiquidGlass") != nil {
-            self.useLiquidGlass = UserDefaults.standard.bool(forKey: "MaX_UseLiquidGlass")
+        if UserDefaults.standard.object(forKey: "Tweetintosh_UseLiquidGlass") != nil {
+            self.useLiquidGlass = UserDefaults.standard.bool(forKey: "Tweetintosh_UseLiquidGlass")
         } else {
             self.useLiquidGlass = false
         }
-        if UserDefaults.standard.object(forKey: "MaX_UseLiquidGlassTint") != nil {
-            self.useLiquidGlassTint = UserDefaults.standard.bool(forKey: "MaX_UseLiquidGlassTint")
+        if UserDefaults.standard.object(forKey: "Tweetintosh_UseLiquidGlassTint") != nil {
+            self.useLiquidGlassTint = UserDefaults.standard.bool(forKey: "Tweetintosh_UseLiquidGlassTint")
         } else {
             self.useLiquidGlassTint = true
         }
         
-        if let savedColor = UserDefaults.standard.string(forKey: "MaX_ThemeColor") ?? UserDefaults.standard.string(forKey: "MaX_RefreshAnimationColor"),
+        if let savedColor = UserDefaults.standard.string(forKey: "Tweetintosh_ThemeColor") ?? UserDefaults.standard.string(forKey: "Tweetintosh_RefreshAnimationColor"),
            let tc = AppThemeColor(rawValue: savedColor) {
             self.themeColor = tc
         } else {
             self.themeColor = .blue
         }
         
-        if UserDefaults.standard.object(forKey: "MaX_ShowPromotedPosts") != nil {
-            self.showPromotedPosts = UserDefaults.standard.bool(forKey: "MaX_ShowPromotedPosts")
+        if UserDefaults.standard.object(forKey: "Tweetintosh_ShowPromotedPosts") != nil {
+            self.showPromotedPosts = UserDefaults.standard.bool(forKey: "Tweetintosh_ShowPromotedPosts")
         } else {
             self.showPromotedPosts = false
         }

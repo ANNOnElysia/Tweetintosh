@@ -10,7 +10,7 @@ import SwiftUI
 import AppKit
 import os
 
-private let preloadLogger = Logger(subsystem: "com.antigravity.max", category: "preload")
+private let preloadLogger = Logger(subsystem: "com.anno.tweetintosh", category: "preload")
 
 // MARK: - View Model
 

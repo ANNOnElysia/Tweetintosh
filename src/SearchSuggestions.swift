@@ -15,7 +15,7 @@ import AppKit
 final class SearchRecents {
     static let shared = SearchRecents()
 
-    private let key = "MaX_RecentSearches"
+    private let key = "Tweetintosh_RecentSearches"
     private let limit = 8
 
     var all: [String] {

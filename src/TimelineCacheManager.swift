@@ -9,11 +9,11 @@ final class TimelineCacheManager {
     static let shared = TimelineCacheManager()
     
     private let maxDir: URL
-    private let queue = DispatchQueue(label: "com.antigravity.max.cache", qos: .utility)
+    private let queue = DispatchQueue(label: "com.anno.tweetintosh.cache", qos: .utility)
     
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("MaX", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("Tweetintosh", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.maxDir = dir
     }

@@ -31,7 +31,7 @@ final class CredentialsManager {
     
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let maxDir = appSupport.appendingPathComponent("MaX", isDirectory: true)
+        let maxDir = appSupport.appendingPathComponent("Tweetintosh", isDirectory: true)
         try? FileManager.default.createDirectory(at: maxDir, withIntermediateDirectories: true)
         self.fileURL = maxDir.appendingPathComponent("credentials.json")
     }

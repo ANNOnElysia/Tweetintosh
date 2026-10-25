@@ -6,7 +6,7 @@
 import SwiftUI
 import os
 
-private let pollLogger = Logger(subsystem: "com.antigravity.max", category: "preload")
+private let pollLogger = Logger(subsystem: "com.anno.tweetintosh", category: "preload")
 import Combine
 
 final class TimelineViewModel: ObservableObject {
@@ -102,7 +102,7 @@ final class TimelineViewModel: ObservableObject {
         fetchUserLists()
         
         NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("MaX_PromotedPostsSettingDidChange"),
+            forName: NSNotification.Name("Tweetintosh_PromotedPostsSettingDidChange"),
             object: nil,
             queue: .main
         ) { [weak self] _ in

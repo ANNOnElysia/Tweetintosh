@@ -6,7 +6,7 @@
 import SwiftUI
 import os
 
-private let detailLogger = Logger(subsystem: "com.antigravity.max", category: "preload")
+private let detailLogger = Logger(subsystem: "com.anno.tweetintosh", category: "preload")
 import AppKit
 import Combine
 
@@ -30,7 +30,7 @@ final class TweetDetailViewModel: ObservableObject {
         self.apiClient = apiClient
         
         NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("MaX_PromotedPostsSettingDidChange"),
+            forName: NSNotification.Name("Tweetintosh_PromotedPostsSettingDidChange"),
             object: nil,
             queue: .main
         ) { [weak self] _ in

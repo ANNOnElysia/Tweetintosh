@@ -16,11 +16,11 @@ final class NotificationCacheManager {
     static let shared = NotificationCacheManager()
     
     private let cacheURL: URL
-    private let queue = DispatchQueue(label: "com.antigravity.max.notifcache", qos: .utility)
+    private let queue = DispatchQueue(label: "com.anno.tweetintosh.notifcache", qos: .utility)
     
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let maxDir = appSupport.appendingPathComponent("MaX", isDirectory: true)
+        let maxDir = appSupport.appendingPathComponent("Tweetintosh", isDirectory: true)
         try? FileManager.default.createDirectory(at: maxDir, withIntermediateDirectories: true)
         self.cacheURL = maxDir.appendingPathComponent("notifications_cache.json")
     }

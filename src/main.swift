@@ -32,9 +32,43 @@ final class FocusCachingHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+// The app used to be called MaX (bundle id com.antigravity.max). On first launch under the new identity, bring
+// over its saved settings and its data folder (login credentials and caches) so nothing has to be set up again.
+enum LegacyMigration {
+    static func run() {
+        let defaults = UserDefaults.standard
+        let marker = "Tweetintosh_MigratedFromMaX_v2"
+        if !defaults.bool(forKey: marker) {
+            // Settings saved under the old bundle id, and under old key names in the current one
+            let ownDomain = Bundle.main.bundleIdentifier ?? "com.anno.tweetintosh"
+            for domain in ["com.antigravity.max", ownDomain] {
+                for (key, value) in defaults.persistentDomain(forName: domain) ?? [:] {
+                    guard key.hasPrefix("MaX") || key.contains("MaXMainWindow") else { continue }
+                    let renamed = key
+                        .replacingOccurrences(of: "MaX_", with: "Tweetintosh_")
+                        .replacingOccurrences(of: "MaXMainWindow_v2", with: "TweetintoshMainWindow")
+                    if defaults.object(forKey: renamed) == nil { defaults.set(value, forKey: renamed) }
+                    if domain == ownDomain { defaults.removeObject(forKey: key) }
+                }
+            }
+            defaults.set(true, forKey: marker)
+        }
+        
+        let fm = FileManager.default
+        if let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let old = support.appendingPathComponent("MaX", isDirectory: true)
+            let new = support.appendingPathComponent("Tweetintosh", isDirectory: true)
+            if fm.fileExists(atPath: old.path), !fm.fileExists(atPath: new.path) {
+                try? fm.moveItem(at: old, to: new)
+            }
+        }
+    }
+}
+
 @main
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static func main() {
+        LegacyMigration.run()
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -49,7 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
         setupMainWindow()
-        NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("MaX_AppearanceDidChange"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
     }
     
     @objc private func appearanceDidChange() {
@@ -98,7 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.minSize = NSSize(width: 500, height: 600)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.setFrameAutosaveName("MaXMainWindow_v2")
+        window.setFrameAutosaveName("TweetintoshMainWindow")
         window.center()
         
         let rootView = AppRootView(
@@ -311,7 +345,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     @objc func reloadTimeline() {
-        NotificationCenter.default.post(name: NSNotification.Name("MaX_RefreshTimeline"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_RefreshTimeline"), object: nil)
     }
     
     @objc func toggleSidebarAction() {

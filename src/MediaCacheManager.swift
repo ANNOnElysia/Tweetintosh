@@ -20,10 +20,10 @@ final class MediaCacheManager: ObservableObject {
     private let videosDir: URL
     
     // Concurrency queues
-    private let ioQueue = DispatchQueue(label: "com.antigravity.max.mediacache.io", qos: .utility)
+    private let ioQueue = DispatchQueue(label: "com.anno.tweetintosh.mediacache.io", qos: .utility)
     private let downloadQueue: OperationQueue = {
         let q = OperationQueue()
-        q.name = "com.antigravity.max.mediacache.download"
+        q.name = "com.anno.tweetintosh.mediacache.download"
         q.maxConcurrentOperationCount = 6
         q.qualityOfService = .utility
         return q
@@ -37,7 +37,7 @@ final class MediaCacheManager: ObservableObject {
     
     private init() {
         let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        let maxCaches = cachesDir.appendingPathComponent("com.antigravity.max", isDirectory: true)
+        let maxCaches = cachesDir.appendingPathComponent("com.anno.tweetintosh", isDirectory: true)
         let base = maxCaches.appendingPathComponent("MediaCache", isDirectory: true)
         self.baseDir = base
         self.imagesDir = base.appendingPathComponent("images", isDirectory: true)

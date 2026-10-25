@@ -31,12 +31,12 @@ final class LocalizationManager: ObservableObject {
     
     @Published var currentLanguage: AppLanguage {
         didSet {
-            UserDefaults.standard.set(currentLanguage.rawValue, forKey: "MaX_AppLanguage")
+            UserDefaults.standard.set(currentLanguage.rawValue, forKey: "Tweetintosh_AppLanguage")
         }
     }
     
     private init() {
-        if let saved = UserDefaults.standard.string(forKey: "MaX_AppLanguage"),
+        if let saved = UserDefaults.standard.string(forKey: "Tweetintosh_AppLanguage"),
            let lang = AppLanguage(rawValue: saved) {
             self.currentLanguage = lang
         } else {

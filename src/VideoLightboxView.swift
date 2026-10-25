@@ -69,8 +69,8 @@ final class VideoLightboxManager: ObservableObject {
     
     // The viewer's choice, remembered across videos and launches
     private var preferredQuality: VideoQualityOption {
-        get { VideoQualityOption(storageValue: UserDefaults.standard.string(forKey: "MaX_VideoQuality")) }
-        set { UserDefaults.standard.set(newValue.storageValue, forKey: "MaX_VideoQuality") }
+        get { VideoQualityOption(storageValue: UserDefaults.standard.string(forKey: "Tweetintosh_VideoQuality")) }
+        set { UserDefaults.standard.set(newValue.storageValue, forKey: "Tweetintosh_VideoQuality") }
     }
     @Published var isPlaying: Bool = false
     @Published var currentTime: Double = 0.0

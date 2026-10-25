@@ -11,7 +11,7 @@ import Foundation
 import SwiftUI
 import os
 
-private let preloadLog = Logger(subsystem: "com.antigravity.max", category: "preload")
+private let preloadLog = Logger(subsystem: "com.anno.tweetintosh", category: "preload")
 
 // MARK: - Hover Dwell
 
