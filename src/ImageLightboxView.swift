@@ -10,6 +10,9 @@ import AppKit
 final class MediaFrameRegistry {
     static let shared = MediaFrameRegistry()
     private var frames: [String: CGRect] = [:]
+    // Live providers win over stored frames: a List scrolls without SwiftUI re-reporting positions, so a frame
+    // stored at open time (or last reported by SwiftUI) can be stale by the time the lightbox closes
+    private var providers: [String: () -> CGRect?] = [:]
     private let lock = NSLock()
     
     private init() {}
@@ -21,10 +24,19 @@ final class MediaFrameRegistry {
         lock.unlock()
     }
     
+    func register(key: String, provider: @escaping () -> CGRect?) {
+        lock.lock()
+        providers[key] = provider
+        lock.unlock()
+    }
+    
     func frame(for key: String) -> CGRect? {
         lock.lock()
-        defer { lock.unlock() }
-        return frames[key]
+        let provider = providers[key]
+        let stored = frames[key]
+        lock.unlock()
+        if let live = provider?(), live.width > 5, live.height > 5 { return live }
+        return stored
     }
     
     func clear() {
@@ -153,21 +165,31 @@ final class LightboxManager: ObservableObject {
         guard isPresented && !isAnimatingOut else { return }
         self.isAnimatingOut = true
         removeEventMonitors()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+        // The overlay is removed only once the spring has fully settled on the thumbnail. A fixed delay shorter
+        // than the spring cut it off a few points short, and the image visibly jumped the rest of the way.
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85), completionCriteria: .removed) {
             self.isZoomExpanded = false
             self.dragOffset = .zero
             self.zoomScale = 1.0
             self.panOffset = .zero
+        } completion: {
+            self.finishDismiss()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
-            self.isPresented = false
-            self.sourceRect = .zero
-            self.isAnimatingOut = false
-            self.mediaList = []
-            self.currentIndex = 0
-            self.initialIndex = 0
-            self.resetTransforms()
+        // Safety net in case the completion never fires
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            self.finishDismiss()
         }
+    }
+    
+    private func finishDismiss() {
+        guard isPresented, isAnimatingOut else { return }
+        self.isPresented = false
+        self.sourceRect = .zero
+        self.isAnimatingOut = false
+        self.mediaList = []
+        self.currentIndex = 0
+        self.initialIndex = 0
+        self.resetTransforms()
     }
     
     func next() {

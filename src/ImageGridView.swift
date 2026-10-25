@@ -316,6 +316,59 @@ struct ImageGridView: View {
 // Written on every geometry change without invalidating any view (no @Published); read only when a tile is tapped.
 private final class FrameBox: ObservableObject {
     var rect: CGRect = .zero
+    // SwiftUI's reported frame goes stale while a List scrolls (the table moves its clip view, not the SwiftUI
+    // layout). The tile's AppKit view always knows where it really is, so the reported frame is shifted by how
+    // far that view has moved since the frame was reported.
+    weak var view: NSView?
+
+    func report(_ rect: CGRect) {
+        self.rect = rect
+    }
+
+    // Where the tile really is, in the "AppWindow" space: read from AppKit, so it is right however a List has
+    // scrolled and whatever offset it applies to the positions SwiftUI reports
+    var liveRect: CGRect {
+        guard let now = currentWindowRect(), let origin = AppWindowOrigin.windowRect else { return rect }
+        return CGRect(x: now.minX - origin.minX, y: origin.maxY - now.maxY, width: now.width, height: now.height)
+    }
+
+    private func currentWindowRect() -> CGRect? {
+        guard let view = view, view.window != nil else { return nil }
+        return view.convert(view.bounds, to: nil)
+    }
+}
+
+// The "AppWindow" coordinate space starts at the top-left of the root view; this finds where that is on screen
+enum AppWindowOrigin {
+    fileprivate static weak var view: NSView?
+    
+    static var windowRect: CGRect? {
+        guard let view = view, view.window != nil else { return nil }
+        return view.convert(view.bounds, to: nil)
+    }
+    
+    struct Anchor: NSViewRepresentable {
+        func makeNSView(context: Context) -> NSView {
+            let view = NSView()
+            AppWindowOrigin.view = view
+            return view
+        }
+        func updateNSView(_ view: NSView, context: Context) {
+            AppWindowOrigin.view = view
+        }
+    }
+}
+
+private struct FrameAnchor: NSViewRepresentable {
+    let box: FrameBox
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        box.view = view
+        return view
+    }
+    func updateNSView(_ view: NSView, context: Context) {
+        box.view = view
+    }
 }
 
 // MARK: - Media Tile (image + video badge + tap-to-open lightbox)
@@ -350,8 +403,9 @@ private struct MediaTile: View {
         .onGeometryChange(for: CGRect.self) { proxy in
             proxy.frame(in: .named("AppWindow"))
         } action: { [frameBox] rect in
-            frameBox.rect = rect
+            frameBox.report(rect)
         }
+        .background(FrameAnchor(box: frameBox))
         .overlay(
             Button(action: open) {
                 Color.clear
@@ -364,12 +418,16 @@ private struct MediaTile: View {
     }
     
     private func open() {
-        let rect = frameBox.rect
+        let rect = frameBox.liveRect
         if media.isVideo, let tweet = tweet {
             VideoLightboxManager.shared.present(tweet: tweet, media: media)
         } else {
             MediaFrameRegistry.shared.register(key: media.mediaUrl, frame: rect)
             MediaFrameRegistry.shared.register(key: media.id, frame: rect)
+            let box = frameBox
+            let provider: () -> CGRect? = { [weak box] in box?.liveRect }
+            MediaFrameRegistry.shared.register(key: media.mediaUrl, provider: provider)
+            MediaFrameRegistry.shared.register(key: media.id, provider: provider)
             LightboxManager.shared.present(mediaList: lightboxItems, initialIndex: index, sourceRect: rect, tweet: tweet)
         }
     }

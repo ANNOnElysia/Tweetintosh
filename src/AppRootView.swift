@@ -235,6 +235,7 @@ struct AppRootView: View {
             AppToastOverlay()
                 .zIndex(9999)
         }
+        .background(AppWindowOrigin.Anchor())
         .coordinateSpace(name: "AppWindow")
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
         .sheet(isPresented: $nav.isShowingCompose) {
