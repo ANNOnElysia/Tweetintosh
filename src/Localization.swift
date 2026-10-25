@@ -496,6 +496,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "这些帖子受保护",
             .traditionalChinese: "這些貼文受到保護"
         ],
+        "engagement_blocked": [
+            .english: "{name} has blocked you. You can't like, repost, bookmark, or reply to their posts.",
+            .japanese: "{name}さんにブロックされています。このアカウントのポストにいいね、リポスト、ブックマーク、返信はできません。",
+            .korean: "{name}님이 회원님을 차단했습니다. 이 계정의 게시물에는 좋아요, 리포스트, 북마크, 답글을 남길 수 없습니다.",
+            .simplifiedChinese: "{name} 已屏蔽你，你无法对其帖子点赞、转发、收藏或回复。",
+            .traditionalChinese: "{name} 已封鎖你，你無法對其貼文按讚、轉發、收藏或回覆。"
+        ],
+        "profile_blocked_follow": [
+            .english: "{name} has blocked you. You can't follow this account.",
+            .japanese: "{name}さんにブロックされているため、フォローできません。",
+            .korean: "{name}님이 회원님을 차단해 팔로우할 수 없습니다.",
+            .simplifiedChinese: "{name} 已屏蔽你，你无法关注此账号。",
+            .traditionalChinese: "{name} 已封鎖你，你無法跟隨此帳號。"
+        ],
+        "engagement_blocked_generic": [
+            .english: "This account has blocked you, so you can't do that.",
+            .japanese: "このアカウントにブロックされているため、この操作はできません。",
+            .korean: "이 계정에서 회원님을 차단해 이 작업을 할 수 없습니다.",
+            .simplifiedChinese: "该账号已屏蔽你，你无法执行此操作。",
+            .traditionalChinese: "該帳號已封鎖你，你無法執行此操作。"
+        ],
+        "profile_blocked": [
+            .english: "Blocked",
+            .japanese: "ブロックされています",
+            .korean: "차단됨",
+            .simplifiedChinese: "已被屏蔽",
+            .traditionalChinese: "已被封鎖"
+        ],
         "peek_following": [
             .english: "Following",
             .japanese: "フォロー中",

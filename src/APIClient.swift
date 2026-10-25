@@ -480,10 +480,16 @@ final class APIClient {
         let uavatar = (userResult["avatar"] as? [String: Any]) ?? [:]
         // Newer payloads leave user "legacy" empty and move counts/banner into their own objects
         let relationshipCounts = (userResult["relationship_counts"] as? [String: Any]) ?? [:]
+        let perspectives = (userResult["relationship_perspectives"] as? [String: Any]) ?? [:]
         let rawAvatar = (uavatar["image_url"] as? String) ?? (ulegacy["profile_image_url_https"] as? String)
         
+        let userId = (userResult["rest_id"] as? String) ?? (userResult["id"] as? String) ?? ""
+        if perspectives["blocked_by"] as? Bool == true {
+            BlockedByRegistry.shared.insert(userId)
+        }
+        
         return TweetUser(
-            id: (userResult["rest_id"] as? String) ?? (userResult["id"] as? String) ?? "",
+            id: userId,
             name: (ucore["name"] as? String) ?? (ulegacy["name"] as? String) ?? "User",
             screenName: (ucore["screen_name"] as? String) ?? (ulegacy["screen_name"] as? String) ?? "",
             avatarUrl: rawAvatar?.replacingOccurrences(of: "_normal", with: "_bigger"),
@@ -496,7 +502,9 @@ final class APIClient {
             bioLinks: parseLinks(
                 (((userResult["profile_bio"] as? [String: Any])?["entities"] as? [String: Any])?["description"] as? [String: Any])
                     ?? ((ulegacy["entities"] as? [String: Any])?["description"] as? [String: Any])
-            )
+            ),
+            blockedBy: perspectives["blocked_by"] as? Bool,
+            blocking: perspectives["blocking"] as? Bool
         )
     }
     
@@ -1252,6 +1260,7 @@ final class APIClient {
         body: [String: Any],
         referer: String = "https://x.com/home",
         successCheck: @escaping ([String: Any]) -> Bool,
+        retriesLeft: Int = 1,
         completion: @escaping (Result<Void, APIError>) -> Void
     ) {
         guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
@@ -1291,8 +1300,16 @@ final class APIClient {
                 completion(.failure(.invalidResponse))
                 return
             }
+            // X sometimes answers a valid request with a spurious 404 and accepts the identical one a moment later
+            if httpResponse.statusCode == 404 && retriesLeft > 0 {
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) {
+                    self.performGraphQLMutation(endpoint: endpoint, body: body, referer: referer,
+                                                successCheck: successCheck, retriesLeft: retriesLeft - 1, completion: completion)
+                }
+                return
+            }
             guard (200...299).contains(httpResponse.statusCode), let data = data else {
-                completion(.failure(.serverError("HTTP \(httpResponse.statusCode)")))
+                completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
                 return
             }
             do {
@@ -1515,7 +1532,7 @@ final class APIClient {
                 return
             }
             guard (200...299).contains(httpResponse.statusCode), let data = data else {
-                completion(.failure(.serverError("HTTP \(httpResponse.statusCode)")))
+                completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
                 return
             }
             do {

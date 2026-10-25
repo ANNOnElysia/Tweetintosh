@@ -95,6 +95,7 @@ final class TweetDetailViewModel: ObservableObject {
     func postQuickReply(completion: ((Bool) -> Void)? = nil) {
         let trimmed = quickReplyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isSubmittingReply else { return }
+        guard EngagementGuard.allows(focalTweet) else { return }
         
         isSubmittingReply = true
         let textToSend = trimmed
@@ -139,9 +140,10 @@ final class TweetDetailViewModel: ObservableObject {
                         self.replies.insert(newTweet, at: 0)
                     }
                     completion?(true)
-                case .failure:
+                case .failure(let error):
                     // Restore text on failure
                     self.quickReplyText = textToSend
+                    EngagementGuard.reportFailure(error)
                     completion?(false)
                 }
             }
@@ -169,6 +171,7 @@ final class TweetDetailViewModel: ObservableObject {
     
     // MARK: - Optimistic Like Toggle
     func toggleLike(for tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
         let wasLiked = tweet.isFavorited
         let willLike = !wasLiked
@@ -182,7 +185,8 @@ final class TweetDetailViewModel: ObservableObject {
         
         if willLike {
             apiClient.favoriteTweet(id: tweetId) { [weak self] res in
-                if case .failure = res {
+                if case .failure(let err) = res {
+                    EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
                         self?.mutateTweet(id: tweetId) { t in
                             t.isFavorited = false
@@ -193,7 +197,8 @@ final class TweetDetailViewModel: ObservableObject {
             }
         } else {
             apiClient.unfavoriteTweet(id: tweetId) { [weak self] res in
-                if case .failure = res {
+                if case .failure(let err) = res {
+                    EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
                         self?.mutateTweet(id: tweetId) { t in
                             t.isFavorited = true
@@ -207,6 +212,7 @@ final class TweetDetailViewModel: ObservableObject {
     
     // MARK: - Optimistic Retweet Toggle
     func toggleRetweet(for tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
         let wasRetweeted = tweet.isRetweeted
         let willRetweet = !wasRetweeted
@@ -220,7 +226,8 @@ final class TweetDetailViewModel: ObservableObject {
         
         if willRetweet {
             apiClient.retweet(id: tweetId) { [weak self] res in
-                if case .failure = res {
+                if case .failure(let err) = res {
+                    EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
                         self?.mutateTweet(id: tweetId) { t in
                             t.isRetweeted = false
@@ -231,7 +238,8 @@ final class TweetDetailViewModel: ObservableObject {
             }
         } else {
             apiClient.unretweet(id: tweetId) { [weak self] res in
-                if case .failure = res {
+                if case .failure(let err) = res {
+                    EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
                         self?.mutateTweet(id: tweetId) { t in
                             t.isRetweeted = true
@@ -245,6 +253,7 @@ final class TweetDetailViewModel: ObservableObject {
     
     // MARK: - Optimistic Bookmark Toggle
     func toggleBookmark(for tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
         let wasBookmarked = tweet.isBookmarked
         let willBookmark = !wasBookmarked
@@ -258,7 +267,8 @@ final class TweetDetailViewModel: ObservableObject {
         
         if willBookmark {
             apiClient.bookmark(id: tweetId) { [weak self] res in
-                if case .failure = res {
+                if case .failure(let err) = res {
+                    EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
                         self?.mutateTweet(id: tweetId) { t in
                             t.isBookmarked = false
@@ -269,7 +279,8 @@ final class TweetDetailViewModel: ObservableObject {
             }
         } else {
             apiClient.unbookmark(id: tweetId) { [weak self] res in
-                if case .failure = res {
+                if case .failure(let err) = res {
+                    EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
                         self?.mutateTweet(id: tweetId) { t in
                             t.isBookmarked = true

@@ -27,7 +27,23 @@ final class ProfileViewModel: ObservableObject {
     init(user: TweetUser) {
         // The tweet's author data (name, avatar, bio, banner, counts) renders the header right away
         self.user = user
+        TweetMutationHub.shared.register(self)
     }
+    
+    // Keeps posts on this page in step with likes, reposts, and bookmarks made anywhere
+    func applyMutation(id: String, transform: (inout Tweet) -> Void) {
+        for tab in Array(tweets.keys) {
+            guard var list = tweets[tab] else { continue }
+            var changed = false
+            for index in list.indices where list[index].tweet.id == id {
+                transform(&list[index].tweet)
+                changed = true
+            }
+            if changed { tweets[tab] = list }
+        }
+    }
+    
+    var isBlockedByUser: Bool { user.hasBlockedYou }
 
     var userId: String { profile?.user.id ?? user.id }
 
@@ -43,6 +59,8 @@ final class ProfileViewModel: ObservableObject {
                     self.profile = profile
                     self.user = profile.user
                     self.isFollowing = profile.isFollowing
+                    // Posts loaded before the profile (their authors carry no block flag) re-check it now
+                    self.objectWillChange.send()
                 }
                 if self.tweets[self.selectedTab] == nil && !self.loadingTabs.contains(self.selectedTab) {
                     self.loadTab(self.selectedTab)
@@ -92,6 +110,14 @@ final class ProfileViewModel: ObservableObject {
 
     func toggleFollow() {
         guard !isFollowBusy, !userId.isEmpty else { return }
+        if isBlockedByUser {
+            AppToastManager.shared.show(
+                LocalizationManager.shared.format("profile_blocked_follow", ["name": user.formattedHandle]),
+                icon: "hand.raised.fill",
+                duration: 3.6
+            )
+            return
+        }
         let target = !isFollowing
         isFollowing = target
         isFollowBusy = true
@@ -99,8 +125,9 @@ final class ProfileViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isFollowBusy = false
-                if case .failure = result {
+                if case .failure(let error) = result {
                     self.isFollowing = !target
+                    EngagementGuard.reportFailure(error)
                 }
             }
         }
@@ -442,24 +469,42 @@ struct ProfileView: View {
         .padding(.top, 10)
     }
 
-    private var followButton: some View {
-        Button(action: vm.toggleFollow) {
-            Text(loc.t(vm.isFollowing ? "profile_following_button" : "profile_follow"))
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(vm.isFollowing ? ThemeManager.primaryText : .white)
-                .padding(.horizontal, 16)
-                .frame(height: 36)
-                .background {
-                    if !vm.isFollowing {
-                        Capsule().fill(ThemeManager.accent)
-                    }
+    @ViewBuilder private var followButton: some View {
+        if vm.isBlockedByUser {
+            // They've blocked you: you can still read everything, but not follow. A tap explains why.
+            Button(action: vm.toggleFollow) {
+                HStack(spacing: 5) {
+                    Image(systemName: "hand.raised.fill")
+                        .font(.system(size: 11))
+                    Text(loc.t("profile_blocked"))
+                        .font(.system(size: 13, weight: .semibold))
                 }
-                .modifier(FollowGlass(enabled: vm.isFollowing, isLiquid: theme.useLiquidGlass))
-                .opacity(vm.isFollowBusy ? 0.6 : 1)
+                .foregroundColor(ThemeManager.secondaryText)
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
+            }
+            .buttonStyle(.plain)
+            .help(loc.format("profile_blocked_follow", ["name": vm.user.formattedHandle]))
+        } else {
+            Button(action: vm.toggleFollow) {
+                Text(loc.t(vm.isFollowing ? "profile_following_button" : "profile_follow"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(vm.isFollowing ? ThemeManager.primaryText : .white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 36)
+                    .background {
+                        if !vm.isFollowing {
+                            Capsule().fill(ThemeManager.accent)
+                        }
+                    }
+                    .modifier(FollowGlass(enabled: vm.isFollowing, isLiquid: theme.useLiquidGlass))
+                    .opacity(vm.isFollowBusy ? 0.6 : 1)
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.profile == nil && vm.user.id.isEmpty)
+            .help(vm.isFollowing ? loc.t("profile_unfollow") : loc.t("profile_follow"))
         }
-        .buttonStyle(.plain)
-        .disabled(vm.profile == nil && vm.user.id.isEmpty)
-        .help(vm.isFollowing ? loc.t("profile_unfollow") : loc.t("profile_follow"))
     }
 
     // MARK: Formatting

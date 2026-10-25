@@ -349,6 +349,8 @@ private struct TweetActionBar: View {
                 }
                 .help(tweet.isBookmarked ? loc.t("remove_bookmark") : loc.t("bookmark"))
             }
+            // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
+            .opacity(tweet.author.hasBlockedYou ? 0.35 : 1)
         }
     }
     

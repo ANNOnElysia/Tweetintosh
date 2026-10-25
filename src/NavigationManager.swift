@@ -62,6 +62,7 @@ final class NavigationManager: ObservableObject {
     @Published var composeQuotedTweet: Tweet? = nil
     
     func openComposer(quoting tweet: Tweet? = nil) {
+        if let tweet = tweet, !EngagementGuard.allows(tweet) { return }
         DispatchQueue.main.async {
             self.composeQuotedTweet = tweet
             self.isShowingCompose = true
@@ -72,6 +73,7 @@ final class NavigationManager: ObservableObject {
     @Published var replyTargetTweet: Tweet? = nil
 
     func openReply(to tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         DispatchQueue.main.async {
             self.replyTargetTweet = tweet
         }

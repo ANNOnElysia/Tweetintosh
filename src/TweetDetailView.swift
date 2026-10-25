@@ -452,6 +452,7 @@ struct TweetDetailView: View {
                 isActive: false,
                 activeColor: ThemeManager.accent
             ) {
+                guard EngagementGuard.allows(viewModel.focalTweet) else { return }
                 state.modalReplyTargetTweet = viewModel.focalTweet
                 state.isReplyingModal = true
             }
@@ -655,6 +656,7 @@ struct TweetDetailView: View {
                     HStack(spacing: 24) {
                         // Reply to this reply
                         Button(action: {
+                            guard EngagementGuard.allows(tweet) else { return }
                             state.modalReplyTargetTweet = tweet
                             state.isReplyingModal = true
                         }) {

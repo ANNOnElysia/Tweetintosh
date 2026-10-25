@@ -267,6 +267,7 @@ final class MediaActions {
     
     // 4. 转帖 (Quote / Retweet)
     func toggleRetweet(tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         let loc = LocalizationManager.shared
         TimelineViewModel.shared.toggleRetweet(for: tweet)
         let msg = tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet")

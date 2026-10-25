@@ -25,7 +25,7 @@ struct UserProfile {
 // A post in a profile tab; Replies-tab posts can be part of a conversation thread drawn with a connecting line
 struct ProfileTimelineItem: Identifiable {
     let id: String
-    let tweet: Tweet
+    var tweet: Tweet
     let threadAbove: Bool
     let threadBelow: Bool
 }
@@ -486,13 +486,13 @@ extension APIClient {
         var request = authorizedRequest(URL(string: "https://x.com/i/api/1.1/friendships/\(action).json")!, method: "POST", creds: creds)
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = "include_profile_interstitial_type=1&skip_status=true&user_id=\(userId)".data(using: .utf8)
-        session.dataTask(with: request) { _, response, error in
+        session.dataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(.networkError(error)))
                 return
             }
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            completion((200...299).contains(status) ? .success(()) : .failure(.serverError("HTTP \(status)")))
+            completion((200...299).contains(status) ? .success(()) : .failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(status)")))
         }.resume()
     }
 }

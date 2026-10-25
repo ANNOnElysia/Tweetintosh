@@ -546,11 +546,14 @@ final class TimelineViewModel: ObservableObject {
         if let idx = tweets.firstIndex(where: { $0.id == id }) {
             transform(&tweets[idx])
         }
+        // 5. Mutate on open profile pages
+        TweetMutationHub.shared.apply(id: id, transform: transform)
     }
     
     // MARK: - Optimistic Engagement Actions
     
     func toggleLike(for tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
         let willFavorite = !tweet.isFavorited
         
@@ -571,6 +574,7 @@ final class TimelineViewModel: ObservableObject {
                         t.favoriteCount = max(0, t.favoriteCount + (!willFavorite ? 1 : -1))
                     }
                     self.errorMessage = error.localizedDescription
+                    EngagementGuard.reportFailure(error)
                 }
             }
         }
@@ -583,6 +587,7 @@ final class TimelineViewModel: ObservableObject {
     }
     
     func toggleRetweet(for tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
         let willRetweet = !tweet.isRetweeted
         
@@ -602,6 +607,7 @@ final class TimelineViewModel: ObservableObject {
                         t.retweetCount = max(0, t.retweetCount + (!willRetweet ? 1 : -1))
                     }
                     self.errorMessage = error.localizedDescription
+                    EngagementGuard.reportFailure(error)
                 }
             }
         }
@@ -614,6 +620,7 @@ final class TimelineViewModel: ObservableObject {
     }
     
     func toggleBookmark(for tweet: Tweet) {
+        guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
         let willBookmark = !tweet.isBookmarked
         
@@ -633,6 +640,7 @@ final class TimelineViewModel: ObservableObject {
                         t.bookmarkCount = max(0, t.bookmarkCount + (!willBookmark ? 1 : -1))
                     }
                     self.errorMessage = error.localizedDescription
+                    EngagementGuard.reportFailure(error)
                 }
             }
         }
@@ -662,6 +670,7 @@ final class TimelineViewModel: ObservableObject {
                         t.replyCount = max(0, t.replyCount - 1)
                     }
                     self.errorMessage = error.localizedDescription
+                    EngagementGuard.reportFailure(error)
                     completion(.failure(error))
                 }
             }
@@ -694,6 +703,7 @@ final class TimelineViewModel: ObservableObject {
                         }
                     }
                     self.errorMessage = error.localizedDescription
+                    EngagementGuard.reportFailure(error)
                     completion(.failure(error))
                 }
             }

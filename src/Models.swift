@@ -102,6 +102,10 @@ struct TweetUser: Codable, Hashable, Identifiable {
     var bannerUrl: String? = nil
     var location: String? = nil
     var bioLinks: [TweetLink]? = nil
+    // Relationship to the signed-in account. blockedBy: this user blocked you (you can still read their posts
+    // but can't like, repost, bookmark, reply, or follow); blocking: you blocked them.
+    var blockedBy: Bool? = nil
+    var blocking: Bool? = nil
 
     var formattedHandle: String {
         return "@" + screenName
