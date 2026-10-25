@@ -184,6 +184,17 @@ struct Tweet: Codable, Hashable, Identifiable {
         return formatter
     }()
     
+    // X sends tweet text with &amp; &lt; &gt; escaped (and occasionally quotes); show the real characters
+    private static func unescapeHTML(_ text: String) -> String {
+        guard text.contains("&") else { return text }
+        return text
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&amp;", with: "&")  // last, so "&amp;lt;" stays "&lt;"
+    }
+    
     private static let leadingMentionRegex: NSRegularExpression? = {
         try? NSRegularExpression(pattern: #"^(@[A-Za-z0-9_]{1,50})\s*"#)
     }()
@@ -280,7 +291,7 @@ struct Tweet: Codable, Hashable, Identifiable {
     }
     
     private mutating func computeParsedTexts() {
-        var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var raw = Self.unescapeHTML(text).trimmingCharacters(in: .whitespacesAndNewlines)
         
         // 1. Strip trailing media or quote t.co URLs when media or quote is present
         //    (real link entities stay: they're shown and previewable)
