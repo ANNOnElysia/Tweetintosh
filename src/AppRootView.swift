@@ -37,19 +37,25 @@ struct VisualEffectBackground: NSViewRepresentable {
 struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     var isLiquid: Bool
     var shape: S
+    // Clear variant: .clear glass with a light backing fill, so content behind stays visible (top tab switcher)
+    var isClear: Bool = false
     @ObservedObject private var theme = ThemeManager.shared
-    
+
     func body(content: Content) -> some View {
         if isLiquid {
             if #available(macOS 26.0, *) {
                 // Mode A: Native Liquid Glass (SwiftUI macOS 26+ native API)
+                let base: Glass = isClear ? .clear : .regular
                 let glassStyle: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
-                    : .regular.interactive()
-                
+                    ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
+                    : base.interactive()
+                let backingFill: Color = isClear
+                    ? (theme.isLight ? Color.white.opacity(0.22) : Color.black.opacity(0.10))
+                    : (theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.20))
+
                 content
                     .background(
-                        shape.fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.20))
+                        shape.fill(backingFill)
                     )
                     .glassEffect(glassStyle, in: shape)
                     .overlay(
@@ -431,7 +437,7 @@ private struct LiquidGlassCapsule: View {
             .help(nav.isSearchActive ? "Close Search (Esc / ⌥S)" : "Search (⌥S)")
         }
         .padding(.vertical, 4)
-        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
+        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true))
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
         .fixedSize()
     }
