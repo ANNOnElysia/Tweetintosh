@@ -75,20 +75,24 @@ extension APIClient {
 
 // MARK: - Cross-Screen Post Updates
 
-// A post can be on screen in several places at once (timeline, tweet detail, a profile tab). Liking it in
-// one must update the others, so profile pages register here and receive every post mutation.
+// A post can be on screen in several places at once (timeline, tweet detail, a profile tab, search results).
+// Liking it in one must update the others, so those pages register here and receive every post mutation.
+protocol TweetMutationTarget: AnyObject {
+    func applyMutation(id: String, transform: (inout Tweet) -> Void)
+}
+
 final class TweetMutationHub {
     static let shared = TweetMutationHub()
-
-    private let profiles = NSHashTable<ProfileViewModel>.weakObjects()
-
-    func register(_ profile: ProfileViewModel) {
-        profiles.add(profile)
+    
+    private let targets = NSHashTable<AnyObject>.weakObjects()
+    
+    func register(_ target: TweetMutationTarget) {
+        targets.add(target)
     }
-
+    
     func apply(id: String, transform: (inout Tweet) -> Void) {
-        for profile in profiles.allObjects {
-            profile.applyMutation(id: id, transform: transform)
+        for case let target as TweetMutationTarget in targets.allObjects {
+            target.applyMutation(id: id, transform: transform)
         }
     }
 }

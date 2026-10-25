@@ -11,7 +11,7 @@ import AppKit
 
 // MARK: - View Model
 
-final class ProfileViewModel: ObservableObject {
+final class ProfileViewModel: ObservableObject, TweetMutationTarget {
     @Published private(set) var user: TweetUser
     @Published private(set) var profile: UserProfile?
     @Published private(set) var selectedTab: ProfileTab = .posts
@@ -23,6 +23,7 @@ final class ProfileViewModel: ObservableObject {
 
     private var cursors: [ProfileTab: String] = [:]
     private var exhausted: Set<ProfileTab> = []
+    
 
     init(user: TweetUser) {
         // The tweet's author data (name, avatar, bio, banner, counts) renders the header right away

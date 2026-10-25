@@ -181,6 +181,15 @@ struct AppRootView: View {
                 .zIndex(100)
             }
             
+            // Suggestions under the search field (typeahead, or recent searches when it is empty)
+            if nav.isSearchActive && !nav.sidebarExpanded && !nav.hasOverlay {
+                SearchSuggestionsPanel()
+                    .padding(.top, 66)
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                    .zIndex(101)
+            }
+            
             // Full-pane pages (tweet detail, profiles), stacked newest on top
             ForEach(Array(nav.overlayStack.enumerated()), id: \.element.id) { index, entry in
                 Group {
@@ -191,6 +200,10 @@ struct AppRootView: View {
                         }
                     case .profile(let user):
                         ProfileView(user: user) {
+                            nav.dismissTweetDetail()
+                        }
+                    case .search(let query):
+                        SearchView(query: query) {
                             nav.dismissTweetDetail()
                         }
                     }
@@ -364,6 +377,22 @@ private struct LiquidGlassCapsule: View {
                             .font(.system(size: 12.5))
                             .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
                             .focused($isSearchFocused)
+                            .onSubmit {
+                                // Return opens the highlighted suggestion, or searches for the typed text;
+                                // the field closes behind it
+                                SearchSuggestionsModel.shared.submit(typed: nav.searchQuery)
+                            }
+                            .onChange(of: nav.searchQuery) { _, text in
+                                SearchSuggestionsModel.shared.update(query: text)
+                            }
+                            .onKeyPress(.downArrow) {
+                                SearchSuggestionsModel.shared.move(1)
+                                return .handled
+                            }
+                            .onKeyPress(.upArrow) {
+                                SearchSuggestionsModel.shared.move(-1)
+                                return .handled
+                            }
                             .onExitCommand {
                                 nav.toggleSearch()
                             }
@@ -399,11 +428,13 @@ private struct LiquidGlassCapsule: View {
             .animation(.easeInOut(duration: 0.22), value: nav.isSearchActive)
             .onChange(of: nav.isSearchActive) { _, active in
                 if active {
+                    SearchSuggestionsModel.shared.update(query: nav.searchQuery)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                         isSearchFocused = true
                     }
                 } else {
                     isSearchFocused = false
+                    SearchSuggestionsModel.shared.reset()
                 }
             }
             

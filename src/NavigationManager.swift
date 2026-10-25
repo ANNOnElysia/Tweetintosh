@@ -34,6 +34,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
 enum OverlayPage {
     case tweet(Tweet)
     case profile(TweetUser)
+    case search(String)
 }
 
 struct OverlayEntry: Identifiable {
@@ -89,6 +90,19 @@ final class NavigationManager: ObservableObject {
     func openTweetDetail(_ tweet: Tweet) {
         guard !PeekCoordinator.shared.suppressesActivation else { return }
         push(.tweet(tweet))
+    }
+    
+    // The search results page, when it is the page in front
+    func activeSearchPage() -> SearchViewModel? {
+        if case .search? = overlayStack.last?.page { return SearchViewModel.current }
+        return nil
+    }
+    
+    func openSearch(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        SearchRecents.shared.add(trimmed)
+        push(.search(trimmed))
     }
     
     func openProfile(_ user: TweetUser) {
@@ -279,6 +293,10 @@ final class NavigationManager: ObservableObject {
                 
                 // Option + Command + Left/Right Arrow -> Secondary Filter Horizontal Navigation
                 if hasOption && hasCmd && !hasCtrl {
+                    if (keyCode == 123 || keyCode == 124), let search = self.activeSearchPage() {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { search.stepTab(keyCode == 123 ? -1 : 1) }
+                        return nil
+                    }
                     if keyCode == 123 { // Left Arrow
                         if self.currentTab == .home {
                             TimelineViewModel.shared.prevFeed()
@@ -324,6 +342,13 @@ final class NavigationManager: ObservableObject {
                     default:
                         break
                     }
+                }
+                
+                // Search page: Option + Q, W, E -> Top, Latest, People (same keys as the Notifications filters)
+                if hasOption && !hasCmd && !hasCtrl, let tab = SearchTab.forKeyCode(keyCode),
+                   let search = self.activeSearchPage() {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { search.select(tab) }
+                    return nil
                 }
                 
                 // Secondary Filter Direct Shortcuts: Option + Q, W, E, R (strictly Option, NOT Cmd to preserve Cmd+Q quit)

@@ -36,7 +36,7 @@ enum ProfileTab: String, CaseIterable, Identifiable {
     case replies
 
     var id: String { rawValue }
-
+    
     var operationName: String {
         switch self {
         case .posts: return "UserTweets"
@@ -62,6 +62,10 @@ final class GraphQLOperationIDs {
         "UserTweets": [
             "q6xj5bs0hapm9309hexA_g", "YHYMZsaMvzJvb5D2UVVjgw","Y9WM4Id6UcGFE8Z-hbnixw", "E3opETHurmVJflFsUBVuUQ",
             "V7H0Ap3_Hh2FyS75OCDO3Q", "HuTx74BxAnezK1gWvYY7zg", "eS7LO5Jy3xgmd3dbL044EA"
+        ],
+        "SearchTimeline": [
+            "gkjsKepM6gl_HmFWoWKfgg", "UN1i3zUiCWa-6r-Uaho4fw", "Aj1nGkALq99Xg3XI0OZBtw",
+            "flaR-PUMshxFWZWPNpq4zA", "U3QTLwGF8sZCHDuWIMSAmg"
         ],
         // Replaced the older UserTweetsAndReplies operation, which X no longer serves
         "UserRepliesTimeline": [
@@ -243,6 +247,7 @@ extension APIClient {
         operation: String,
         variables: [String: Any],
         fieldToggles: [String: Any]? = nil,
+        usePost: Bool = false,
         completion: @escaping (Result<[String: Any], APIError>) -> Void
     ) {
         guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
@@ -272,13 +277,29 @@ extension APIClient {
                 }
                 return
             }
-            var comp = URLComponents(string: "https://x.com/i/api/graphql/\(id)/\(operation)")!
-            var items = [URLQueryItem(name: "variables", value: varStr), URLQueryItem(name: "features", value: featStr)]
-            if let toggleStr = toggleStr { items.append(URLQueryItem(name: "fieldToggles", value: toggleStr)) }
-            comp.queryItems = items
-            guard let url = comp.url else { completion(.failure(.invalidResponse)); return }
+            var request: URLRequest
+            if usePost {
+                // Some operations (search) are sent as a JSON POST by X's web client
+                var body: [String: Any] = ["variables": variables, "features": Self.profileFeatures, "queryId": id]
+                if let fieldToggles = fieldToggles { body["fieldToggles"] = fieldToggles }
+                guard let url = URL(string: "https://x.com/i/api/graphql/\(id)/\(operation)"),
+                      let bodyData = try? JSONSerialization.data(withJSONObject: body) else {
+                    completion(.failure(.invalidResponse))
+                    return
+                }
+                request = authorizedRequest(url, method: "POST", creds: creds)
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = bodyData
+            } else {
+                var comp = URLComponents(string: "https://x.com/i/api/graphql/\(id)/\(operation)")!
+                var items = [URLQueryItem(name: "variables", value: varStr), URLQueryItem(name: "features", value: featStr)]
+                if let toggleStr = toggleStr { items.append(URLQueryItem(name: "fieldToggles", value: toggleStr)) }
+                comp.queryItems = items
+                guard let url = comp.url else { completion(.failure(.invalidResponse)); return }
+                request = authorizedRequest(url, method: "GET", creds: creds)
+            }
 
-            session.dataTask(with: authorizedRequest(url, method: "GET", creds: creds)) { data, response, error in
+            session.dataTask(with: request) { data, response, error in
                 if let error = error {
                     completion(.failure(.networkError(error)))
                     return
@@ -295,7 +316,8 @@ extension APIClient {
                     completion(.failure(.serverError("HTTP \(status)")))
                     return
                 }
-                graphQLLog.notice("\(operation, privacy: .public) id \(id, privacy: .public) failed: HTTP \(status, privacy: .public)")
+                let reason = data.flatMap { String(data: $0.prefix(160), encoding: .utf8) } ?? ""
+                graphQLLog.notice("\(operation, privacy: .public) id \(id, privacy: .public) failed: HTTP \(status, privacy: .public) \(reason, privacy: .public)")
                 // X sometimes rejects a valid query id with 404; give the best id one more try before moving on
                 if status == 404 && !retriedBest && id == ids.first {
                     DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) {

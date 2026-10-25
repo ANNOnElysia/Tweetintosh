@@ -517,6 +517,48 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "该账号已屏蔽你，你无法执行此操作。",
             .traditionalChinese: "該帳號已封鎖你，你無法執行此操作。"
         ],
+        "search_tab_top": [
+            .english: "Top",
+            .japanese: "トップ",
+            .korean: "인기",
+            .simplifiedChinese: "热门",
+            .traditionalChinese: "熱門"
+        ],
+        "search_tab_latest": [
+            .english: "Latest",
+            .japanese: "最新",
+            .korean: "최신",
+            .simplifiedChinese: "最新",
+            .traditionalChinese: "最新"
+        ],
+        "search_tab_people": [
+            .english: "People",
+            .japanese: "ユーザー",
+            .korean: "사용자",
+            .simplifiedChinese: "用户",
+            .traditionalChinese: "使用者"
+        ],
+        "search_no_results": [
+            .english: "No results for “{query}”",
+            .japanese: "「{query}」の検索結果はありません",
+            .korean: "“{query}”에 대한 결과가 없습니다",
+            .simplifiedChinese: "没有找到“{query}”的结果",
+            .traditionalChinese: "找不到「{query}」的結果"
+        ],
+        "search_for_query": [
+            .english: "Search for “{query}”",
+            .japanese: "「{query}」を検索",
+            .korean: "“{query}” 검색",
+            .simplifiedChinese: "搜索“{query}”",
+            .traditionalChinese: "搜尋「{query}」"
+        ],
+        "search_recent": [
+            .english: "Recent",
+            .japanese: "最近の検索",
+            .korean: "최근 검색",
+            .simplifiedChinese: "最近搜索",
+            .traditionalChinese: "最近搜尋"
+        ],
         "profile_blocked": [
             .english: "Blocked",
             .japanese: "ブロックされています",
