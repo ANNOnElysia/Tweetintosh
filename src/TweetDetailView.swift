@@ -138,7 +138,6 @@ struct TweetDetailView: View {
             bottomReplyDock
                 .frame(maxHeight: .infinity, alignment: .bottom)
         }
-        .environment(\.peekScope, .detail)
         .onAppear {
             viewModel.loadDetail()
         }
@@ -315,12 +314,14 @@ struct TweetDetailView: View {
             // Author info (Enlarged)
             HStack(spacing: 12) {
                 avatarView(url: viewModel.focalTweet.author.avatarUrl, size: 44)
+                    .opensProfile(viewModel.focalTweet.author)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(viewModel.focalTweet.author.name)
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(ThemeManager.primaryText)
+                            .opensProfile(viewModel.focalTweet.author)
                         
                         if viewModel.focalTweet.author.isVerified {
                             Image(systemName: "checkmark.seal.fill")
@@ -332,6 +333,7 @@ struct TweetDetailView: View {
                     Text(viewModel.focalTweet.author.formattedHandle)
                         .font(.system(size: 13))
                         .foregroundColor(ThemeManager.secondaryText)
+                        .opensProfile(viewModel.focalTweet.author)
                 }
                 
                 Spacer()
@@ -528,6 +530,7 @@ struct TweetDetailView: View {
             // Left column: Avatar + Vertical Thread Line
             VStack(spacing: 0) {
                 avatarView(url: tweet.author.avatarUrl, size: 36)
+                    .opensProfile(tweet.author)
                 
                 // Connecting line
                 Rectangle()
@@ -543,6 +546,7 @@ struct TweetDetailView: View {
                     Text(tweet.author.name)
                         .font(.system(size: 13.5, weight: .bold))
                         .foregroundColor(ThemeManager.primaryText)
+                        .opensProfile(tweet.author)
                     
                     if tweet.author.isVerified {
                         Image(systemName: "checkmark.seal.fill")
@@ -591,6 +595,7 @@ struct TweetDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 avatarView(url: tweet.author.avatarUrl, size: 36)
+                    .opensProfile(tweet.author)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     // Author Header
@@ -598,6 +603,7 @@ struct TweetDetailView: View {
                         Text(tweet.author.name)
                             .font(.system(size: 13.5, weight: .bold))
                             .foregroundColor(ThemeManager.primaryText)
+                            .opensProfile(tweet.author)
                         
                         if tweet.author.isVerified {
                             Image(systemName: "checkmark.seal.fill")

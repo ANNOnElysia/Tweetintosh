@@ -276,6 +276,7 @@ private struct NotificationRowView: View {
                             .frame(width: 26, height: 26)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
+                            .opensProfile(firstActor)
                     } else {
                         Circle()
                             .fill(theme.isLight ? Color.black.opacity(0.08) : Color(white: 0.16))

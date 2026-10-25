@@ -26,11 +26,11 @@ enum APIError: LocalizedError {
 final class APIClient {
     static let shared = APIClient()
     
-    private let session: URLSession
-    private let bearerToken = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
-    private let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
+    let session: URLSession
+    let bearerToken = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+    let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
     
-    private var clientLanguageHeader: String {
+    var clientLanguageHeader: String {
         switch LocalizationManager.shared.currentLanguage {
         case .english: return "en"
         case .japanese: return "ja"
@@ -375,32 +375,7 @@ final class APIClient {
         // Author extraction
         let core = (result["core"] as? [String: Any]) ?? [:]
         let userResults = (core["user_results"] as? [String: Any]) ?? [:]
-        let userResult = (userResults["result"] as? [String: Any]) ?? [:]
-        let ucore = (userResult["core"] as? [String: Any]) ?? [:]
-        let ulegacy = (userResult["legacy"] as? [String: Any]) ?? [:]
-        let uavatar = (userResult["avatar"] as? [String: Any]) ?? [:]
-        
-        let userName = (ucore["name"] as? String) ?? (ulegacy["name"] as? String) ?? "User"
-        let screenName = (ucore["screen_name"] as? String) ?? (ulegacy["screen_name"] as? String) ?? ""
-        let rawAvatar = (uavatar["image_url"] as? String) ?? (ulegacy["profile_image_url_https"] as? String)
-        let avatarUrl = rawAvatar?.replacingOccurrences(of: "_normal", with: "_bigger")
-        let isVerified = (userResult["is_blue_verified"] as? Bool) ?? (ulegacy["verified"] as? Bool) ?? false
-        let authorId = (userResult["rest_id"] as? String) ?? (userResult["id"] as? String) ?? ""
-        // Newer payloads leave user "legacy" empty and move counts/banner into their own objects
-        let relationshipCounts = (userResult["relationship_counts"] as? [String: Any]) ?? [:]
-        
-        let author = TweetUser(
-            id: authorId,
-            name: userName,
-            screenName: screenName,
-            avatarUrl: avatarUrl,
-            isVerified: isVerified,
-            bio: (ulegacy["description"] as? String) ?? ((userResult["profile_bio"] as? [String: Any])?["description"] as? String),
-            followersCount: (relationshipCounts["followers"] as? Int) ?? (ulegacy["followers_count"] as? Int),
-            followingCount: (relationshipCounts["following"] as? Int) ?? (ulegacy["friends_count"] as? Int),
-            bannerUrl: ((userResult["banner"] as? [String: Any])?["image_url"] as? String) ?? (ulegacy["profile_banner_url"] as? String),
-            location: ((userResult["location"] as? [String: Any])?["location"] as? String) ?? (ulegacy["location"] as? String)
-        )
+        let author = Self.parseUser((userResults["result"] as? [String: Any]) ?? [:])
         
         // Media extraction
         var mediaList: [TweetMedia] = []
@@ -495,6 +470,33 @@ final class APIClient {
             inReplyToScreenName: inReplyToScreenName,
             inReplyToStatusId: inReplyToStatusId,
             links: Self.parseLinks(legacy["entities"] as? [String: Any])
+        )
+    }
+    
+    // A GraphQL user "result" object (tweet authors, profiles)
+    static func parseUser(_ userResult: [String: Any]) -> TweetUser {
+        let ucore = (userResult["core"] as? [String: Any]) ?? [:]
+        let ulegacy = (userResult["legacy"] as? [String: Any]) ?? [:]
+        let uavatar = (userResult["avatar"] as? [String: Any]) ?? [:]
+        // Newer payloads leave user "legacy" empty and move counts/banner into their own objects
+        let relationshipCounts = (userResult["relationship_counts"] as? [String: Any]) ?? [:]
+        let rawAvatar = (uavatar["image_url"] as? String) ?? (ulegacy["profile_image_url_https"] as? String)
+        
+        return TweetUser(
+            id: (userResult["rest_id"] as? String) ?? (userResult["id"] as? String) ?? "",
+            name: (ucore["name"] as? String) ?? (ulegacy["name"] as? String) ?? "User",
+            screenName: (ucore["screen_name"] as? String) ?? (ulegacy["screen_name"] as? String) ?? "",
+            avatarUrl: rawAvatar?.replacingOccurrences(of: "_normal", with: "_bigger"),
+            isVerified: (userResult["is_blue_verified"] as? Bool) ?? (ulegacy["verified"] as? Bool) ?? false,
+            bio: (ulegacy["description"] as? String) ?? ((userResult["profile_bio"] as? [String: Any])?["description"] as? String),
+            followersCount: (relationshipCounts["followers"] as? Int) ?? (ulegacy["followers_count"] as? Int),
+            followingCount: (relationshipCounts["following"] as? Int) ?? (ulegacy["friends_count"] as? Int),
+            bannerUrl: ((userResult["banner"] as? [String: Any])?["image_url"] as? String) ?? (ulegacy["profile_banner_url"] as? String),
+            location: ((userResult["location"] as? [String: Any])?["location"] as? String) ?? (ulegacy["location"] as? String),
+            bioLinks: parseLinks(
+                (((userResult["profile_bio"] as? [String: Any])?["entities"] as? [String: Any])?["description"] as? [String: Any])
+                    ?? ((ulegacy["entities"] as? [String: Any])?["description"] as? [String: Any])
+            )
         )
     }
     

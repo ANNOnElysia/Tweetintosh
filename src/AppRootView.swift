@@ -162,7 +162,7 @@ struct AppRootView: View {
             // Visible when sidebar is collapsed and not viewing tweet detail.
             // Leftmost button clicks to wake sidebar and capsule disappears.
             // Sidebar close button clicks to hide sidebar and capsule "卷土重来".
-            if !nav.sidebarExpanded && nav.selectedTweetDetail == nil {
+            if !nav.sidebarExpanded && !nav.hasOverlay {
                 LiquidGlassCapsule(
                     selection: $nav.currentTab,
                     onToggleSidebar: {
@@ -181,18 +181,28 @@ struct AppRootView: View {
                 .zIndex(100)
             }
             
-            // Full-Pane Tweet Detail & Thread Conversation Overlay
-            if let detailTweet = nav.selectedTweetDetail {
-                TweetDetailView(tweet: detailTweet) {
-                    nav.dismissTweetDetail()
+            // Full-pane pages (tweet detail, profiles), stacked newest on top
+            ForEach(Array(nav.overlayStack.enumerated()), id: \.element.id) { index, entry in
+                Group {
+                    switch entry.page {
+                    case .tweet(let tweet):
+                        TweetDetailView(tweet: tweet) {
+                            nav.dismissTweetDetail()
+                        }
+                    case .profile(let user):
+                        ProfileView(user: user) {
+                            nav.dismissTweetDetail()
+                        }
+                    }
                 }
+                .environment(\.peekScope, .overlay(index))
                 .transition(
                     .asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal: .move(edge: .trailing).combined(with: .opacity)
                     )
                 )
-                .zIndex(900)
+                .zIndex(900 + Double(index))
             }
             
             // Full-Window Lightbox Overlay (covers entire window including top bar)

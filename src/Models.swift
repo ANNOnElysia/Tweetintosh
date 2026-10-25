@@ -32,6 +32,7 @@ struct TweetVideoInfo: Codable, Hashable {
             .filter { $0.contentType == "video/mp4" }
             .sorted(by: { ($0.bitrate ?? 0) > ($1.bitrate ?? 0) })
     }
+
     
     var durationSeconds: Double {
         Double(durationMillis ?? 0) / 1000.0
@@ -80,7 +81,8 @@ struct TweetUser: Codable, Hashable, Identifiable {
     var followingCount: Int? = nil
     var bannerUrl: String? = nil
     var location: String? = nil
-    
+    var bioLinks: [TweetLink]? = nil
+
     var formattedHandle: String {
         return "@" + screenName
     }

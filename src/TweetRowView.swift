@@ -7,9 +7,12 @@ import SwiftUI
 
 struct TweetRowView: View {
     let tweet: Tweet
+    // Part of a conversation thread (profile Replies tab): a line joins this avatar to the post above / below
+    var threadAbove: Bool = false
+    var threadBelow: Bool = false
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Main Clickable Area: Repost Header, Avatar, Author Info, Tweet Text, Media & Quote
@@ -41,6 +44,7 @@ struct TweetRowView: View {
                         .clipShape(Circle())
                         .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
                         .peekable(.profile(tweet.author))
+                        .opensProfile(tweet.author)
                     
                     // Content Column
                     VStack(alignment: .leading, spacing: 6) {
@@ -51,6 +55,7 @@ struct TweetRowView: View {
                                 .foregroundColor(ThemeManager.primaryText)
                                 .lineLimit(1)
                                 .peekable(.profile(tweet.author))
+                                .opensProfile(tweet.author)
                             
                             if tweet.author.isVerified {
                                 Image(systemName: "checkmark.seal.fill")
@@ -63,6 +68,7 @@ struct TweetRowView: View {
                                 .foregroundColor(ThemeManager.secondaryText)
                                 .lineLimit(1)
                                 .peekable(.profile(tweet.author))
+                                .opensProfile(tweet.author)
                             
                             Text("·")
                                 .font(.system(size: 13.5))
@@ -132,11 +138,37 @@ struct TweetRowView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
             
-            // 4. Subtle Row Divider
-            Divider()
-                .background(ThemeManager.divider)
+            // 4. Subtle Row Divider (a thread continues into the next row instead)
+            if !threadBelow {
+                Divider()
+                    .background(ThemeManager.divider)
+            }
         }
         .background(ThemeManager.background)
+        .overlay(alignment: .topLeading) {
+            threadLine
+        }
+    }
+
+    // Line through the avatar column joining posts in a conversation: from the top edge to just above the
+    // avatar (12pt top spacing + 40pt avatar), and from just below it to the bottom edge
+    @ViewBuilder private var threadLine: some View {
+        if threadAbove || threadBelow {
+            let color = ThemeManager.secondaryText.opacity(0.3)
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(threadAbove ? color : .clear)
+                    .frame(width: 2, height: 9)
+                Spacer()
+                    .frame(height: 46)
+                Rectangle()
+                    .fill(threadBelow ? color : .clear)
+                    .frame(width: 2)
+                    .frame(maxHeight: .infinity)
+            }
+            .padding(.leading, 35)
+            .allowsHitTesting(false)
+        }
     }
     
     // Body text with links shown by their display URL in the accent colour; clicking one opens it in the browser

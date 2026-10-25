@@ -26,10 +26,11 @@ enum PeekTarget: Equatable {
 }
 
 // Which surface a peekable belongs to, so presses only match items on the surface currently in front
-enum PeekScope {
+enum PeekScope: Equatable {
     case none
     case timeline
-    case detail
+    // A full-pane page; the index is its depth in the navigation stack
+    case overlay(Int)
 }
 
 private struct PeekScopeKey: EnvironmentKey {
@@ -281,7 +282,7 @@ final class PeekCoordinator: ObservableObject {
             || nav.isShowingCompose || nav.replyTargetTweet != nil {
             return .none
         }
-        if nav.selectedTweetDetail != nil { return .detail }
+        if nav.hasOverlay { return .overlay(nav.overlayStack.count - 1) }
         return nav.currentTab == .home ? .timeline : .none
     }
 }
@@ -490,7 +491,7 @@ private struct PeekProfileCard: View {
                     .foregroundColor(ThemeManager.secondaryText)
 
                 if let bio = user.bio, !bio.isEmpty {
-                    Text(bio)
+                    LinkedText.make(bio, links: user.bioLinks ?? [])
                         .font(.system(size: 13.5))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineLimit(6)

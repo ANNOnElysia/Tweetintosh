@@ -116,7 +116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         window.contentView?.addSubview(hostingView)
         PeekCoordinator.shared.start(hostingView: hostingView)
-        self.mainWindow = window
+self.mainWindow = window
         window.makeKeyAndOrderFront(nil)
     }
     

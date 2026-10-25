@@ -25,6 +25,7 @@ struct QuotedTweetCard: View {
                         .frame(width: 20, height: 20)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(ThemeManager.border.opacity(0.6), lineWidth: 0.5))
+                        .opensProfile(tweet.author)
                 } else {
                     Circle()
                         .fill(ThemeManager.secondaryText.opacity(0.2))
@@ -35,6 +36,7 @@ struct QuotedTweetCard: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineLimit(1)
+                    .opensProfile(tweet.author)
                 
                 Text(tweet.author.formattedHandle)
                     .font(.system(size: 12))

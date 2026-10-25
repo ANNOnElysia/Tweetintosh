@@ -30,6 +30,17 @@ enum AppTab: Int, CaseIterable, Identifiable {
     }
 }
 
+// A full-pane page shown over the tabs
+enum OverlayPage {
+    case tweet(Tweet)
+    case profile(TweetUser)
+}
+
+struct OverlayEntry: Identifiable {
+    let id = UUID()
+    let page: OverlayPage
+}
+
 final class NavigationManager: ObservableObject {
     static let shared = NavigationManager()
     
@@ -37,7 +48,16 @@ final class NavigationManager: ObservableObject {
     @Published var sidebarExpanded: Bool = false
     @Published var isSearchActive: Bool = false
     @Published var searchQuery: String = ""
-    @Published var selectedTweetDetail: Tweet? = nil
+    // Full-pane pages pushed over the tabs (tweet detail, profiles), newest last. Each entry keeps its own
+    // identity so a page's state survives while others are pushed on top of it.
+    @Published private(set) var overlayStack: [OverlayEntry] = []
+
+    var selectedTweetDetail: Tweet? {
+        if case .tweet(let tweet) = overlayStack.last?.page { return tweet }
+        return nil
+    }
+
+    var hasOverlay: Bool { !overlayStack.isEmpty }
     @Published var isShowingCompose: Bool = false
     @Published var composeQuotedTweet: Tweet? = nil
     
@@ -66,17 +86,30 @@ final class NavigationManager: ObservableObject {
     
     func openTweetDetail(_ tweet: Tweet) {
         guard !PeekCoordinator.shared.suppressesActivation else { return }
+        push(.tweet(tweet))
+    }
+    
+    func openProfile(_ user: TweetUser) {
+        guard !PeekCoordinator.shared.suppressesActivation else { return }
+        // Clicking the author on their own profile page shouldn't stack the same page again
+        if case .profile(let current) = overlayStack.last?.page, current.screenName == user.screenName { return }
+        push(.profile(user))
+    }
+    
+    // Goes back one page
+    func dismissTweetDetail() {
         DispatchQueue.main.async {
+            guard !self.overlayStack.isEmpty else { return }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                self.selectedTweetDetail = tweet
+                _ = self.overlayStack.removeLast()
             }
         }
     }
     
-    func dismissTweetDetail() {
+    private func push(_ page: OverlayPage) {
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                self.selectedTweetDetail = nil
+                self.overlayStack.append(OverlayEntry(page: page))
             }
         }
     }
@@ -191,7 +224,7 @@ final class NavigationManager: ObservableObject {
                         self.dismissComposer()
                         return nil
                     }
-                    if self.selectedTweetDetail != nil {
+                    if self.hasOverlay {
                         self.dismissTweetDetail()
                         return nil
                     }
@@ -203,7 +236,7 @@ final class NavigationManager: ObservableObject {
                 
                 // Left Arrow (keyCode 123) without modifiers -> Back from Tweet Detail
                 if !hasCmd && !hasOption && !hasCtrl && keyCode == 123 {
-                    if self.selectedTweetDetail != nil && !self.isShowingCompose && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented {
+                    if self.hasOverlay && !self.isShowingCompose && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented {
                         if !self.isTextInputActive() {
                             self.dismissTweetDetail()
                             return nil
@@ -213,7 +246,7 @@ final class NavigationManager: ObservableObject {
                 
                 // Up / Down Arrow (keyCodes 126 / 125) without modifiers -> Scroll Home Timeline
                 if !hasCmd && !hasOption && !hasCtrl && (keyCode == 126 || keyCode == 125) {
-                    if self.currentTab == .home && self.selectedTweetDetail == nil && !self.isShowingCompose
+                    if self.currentTab == .home && !self.hasOverlay && !self.isShowingCompose
                         && self.replyTargetTweet == nil && !VideoLightboxManager.shared.isPresented
                         && event.window === NSApp.mainWindow && event.window?.attachedSheet == nil
                         && !self.isTextInputActive() {
@@ -230,7 +263,7 @@ final class NavigationManager: ObservableObject {
                 
                 // Command + [ (keyCode 33) -> Back from Tweet Detail
                 if hasCmd && !hasOption && !hasCtrl && keyCode == 33 {
-                    if self.selectedTweetDetail != nil {
+                    if self.hasOverlay {
                         self.dismissTweetDetail()
                         return nil
                     }
