@@ -218,19 +218,10 @@ private struct TweetActionBar: View {
                 .help(loc.t("reply"))
                 
                 // 2. Repost & Quote Menu
+                // A plain Button that pops up an NSMenu on click: SwiftUI's Menu is backed by an NSPopUpButton,
+                // and creating one per row as rows scroll into view was a major source of scroll hitches.
                 HoverReader { hovered in
-                    Menu {
-                        Button(action: {
-                            TimelineViewModel.shared.toggleRetweet(for: tweet)
-                        }) {
-                            Label(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
-                        }
-                        Button(action: {
-                            NavigationManager.shared.openComposer(quoting: tweet)
-                        }) {
-                            Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
-                        }
-                    } label: {
+                    Button(action: showRepostMenu) {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.2.squarepath")
                                 .font(.system(size: 12, weight: tweet.isRetweeted ? .bold : .regular))
@@ -244,9 +235,7 @@ private struct TweetActionBar: View {
                         )
                         .contentShape(Rectangle())
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
+                    .buttonStyle(.plain)
                 }
                 .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
                 
@@ -304,5 +293,46 @@ private struct TweetActionBar: View {
                 .help(tweet.isBookmarked ? loc.t("remove_bookmark") : loc.t("bookmark"))
             }
         }
+    }
+    
+    private func showRepostMenu() {
+        let menu = NSMenu()
+        let tweet = tweet
+        menu.addItem(ClosureMenuItem(
+            title: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"),
+            symbol: "arrow.2.squarepath"
+        ) {
+            TimelineViewModel.shared.toggleRetweet(for: tweet)
+        })
+        menu.addItem(ClosureMenuItem(title: loc.t("quote_tweet"), symbol: "quote.bubble") {
+            NavigationManager.shared.openComposer(quoting: tweet)
+        })
+        // Anchor at the click that triggered the button (screen coordinates), falling back to the cursor
+        if let event = NSApp.currentEvent, let window = event.window,
+           event.type == .leftMouseUp || event.type == .leftMouseDown {
+            menu.popUp(positioning: nil, at: window.convertPoint(toScreen: event.locationInWindow), in: nil)
+        } else {
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        }
+    }
+}
+
+// MARK: - Closure Menu Item
+private final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+    
+    init(title: String, symbol: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        self.target = self
+        self.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    }
+    
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    @objc private func run() {
+        handler()
     }
 }

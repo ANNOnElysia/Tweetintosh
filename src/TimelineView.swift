@@ -15,8 +15,8 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 
 // MARK: - Live Scroll State
 // Kept separate from TimelineScrollState so per-frame pull updates don't re-render the whole timeline.
-// While a trackpad scroll (including momentum) is live, rows stop hit-testing: otherwise SwiftUI re-runs hover
-// hit-testing and AppKit recomputes titlebar drag regions against every row on every scroll frame.
+// While the content is moving (trackpad, momentum, mouse wheel or arrow keys), rows stop hit-testing: otherwise
+// SwiftUI re-runs hover hit-testing and AppKit recomputes titlebar drag regions against every row on every frame.
 final class TimelineLiveScrollState: ObservableObject {
     static let shared = TimelineLiveScrollState()
     @Published var isLiveScrolling: Bool = false
@@ -260,7 +260,9 @@ final class TrackpadPullCoordinator {
     
     private var eventMonitor: Any?
     private var boundsObserver: Any?
-    private var liveScrollObservers: [Any] = []
+    private var lastScrollActivity: CFTimeInterval = 0
+    private var scrollIdleTimer: Timer?
+    private let scrollIdleDelay: CFTimeInterval = 0.15
     private weak var registeredScrollView: NSScrollView?
     private var wheelReleaseTimer: Timer?
     // Single pull-to-refresh threshold shared by the spinner fill, the haptic and the release trigger
@@ -310,26 +312,40 @@ final class TrackpadPullCoordinator {
             self?.handleBoundsChanged()
         }
 
-        removeLiveScrollObservers()
-        liveScrollObservers = [
-            NotificationCenter.default.addObserver(
-                forName: NSScrollView.willStartLiveScrollNotification, object: sv, queue: .main
-            ) { _ in
-                TimelineLiveScrollState.shared.isLiveScrolling = true
-            },
-            NotificationCenter.default.addObserver(
-                forName: NSScrollView.didEndLiveScrollNotification, object: sv, queue: .main
-            ) { _ in
-                TimelineLiveScrollState.shared.isLiveScrolling = false
-            }
-        ]
-
+        lastBoundsOriginY = nil
         handleBoundsChanged()
     }
-
-    private func removeLiveScrollObservers() {
-        liveScrollObservers.forEach { NotificationCenter.default.removeObserver($0) }
-        liveScrollObservers = []
+    
+    // Any content movement counts as scrolling; it ends after scrollIdleDelay without movement. Bounds changes
+    // cover every input (NSScrollView's live-scroll notifications only fire for trackpad gestures).
+    private func noteScrollActivity() {
+        lastScrollActivity = CACurrentMediaTime()
+        if !TimelineLiveScrollState.shared.isLiveScrolling {
+            TimelineLiveScrollState.shared.isLiveScrolling = true
+        }
+        if scrollIdleTimer == nil {
+            scheduleScrollIdleCheck(after: scrollIdleDelay)
+        }
+    }
+    
+    private func scheduleScrollIdleCheck(after delay: CFTimeInterval) {
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            self.scrollIdleTimer = nil
+            let idle = CACurrentMediaTime() - self.lastScrollActivity
+            if idle >= self.scrollIdleDelay {
+                self.endScrollActivity()
+            } else {
+                self.scheduleScrollIdleCheck(after: self.scrollIdleDelay - idle)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        scrollIdleTimer = timer
+    }
+    
+    private func endScrollActivity() {
+        scrollIdleTimer?.invalidate()
+        scrollIdleTimer = nil
         if TimelineLiveScrollState.shared.isLiveScrolling {
             TimelineLiveScrollState.shared.isLiveScrolling = false
         }
@@ -357,7 +373,7 @@ final class TrackpadPullCoordinator {
                     NotificationCenter.default.removeObserver(obs)
                     boundsObserver = nil
                 }
-                removeLiveScrollObservers()
+                endScrollActivity()
                 registeredScrollView = nil
                 scrollViewOwner = nil
             }
@@ -368,10 +384,16 @@ final class TrackpadPullCoordinator {
         }
     }
     
+    private var lastBoundsOriginY: CGFloat?
+    
     private func handleBoundsChanged() {
         guard let sv = registeredScrollView else { return }
         
         let y = sv.contentView.bounds.origin.y
+        if let last = lastBoundsOriginY, last != y {
+            noteScrollActivity()
+        }
+        lastBoundsOriginY = y
         let restingTopY = -sv.safeAreaInsets.top
         
         // Exact 0ms top detection: y <= restingTopY + 0.5 means top tweet is at top of viewport

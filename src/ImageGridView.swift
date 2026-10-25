@@ -59,7 +59,8 @@ final class ImageCache {
 
 // MARK: - Image Loader (Sync Cache Hit & Offloaded Disk/Network)
 final class ImageLoader: ObservableObject {
-    @Published var loadedImage: NSImage?
+    // Published as a CGImage so SwiftUI hands the decoded bitmap straight to Core Animation (no NSImage rep lookup)
+    @Published var loadedImage: CGImage?
     @Published var isLoading = false
     private var currentUrl: String?
     // Display box in device pixels; nil decodes at full resolution
@@ -76,7 +77,7 @@ final class ImageLoader: ObservableObject {
         if let urlStr = urlString {
             // Immediate frame-0 hit if already decoded in memory
             if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
-                self.loadedImage = mem
+                self.loadedImage = Self.cgImage(of: mem)
             }
         }
     }
@@ -89,7 +90,7 @@ final class ImageLoader: ObservableObject {
         // 1. Memory cache hit -> synchronous frame-0 return without flicker
         if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
             if self.loadedImage == nil {
-                self.loadedImage = mem
+                self.loadedImage = Self.cgImage(of: mem)
             }
             return
         }
@@ -102,7 +103,7 @@ final class ImageLoader: ObservableObject {
             guard let self = self else { return }
             
             // Check disk cache first
-            if let diskImg = MediaCacheManager.shared.diskImage(for: urlStr, targetPixelSize: targetPixelSize) {
+            if let diskImg = MediaCacheManager.shared.diskImage(for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:)) {
                 DispatchQueue.main.async {
                     if self.currentUrl == urlStr {
                         self.loadedImage = diskImg
@@ -123,7 +124,7 @@ final class ImageLoader: ObservableObject {
                 guard let self = self else { return }
                 // Decode (and downsample) on this background thread to prevent main-thread decompression hitches
                 if let data = data,
-                   let img = MediaCacheManager.shared.storeImageData(data, for: urlStr, targetPixelSize: targetPixelSize) {
+                   let img = MediaCacheManager.shared.storeImageData(data, for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:)) {
                     DispatchQueue.main.async {
                         if self.currentUrl == urlStr {
                             self.loadedImage = img
@@ -137,6 +138,11 @@ final class ImageLoader: ObservableObject {
                 }
             }.resume()
         }
+    }
+    
+    // Cache images are NSImage(cgImage:) wrappers, so this returns the backing CGImage without redrawing
+    private static func cgImage(of image: NSImage) -> CGImage? {
+        image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 }
 
@@ -159,21 +165,14 @@ struct CachedAsyncImage: View {
     var body: some View {
         ZStack {
             if let image = loader.loadedImage {
-                Image(nsImage: image)
+                Image(decorative: image, scale: 1.0)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
             } else {
+                // Plain placeholder: a ProgressView here is an AppKit NSProgressIndicator per loading tile, and
+                // creating/animating one for every image scrolling into view caused visible scroll hitches.
                 Rectangle()
                     .fill(placeholderColor)
-                    .overlay(
-                        Group {
-                            if loader.isLoading {
-                                ProgressView()
-                                    .scaleEffect(0.65)
-                                    .opacity(0.35)
-                            }
-                        }
-                    )
             }
         }
         .onAppear {

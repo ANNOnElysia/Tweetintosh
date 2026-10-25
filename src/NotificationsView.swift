@@ -41,7 +41,8 @@ struct NotificationsView: View {
     @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
-    
+    @ObservedObject var liveScroll = TimelineLiveScrollState.shared
+
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
     
@@ -119,6 +120,7 @@ struct NotificationsView: View {
                     Color.clear
                         .frame(height: 40)
                 }
+                .allowsHitTesting(!liveScroll.isLiveScrolling)
                 .background(
                     ScrollViewAccessor { sv in
                         TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")

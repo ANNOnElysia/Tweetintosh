@@ -6,6 +6,25 @@
 import Cocoa
 import SwiftUI
 
+// SwiftUI's NSHostingView.acceptsFirstResponder walks the whole focus/responder tree on every call, and AppKit
+// asks for it on every frame while content scrolls under the transparent titlebar (window drag-region updates).
+// Cache the answer briefly: what is focusable changes rarely compared with that per-frame query rate.
+final class FocusCachingHostingView<Content: View>: NSHostingView<Content> {
+    private var cachedAcceptsFirstResponder: Bool?
+    private var cachedAt: CFTimeInterval = 0
+
+    override var acceptsFirstResponder: Bool {
+        let now = CACurrentMediaTime()
+        if let cached = cachedAcceptsFirstResponder, now - cachedAt < 0.5 {
+            return cached
+        }
+        let value = super.acceptsFirstResponder
+        cachedAcceptsFirstResponder = value
+        cachedAt = now
+        return value
+    }
+}
+
 @main
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static func main() {
@@ -84,7 +103,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         )
         
-        let hostingView = NSHostingView(rootView: rootView)
+        let hostingView = FocusCachingHostingView(rootView: rootView)
         hostingView.frame = window.contentView!.bounds
         hostingView.autoresizingMask = [.width, .height]
         
