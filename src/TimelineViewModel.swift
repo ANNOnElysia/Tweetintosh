@@ -321,6 +321,17 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
+    // ⌘R: show everything that is already queued behind the "N new posts" pill, glide to the top, and load
+    // fresh posts in right there, instead of leaving them queued while the reader stays where they were
+    func reloadFromShortcut() {
+        guard !isRefreshing else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            applyPendingTweets(for: selectedFeed)
+        }
+        TimelineScrollCoordinator.shared.scrollToTop()
+        refresh(silently: false, isUserInitiated: true)
+    }
+    
     // MARK: - Feed Switching
     func selectFeed(_ feed: HomeFeedType) {
         if feed == .list && userLists.isEmpty { return }

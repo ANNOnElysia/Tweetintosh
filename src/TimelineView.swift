@@ -582,7 +582,7 @@ struct MainTimelineView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MaX_RefreshTimeline"))) { _ in
             if nav.currentTab == .home {
-                viewModel.refresh(silently: false, isUserInitiated: true)
+                viewModel.reloadFromShortcut()
             }
         }
     }
