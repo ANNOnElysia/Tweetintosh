@@ -116,7 +116,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         window.contentView?.addSubview(hostingView)
         PeekCoordinator.shared.start(hostingView: hostingView)
-self.mainWindow = window
+        // Let AppKit build the Tab key order when it is needed. Otherwise SwiftUI rebuilds it eagerly whenever the
+        // set of buttons changes, which in a List walks every table row each time a new row scrolls into view.
+        window.autorecalculatesKeyViewLoop = true
+        self.mainWindow = window
         window.makeKeyAndOrderFront(nil)
     }
     
