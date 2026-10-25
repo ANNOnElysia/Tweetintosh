@@ -207,6 +207,9 @@ struct AppRootView: View {
         .sheet(isPresented: $nav.isShowingCompose) {
             TweetComposerSheet(quotedTweet: nav.composeQuotedTweet)
         }
+        .sheet(item: $nav.replyTargetTweet) { tweet in
+            ReplyComposerSheet(tweet: tweet)
+        }
     }
 
     @ViewBuilder private var destination: some View {

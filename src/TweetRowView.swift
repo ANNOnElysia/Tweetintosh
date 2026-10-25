@@ -5,20 +5,10 @@
 
 import SwiftUI
 
-final class TweetRowState: ObservableObject {
-    @Published var isShowingReplySheet: Bool = false
-    @Published var isReplyHovered: Bool = false
-    @Published var isRepostHovered: Bool = false
-    @Published var isLikeHovered: Bool = false
-    @Published var isBookmarkHovered: Bool = false
-    @Published var likeScale: CGFloat = 1.0
-}
-
 struct TweetRowView: View {
     let tweet: Tweet
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
-    @StateObject private var state = TweetRowState()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -46,7 +36,7 @@ struct TweetRowView: View {
                 // 2. Main Content Row (Avatar + Text/Media Column)
                 HStack(alignment: .top, spacing: 10) {
                     // Author Avatar
-                    CachedAsyncImage(urlString: tweet.author.avatarUrl)
+                    CachedAsyncImage(urlString: tweet.author.avatarUrl, targetSize: CGSize(width: 40, height: 40))
                         .frame(width: 40, height: 40)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
@@ -125,23 +115,93 @@ struct TweetRowView: View {
             
             // 3. Interaction Metrics Bar: Impressions (Views) on Left, Actions on Right
             // Kept outside content onTapGesture to allow direct, uninhibited interaction with buttons & menus
-            HStack(alignment: .center) {
-                // Left: Impressions / Views Count
-                HStack(spacing: 5) {
-                    Image(systemName: "chart.bar.xaxis")
-                        .font(.system(size: 11.5))
-                    Text(formatCount(tweet.viewCount ?? 0))
-                        .font(.system(size: 11.5))
-                }
-                .foregroundColor(ThemeManager.secondaryText.opacity(0.85))
-                .help(loc.t("views"))
-                
-                Spacer()
-                
-                // Right: Interaction Metrics (Reply, Repost, Like, Bookmark)
-                HStack(spacing: 24) {
-                    // 1. Reply
-                    Button(action: { state.isShowingReplySheet = true }) {
+            TweetActionBar(tweet: tweet)
+                .padding(.leading, 66) // Aligns with text column (16 horizontal padding + 40 avatar + 10 spacing)
+                .padding(.trailing, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+            
+            // 4. Subtle Row Divider
+            Divider()
+                .background(ThemeManager.divider)
+        }
+        .background(ThemeManager.background)
+    }
+    
+    private func metricItem(icon: String, count: Int) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+            if count > 0 {
+                Text(formatCount(count))
+                    .font(.system(size: 12))
+            }
+        }
+        .foregroundColor(ThemeManager.secondaryText)
+    }
+    
+    private func openTweetOnWeb() {
+        let urlStr = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
+        if let url = URL(string: urlStr) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+private func formatCount(_ n: Int) -> String {
+    if n >= 1_000_000 {
+        return String(format: "%.1fM", Double(n) / 1_000_000.0)
+    } else if n >= 1_000 {
+        return String(format: "%.1fK", Double(n) / 1_000.0)
+    }
+    return "\(n)"
+}
+
+// MARK: - Hover Reader
+// Keeps hover in its own state object so hovering one action redraws only that action, not the whole tweet row.
+private final class HoverState: ObservableObject {
+    @Published var isHovered = false
+}
+
+private struct HoverReader<Content: View>: View {
+    @ViewBuilder let content: (Bool) -> Content
+    @StateObject private var state = HoverState()
+    
+    var body: some View {
+        content(state.isHovered)
+            .onHover { state.isHovered = $0 }
+    }
+}
+
+private final class LikeAnimationState: ObservableObject {
+    @Published var scale: CGFloat = 1.0
+}
+
+// MARK: - Tweet Action Bar (Views count + Reply, Repost, Like, Bookmark)
+private struct TweetActionBar: View {
+    let tweet: Tweet
+    @ObservedObject var loc = LocalizationManager.shared
+    @StateObject private var like = LikeAnimationState()
+    
+    var body: some View {
+        HStack(alignment: .center) {
+            // Left: Impressions / Views Count
+            HStack(spacing: 5) {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 11.5))
+                Text(formatCount(tweet.viewCount ?? 0))
+                    .font(.system(size: 11.5))
+            }
+            .foregroundColor(ThemeManager.secondaryText.opacity(0.85))
+            .help(loc.t("views"))
+            
+            Spacer()
+            
+            // Right: Interaction Metrics (Reply, Repost, Like, Bookmark)
+            HStack(spacing: 24) {
+                // 1. Reply
+                HoverReader { hovered in
+                    Button(action: { NavigationManager.shared.openReply(to: tweet) }) {
                         HStack(spacing: 5) {
                             Image(systemName: "bubble.left")
                                 .font(.system(size: 12))
@@ -150,14 +210,15 @@ struct TweetRowView: View {
                                     .font(.system(size: 12))
                             }
                         }
-                        .foregroundColor(state.isReplyHovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
+                        .foregroundColor(hovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .onHover { state.isReplyHovered = $0 }
-                    .help(loc.t("reply"))
-                    
-                    // 2. Repost & Quote Menu
+                }
+                .help(loc.t("reply"))
+                
+                // 2. Repost & Quote Menu
+                HoverReader { hovered in
                     Menu {
                         Button(action: {
                             TimelineViewModel.shared.toggleRetweet(for: tweet)
@@ -179,25 +240,25 @@ struct TweetRowView: View {
                             }
                         }
                         .foregroundColor(
-                            tweet.isRetweeted ? Color(red: 0.0, green: 0.73, blue: 0.49) :
-                            (state.isRepostHovered ? Color(red: 0.0, green: 0.73, blue: 0.49) : ThemeManager.secondaryText)
+                            tweet.isRetweeted || hovered ? Color(red: 0.0, green: 0.73, blue: 0.49) : ThemeManager.secondaryText
                         )
                         .contentShape(Rectangle())
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .onHover { state.isRepostHovered = $0 }
-                    .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
-                    
-                    // 3. Like
+                }
+                .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
+                
+                // 3. Like
+                HoverReader { hovered in
                     Button(action: {
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
-                            state.likeScale = 1.35
+                            like.scale = 1.35
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                state.likeScale = 1.0
+                                like.scale = 1.0
                             }
                         }
                         TimelineViewModel.shared.toggleLike(for: tweet)
@@ -205,23 +266,23 @@ struct TweetRowView: View {
                         HStack(spacing: 5) {
                             Image(systemName: tweet.isFavorited ? "heart.fill" : "heart")
                                 .font(.system(size: 12))
-                                .scaleEffect(state.likeScale)
+                                .scaleEffect(like.scale)
                             if tweet.favoriteCount > 0 {
                                 Text(formatCount(tweet.favoriteCount))
                                     .font(.system(size: 12, weight: tweet.isFavorited ? .semibold : .regular))
                             }
                         }
                         .foregroundColor(
-                            tweet.isFavorited ? Color(red: 0.976, green: 0.094, blue: 0.502) :
-                            (state.isLikeHovered ? Color(red: 0.976, green: 0.094, blue: 0.502) : ThemeManager.secondaryText)
+                            tweet.isFavorited || hovered ? Color(red: 0.976, green: 0.094, blue: 0.502) : ThemeManager.secondaryText
                         )
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .onHover { state.isLikeHovered = $0 }
-                    .help(tweet.isFavorited ? loc.t("unlike") : loc.t("like"))
-                    
-                    // 4. Bookmark
+                }
+                .help(tweet.isFavorited ? loc.t("unlike") : loc.t("like"))
+                
+                // 4. Bookmark
+                HoverReader { hovered in
                     Button(action: {
                         TimelineViewModel.shared.toggleBookmark(for: tweet)
                     }) {
@@ -234,56 +295,14 @@ struct TweetRowView: View {
                             }
                         }
                         .foregroundColor(
-                            tweet.isBookmarked ? Color(red: 0.114, green: 0.608, blue: 0.941) :
-                            (state.isBookmarkHovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
+                            tweet.isBookmarked || hovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText
                         )
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .onHover { state.isBookmarkHovered = $0 }
-                    .help(tweet.isBookmarked ? loc.t("remove_bookmark") : loc.t("bookmark"))
                 }
+                .help(tweet.isBookmarked ? loc.t("remove_bookmark") : loc.t("bookmark"))
             }
-            .padding(.leading, 66) // Aligns with text column (16 horizontal padding + 40 avatar + 10 spacing)
-            .padding(.trailing, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-            
-            // 4. Subtle Row Divider
-            Divider()
-                .background(ThemeManager.divider)
-        }
-        .background(ThemeManager.background)
-        .sheet(isPresented: $state.isShowingReplySheet) {
-            ReplyComposerSheet(tweet: tweet)
-        }
-    }
-    
-    private func metricItem(icon: String, count: Int) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-            if count > 0 {
-                Text(formatCount(count))
-                    .font(.system(size: 12))
-            }
-        }
-        .foregroundColor(ThemeManager.secondaryText)
-    }
-    
-    private func formatCount(_ n: Int) -> String {
-        if n >= 1_000_000 {
-            return String(format: "%.1fM", Double(n) / 1_000_000.0)
-        } else if n >= 1_000 {
-            return String(format: "%.1fK", Double(n) / 1_000.0)
-        }
-        return "\(n)"
-    }
-    
-    private func openTweetOnWeb() {
-        let urlStr = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
-        if let url = URL(string: urlStr) {
-            NSWorkspace.shared.open(url)
         }
     }
 }

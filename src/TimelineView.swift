@@ -13,40 +13,13 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-// MARK: - 120Hz Real-time Scroll FPS & Frame Delivery Monitor
-final class ScrollFPSMonitor: ObservableObject {
-    static let shared = ScrollFPSMonitor()
-    
-    @Published var currentFPS: Double = 120.0
-    @Published var minFPS: Double = 120.0
-    @Published var isScrolling: Bool = false
-    
-    private var frameCount: Int = 0
-    private var lastTime: CFTimeInterval = 0
-    private var scrollStopTimer: Timer?
-    
-    func onScrollFrame() {
-        let now = CACurrentMediaTime()
-        if !isScrolling {
-            isScrolling = true
-            frameCount = 0
-            lastTime = now
-        }
-        frameCount += 1
-        let delta = now - lastTime
-        if delta >= 0.5 {
-            let fps = Double(frameCount) / delta
-            currentFPS = min(120.0, max(0.0, fps))
-            minFPS = min(minFPS, currentFPS)
-            frameCount = 0
-            lastTime = now
-        }
-        
-        scrollStopTimer?.invalidate()
-        scrollStopTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
-            self?.isScrolling = false
-        }
-    }
+// MARK: - Live Scroll State
+// Kept separate from TimelineScrollState so per-frame pull updates don't re-render the whole timeline.
+// While a trackpad scroll (including momentum) is live, rows stop hit-testing: otherwise SwiftUI re-runs hover
+// hit-testing and AppKit recomputes titlebar drag regions against every row on every scroll frame.
+final class TimelineLiveScrollState: ObservableObject {
+    static let shared = TimelineLiveScrollState()
+    @Published var isLiveScrolling: Bool = false
 }
 
 final class TimelineScrollState: ObservableObject {
@@ -127,6 +100,104 @@ final class TimelineScrollCoordinator: ObservableObject {
         }
     }
     
+    // MARK: Keyboard Arrow Scrolling (display-synced)
+    // A tap glides one step; holding the key scrolls at constant speed until key-up. Driven per frame by the
+    // scroll view's display link instead of chained animator() calls, which restart on every key repeat and
+    // stall during the system's initial key-repeat delay.
+    private let keyStep: CGFloat = 64.0
+    private let keyHoldSpeed: CGFloat = 1100.0 // pt/s once the key is held
+    private let keyHoldDelay: CFTimeInterval = 0.12
+    private var keyDirection: CGFloat = 0
+    private var keyIsHeld = false
+    private var keyPressTime: CFTimeInterval = 0
+    private var keyTargetY: CGFloat = 0
+    private var keyCurrentY: CGFloat = 0
+    private var keyLastTick: CFTimeInterval = 0
+    private var keyDisplayLink: CADisplayLink?
+    private var keyUpMonitor: Any?
+    
+    func arrowKeyDown(up: Bool, isRepeat: Bool) {
+        guard let sv = scrollView else { return }
+        let direction: CGFloat = up ? -1 : 1
+        if isRepeat && keyIsHeld && direction == keyDirection { return }
+        
+        if keyDisplayLink == nil {
+            keyCurrentY = sv.contentView.bounds.origin.y
+            keyTargetY = keyCurrentY
+        }
+        keyDirection = direction
+        keyIsHeld = true
+        keyPressTime = CACurrentMediaTime()
+        keyTargetY = clampedKeyY(keyTargetY + direction * keyStep, in: sv)
+        installKeyUpMonitorIfNeeded()
+        startKeyDisplayLink(on: sv)
+    }
+    
+    private func installKeyUpMonitorIfNeeded() {
+        guard keyUpMonitor == nil else { return }
+        keyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            if event.keyCode == 125 || event.keyCode == 126 {
+                self?.keyIsHeld = false
+            }
+            return event
+        }
+        // A key-up delivered to another app never reaches us; stop holding when the window loses focus
+        NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.keyIsHeld = false
+        }
+    }
+    
+    private func startKeyDisplayLink(on sv: NSScrollView) {
+        guard keyDisplayLink == nil else { return }
+        keyLastTick = CACurrentMediaTime()
+        let link = sv.displayLink(target: self, selector: #selector(keyScrollTick(_:)))
+        link.add(to: .main, forMode: .common)
+        keyDisplayLink = link
+    }
+    
+    private func stopKeyDisplayLink() {
+        keyDisplayLink?.invalidate()
+        keyDisplayLink = nil
+    }
+    
+    private func clampedKeyY(_ y: CGFloat, in sv: NSScrollView) -> CGFloat {
+        let minY = -sv.safeAreaInsets.top
+        let maxY = max(minY, (sv.documentView?.frame.height ?? 0) - sv.contentView.bounds.height)
+        return min(maxY, max(minY, y))
+    }
+    
+    @objc private func keyScrollTick(_ link: CADisplayLink) {
+        guard let sv = scrollView else { stopKeyDisplayLink(); return }
+        let clip = sv.contentView
+        let now = CACurrentMediaTime()
+        let dt = min(1.0 / 30.0, max(0, now - keyLastTick))
+        keyLastTick = now
+        
+        // The user scrolled by trackpad mid-glide: hand control back to them
+        if abs(clip.bounds.origin.y - keyCurrentY) > 1.0 {
+            keyCurrentY = clip.bounds.origin.y
+            keyTargetY = keyCurrentY
+            if !keyIsHeld { stopKeyDisplayLink(); return }
+        }
+        
+        if keyIsHeld && now - keyPressTime >= keyHoldDelay {
+            // Advance the target at a fixed rate so held scrolling runs at constant speed
+            keyTargetY = clampedKeyY(keyTargetY + keyDirection * keyHoldSpeed * CGFloat(dt), in: sv)
+        }
+        
+        // Exponential approach toward the target: smooth start and a soft stop
+        let delta = keyTargetY - keyCurrentY
+        if !keyIsHeld && abs(delta) < 0.5 {
+            keyCurrentY = keyTargetY
+            stopKeyDisplayLink()
+        } else {
+            keyCurrentY += delta * (1 - exp(-CGFloat(dt) * 16))
+        }
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: keyCurrentY))
+        sv.reflectScrolledClipView(clip)
+        keyCurrentY = clip.bounds.origin.y
+    }
+    
     func scrollToTop() {
         guard let sv = scrollView else { return }
         DispatchQueue.main.async {
@@ -186,6 +257,7 @@ final class TrackpadPullCoordinator {
     
     private var eventMonitor: Any?
     private var boundsObserver: Any?
+    private var liveScrollObservers: [Any] = []
     private weak var registeredScrollView: NSScrollView?
     private var wheelReleaseTimer: Timer?
     private let threshold: CGFloat = 45.0
@@ -227,8 +299,30 @@ final class TrackpadPullCoordinator {
         ) { [weak self] _ in
             self?.handleBoundsChanged()
         }
-        
+
+        removeLiveScrollObservers()
+        liveScrollObservers = [
+            NotificationCenter.default.addObserver(
+                forName: NSScrollView.willStartLiveScrollNotification, object: sv, queue: .main
+            ) { _ in
+                TimelineLiveScrollState.shared.isLiveScrolling = true
+            },
+            NotificationCenter.default.addObserver(
+                forName: NSScrollView.didEndLiveScrollNotification, object: sv, queue: .main
+            ) { _ in
+                TimelineLiveScrollState.shared.isLiveScrolling = false
+            }
+        ]
+
         handleBoundsChanged()
+    }
+
+    private func removeLiveScrollObservers() {
+        liveScrollObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        liveScrollObservers = []
+        if TimelineLiveScrollState.shared.isLiveScrolling {
+            TimelineLiveScrollState.shared.isLiveScrolling = false
+        }
     }
     
     func startMonitoring(owner: String = "default") {
@@ -252,6 +346,7 @@ final class TrackpadPullCoordinator {
                 NotificationCenter.default.removeObserver(obs)
                 boundsObserver = nil
             }
+            removeLiveScrollObservers()
             registeredScrollView = nil
             wheelReleaseTimer?.invalidate()
             wheelReleaseTimer = nil
@@ -262,7 +357,6 @@ final class TrackpadPullCoordinator {
     
     private func handleBoundsChanged() {
         guard let sv = registeredScrollView else { return }
-        ScrollFPSMonitor.shared.onScrollFrame()
         
         let y = sv.contentView.bounds.origin.y
         let restingTopY = -sv.safeAreaInsets.top
@@ -395,7 +489,8 @@ struct MainTimelineView: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var scrollCoordinator = TimelineScrollCoordinator.shared
-    
+    @ObservedObject var liveScroll = TimelineLiveScrollState.shared
+
     var onOpenSettings: () -> Void
     var onLoginRequest: () -> Void
     
@@ -477,6 +572,7 @@ struct MainTimelineView: View {
                     // Bottom Loading Footer
                     bottomLoadingFooter
                 }
+                .allowsHitTesting(!liveScroll.isLiveScrolling)
                 .background(
                     ScrollViewAccessor { sv in
                         TimelineScrollCoordinator.shared.registerScrollView(sv)

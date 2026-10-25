@@ -62,23 +62,32 @@ final class ImageLoader: ObservableObject {
     @Published var loadedImage: NSImage?
     @Published var isLoading = false
     private var currentUrl: String?
-    
-    init(urlString: String?) {
+    // Display box in device pixels; nil decodes at full resolution
+    private let targetPixelSize: CGSize?
+
+    init(urlString: String?, targetSize: CGSize? = nil) {
         self.currentUrl = urlString
+        if let size = targetSize, size.width > 0, size.height > 0 {
+            let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+            self.targetPixelSize = CGSize(width: ceil(size.width * scale), height: ceil(size.height * scale))
+        } else {
+            self.targetPixelSize = nil
+        }
         if let urlStr = urlString {
             // Immediate frame-0 hit if already decoded in memory
-            if let mem = MediaCacheManager.shared.memoryImage(for: urlStr) {
+            if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
                 self.loadedImage = mem
             }
         }
     }
-    
+
     func load(urlString: String?) {
         guard let urlStr = urlString else { return }
         self.currentUrl = urlStr
-        
+        let targetPixelSize = self.targetPixelSize
+
         // 1. Memory cache hit -> synchronous frame-0 return without flicker
-        if let mem = MediaCacheManager.shared.memoryImage(for: urlStr) {
+        if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
             if self.loadedImage == nil {
                 self.loadedImage = mem
             }
@@ -93,7 +102,7 @@ final class ImageLoader: ObservableObject {
             guard let self = self else { return }
             
             // Check disk cache first
-            if let diskImg = MediaCacheManager.shared.diskImage(for: urlStr) {
+            if let diskImg = MediaCacheManager.shared.diskImage(for: urlStr, targetPixelSize: targetPixelSize) {
                 DispatchQueue.main.async {
                     if self.currentUrl == urlStr {
                         self.loadedImage = diskImg
@@ -112,12 +121,9 @@ final class ImageLoader: ObservableObject {
             let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
             URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
                 guard let self = self else { return }
-                if let data = data, let img = NSImage(data: data) {
-                    // Pre-decode bitmap on background thread to prevent main-thread decompression hitches
-                    if let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                        _ = cg.width
-                    }
-                    MediaCacheManager.shared.storeImage(img, rawData: data, for: urlStr)
+                // Decode (and downsample) on this background thread to prevent main-thread decompression hitches
+                if let data = data,
+                   let img = MediaCacheManager.shared.storeImageData(data, for: urlStr, targetPixelSize: targetPixelSize) {
                     DispatchQueue.main.async {
                         if self.currentUrl == urlStr {
                             self.loadedImage = img
@@ -141,12 +147,13 @@ struct CachedAsyncImage: View {
     var contentMode: ContentMode = .fill
     
     @StateObject private var loader: ImageLoader
-    
-    init(urlString: String?, placeholderColor: Color = Color(white: 0.08), contentMode: ContentMode = .fill) {
+
+    // targetSize (points): pass the on-screen box to decode a downsampled bitmap instead of the full image
+    init(urlString: String?, placeholderColor: Color = Color(white: 0.08), contentMode: ContentMode = .fill, targetSize: CGSize? = nil) {
         self.urlString = urlString
         self.placeholderColor = placeholderColor
         self.contentMode = contentMode
-        _loader = StateObject(wrappedValue: ImageLoader(urlString: urlString))
+        _loader = StateObject(wrappedValue: ImageLoader(urlString: urlString, targetSize: targetSize))
     }
     
     var body: some View {
@@ -211,50 +218,16 @@ struct ImageGridView: View {
     private func singleImageView(_ media: TweetMedia) -> some View {
         let dims = calculateSingleDimensions(media)
         
-        let card = ZStack {
-            CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
-                .frame(width: dims.width, height: dims.height)
-                .clipped()
-            
-            if media.isVideo {
-                videoBadgeOverlay(for: media)
-            }
-        }
-        .frame(width: dims.width, height: dims.height)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(ThemeManager.border, lineWidth: 0.6)
-        )
-        .contentShape(Rectangle())
-        .overlay(
-            GeometryReader { proxy in
-                let rect = proxy.frame(in: .named("AppWindow"))
-                Button(action: {
-                    if media.isVideo, let tweet = tweet {
-                        VideoLightboxManager.shared.present(tweet: tweet, media: media)
-                    } else {
-                        MediaFrameRegistry.shared.register(key: media.mediaUrl, frame: rect)
-                        MediaFrameRegistry.shared.register(key: media.id, frame: rect)
-                        LightboxManager.shared.present(
-                            mediaList: [media],
-                            initialIndex: 0,
-                            sourceRect: rect,
-                            tweet: tweet
-                        )
-                    }
-                }) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .mediaContextMenu(media: media, tweet: tweet)
-            }
-        )
-        .mediaContextMenu(media: media, tweet: tweet)
-        
         return HStack {
-            card
+            MediaTile(
+                media: media,
+                url: thumbUrl(media.mediaUrl),
+                size: CGSize(width: dims.width, height: dims.height),
+                shape: RoundedCorner(tl: 16, tr: 16, bl: 16, br: 16),
+                lightboxItems: [media],
+                index: 0,
+                tweet: tweet
+            )
             Spacer(minLength: 0)
         }
         .frame(height: dims.height)
@@ -300,82 +273,15 @@ struct ImageGridView: View {
         let spacing: CGFloat = 8
         let singleWidth = (availableWidth - spacing) / 2.0
         let height: CGFloat = min(layout.windowHeight / 3.0, 260)
-        
-        let card0 = ZStack {
-            CachedAsyncImage(urlString: thumbUrl(items[0].mediaUrl), contentMode: .fill)
-                .frame(width: singleWidth, height: height)
-                .clipped()
-            if items[0].isVideo {
-                videoBadgeOverlay(for: items[0])
-            }
-        }
-        .frame(width: singleWidth, height: height)
-        .clipShape(RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0))
-        .overlay(
-            RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0)
-                .stroke(ThemeManager.border, lineWidth: 0.6)
-        )
-        .contentShape(Rectangle())
-        .overlay(
-            GeometryReader { proxy in
-                let rect = proxy.frame(in: .named("AppWindow"))
-                Button(action: {
-                    if items[0].isVideo, let tweet = tweet {
-                        VideoLightboxManager.shared.present(tweet: tweet, media: items[0])
-                    } else {
-                        MediaFrameRegistry.shared.register(key: items[0].mediaUrl, frame: rect)
-                        MediaFrameRegistry.shared.register(key: items[0].id, frame: rect)
-                        LightboxManager.shared.present(mediaList: items, initialIndex: 0, sourceRect: rect, tweet: tweet)
-                    }
-                }) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .mediaContextMenu(media: items[0], tweet: tweet)
-            }
-        )
-        .mediaContextMenu(media: items[0], tweet: tweet)
-        
-        let card1 = ZStack {
-            CachedAsyncImage(urlString: thumbUrl(items[1].mediaUrl), contentMode: .fill)
-                .frame(width: singleWidth, height: height)
-                .clipped()
-            if items[1].isVideo {
-                videoBadgeOverlay(for: items[1])
-            }
-        }
-        .frame(width: singleWidth, height: height)
-        .clipShape(RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16))
-        .overlay(
-            RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16)
-                .stroke(ThemeManager.border, lineWidth: 0.6)
-        )
-        .contentShape(Rectangle())
-        .overlay(
-            GeometryReader { proxy in
-                let rect = proxy.frame(in: .named("AppWindow"))
-                Button(action: {
-                    if items[1].isVideo, let tweet = tweet {
-                        VideoLightboxManager.shared.present(tweet: tweet, media: items[1])
-                    } else {
-                        MediaFrameRegistry.shared.register(key: items[1].mediaUrl, frame: rect)
-                        MediaFrameRegistry.shared.register(key: items[1].id, frame: rect)
-                        LightboxManager.shared.present(mediaList: items, initialIndex: 1, sourceRect: rect, tweet: tweet)
-                    }
-                }) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .mediaContextMenu(media: items[1], tweet: tweet)
-            }
-        )
-        .mediaContextMenu(media: items[1], tweet: tweet)
+        let size = CGSize(width: singleWidth, height: height)
         
         return HStack(spacing: spacing) {
-            card0
-            card1
+            MediaTile(media: items[0], url: thumbUrl(items[0].mediaUrl), size: size,
+                      shape: RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0),
+                      lightboxItems: items, index: 0, tweet: tweet)
+            MediaTile(media: items[1], url: thumbUrl(items[1].mediaUrl), size: size,
+                      shape: RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16),
+                      lightboxItems: items, index: 1, tweet: tweet)
         }
         .frame(width: availableWidth, height: height)
     }
@@ -388,60 +294,92 @@ struct ImageGridView: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 ForEach(0..<items.count, id: \.self) { idx in
-                    let media = items[idx]
                     let isFirst = idx == 0
                     let isLast = idx == items.count - 1
                     
-                    let tl: CGFloat = isFirst ? 16 : 0
-                    let bl: CGFloat = isFirst ? 16 : 0
-                    let tr: CGFloat = isLast ? 16 : 0
-                    let br: CGFloat = isLast ? 16 : 0
-                    
-                    let card = ZStack {
-                        CachedAsyncImage(urlString: thumbUrl(media.mediaUrl), contentMode: .fill)
-                            .frame(width: cardWidth, height: height)
-                            .clipped()
-                        if media.isVideo {
-                            videoBadgeOverlay(for: media)
-                        }
-                    }
-                    .frame(width: cardWidth, height: height)
-                    .clipShape(RoundedCorner(tl: tl, tr: tr, bl: bl, br: br))
-                    .overlay(
-                        RoundedCorner(tl: tl, tr: tr, bl: bl, br: br)
-                            .stroke(ThemeManager.border, lineWidth: 0.6)
+                    MediaTile(
+                        media: items[idx],
+                        url: thumbUrl(items[idx].mediaUrl),
+                        size: CGSize(width: cardWidth, height: height),
+                        shape: RoundedCorner(tl: isFirst ? 16 : 0, tr: isLast ? 16 : 0, bl: isFirst ? 16 : 0, br: isLast ? 16 : 0),
+                        lightboxItems: items,
+                        index: idx,
+                        tweet: tweet
                     )
-                    .contentShape(Rectangle())
-                    .overlay(
-                        GeometryReader { proxy in
-                            let rect = proxy.frame(in: .named("AppWindow"))
-                            Button(action: {
-                                if media.isVideo, let tweet = tweet {
-                                    VideoLightboxManager.shared.present(tweet: tweet, media: media)
-                                } else {
-                                    MediaFrameRegistry.shared.register(key: media.mediaUrl, frame: rect)
-                                    MediaFrameRegistry.shared.register(key: media.id, frame: rect)
-                                    LightboxManager.shared.present(mediaList: items, initialIndex: idx, sourceRect: rect, tweet: tweet)
-                                }
-                            }) {
-                                Color.clear
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .mediaContextMenu(media: media, tweet: tweet)
-                        }
-                    )
-                    .mediaContextMenu(media: media, tweet: tweet)
-                    
-                    card
                 }
             }
         }
         .frame(height: height)
     }
+}
+
+// MARK: - Window-space Frame Holder
+// Written on every geometry change without invalidating any view (no @Published); read only when a tile is tapped.
+private final class FrameBox: ObservableObject {
+    var rect: CGRect = .zero
+}
+
+// MARK: - Media Tile (image + video badge + tap-to-open lightbox)
+private struct MediaTile: View {
+    let media: TweetMedia
+    let url: String
+    let size: CGSize
+    let shape: RoundedCorner
+    let lightboxItems: [TweetMedia]
+    let index: Int
+    let tweet: Tweet?
     
-    // MARK: - Video Overlay Badges (Play button + Duration pill)
-    private func videoBadgeOverlay(for media: TweetMedia) -> some View {
+    @StateObject private var frameBox = FrameBox()
+    
+    var body: some View {
+        ZStack {
+            CachedAsyncImage(urlString: url, contentMode: .fill, targetSize: size)
+                .frame(width: size.width, height: size.height)
+                .clipped()
+            if media.isVideo {
+                VideoBadgeOverlay(media: media)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(shape)
+        .overlay(
+            shape.stroke(ThemeManager.border, lineWidth: 0.6)
+        )
+        .contentShape(Rectangle())
+        // onGeometryChange instead of a GeometryReader overlay: scrolling moves the frame every frame, and a
+        // GeometryReader would rebuild the button and context menu each time; this only updates the box.
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .named("AppWindow"))
+        } action: { [frameBox] rect in
+            frameBox.rect = rect
+        }
+        .overlay(
+            Button(action: open) {
+                Color.clear
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        )
+        .mediaContextMenu(media: media, tweet: tweet)
+    }
+    
+    private func open() {
+        let rect = frameBox.rect
+        if media.isVideo, let tweet = tweet {
+            VideoLightboxManager.shared.present(tweet: tweet, media: media)
+        } else {
+            MediaFrameRegistry.shared.register(key: media.mediaUrl, frame: rect)
+            MediaFrameRegistry.shared.register(key: media.id, frame: rect)
+            LightboxManager.shared.present(mediaList: lightboxItems, initialIndex: index, sourceRect: rect, tweet: tweet)
+        }
+    }
+}
+
+// MARK: - Video Overlay Badges (Play button + Duration pill)
+private struct VideoBadgeOverlay: View {
+    let media: TweetMedia
+    
+    var body: some View {
         ZStack {
             // Center Play Icon
             Circle()

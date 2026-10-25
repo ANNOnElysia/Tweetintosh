@@ -48,6 +48,15 @@ final class NavigationManager: ObservableObject {
         }
     }
     
+    // Single app-level reply sheet, so timeline rows don't each carry their own .sheet
+    @Published var replyTargetTweet: Tweet? = nil
+
+    func openReply(to tweet: Tweet) {
+        DispatchQueue.main.async {
+            self.replyTargetTweet = tweet
+        }
+    }
+
     func dismissComposer() {
         DispatchQueue.main.async {
             self.isShowingCompose = false
@@ -201,6 +210,17 @@ final class NavigationManager: ObservableObject {
                     }
                 }
                 
+                // Up / Down Arrow (keyCodes 126 / 125) without modifiers -> Scroll Home Timeline
+                if !hasCmd && !hasOption && !hasCtrl && (keyCode == 126 || keyCode == 125) {
+                    if self.currentTab == .home && self.selectedTweetDetail == nil && !self.isShowingCompose
+                        && self.replyTargetTweet == nil && !VideoLightboxManager.shared.isPresented
+                        && event.window === NSApp.mainWindow && event.window?.attachedSheet == nil
+                        && !self.isTextInputActive() {
+                        TimelineScrollCoordinator.shared.arrowKeyDown(up: keyCode == 126, isRepeat: event.isARepeat)
+                        return nil
+                    }
+                }
+
                 // Command + N (keyCode 45) -> Global New Tweet Compose
                 if hasCmd && !hasOption && !hasCtrl && keyCode == 45 {
                     self.openComposer()

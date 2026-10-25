@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import CryptoKit
+import ImageIO
 
 final class MediaCacheManager: ObservableObject {
     static let shared = MediaCacheManager()
@@ -94,30 +95,84 @@ final class MediaCacheManager: ObservableObject {
     }
     
     // MARK: - Image Retrieval (Memory only vs Disk)
-    func memoryImage(for urlStr: String) -> NSImage? {
-        let nsKey = urlStr as NSString
-        return memoryCache.object(forKey: nsKey)
+    // targetPixelSize: when set, the image is downsampled to aspect-fill that box and cached under its own key,
+    // so full-resolution lookups (lightbox, save, copy) never receive a thumbnail.
+    func memoryImage(for urlStr: String, targetPixelSize: CGSize? = nil) -> NSImage? {
+        memoryCache.object(forKey: memoryKey(for: urlStr, targetPixelSize: targetPixelSize))
     }
-    
-    func diskImage(for urlStr: String) -> NSImage? {
-        let nsKey = urlStr as NSString
+
+    // Reads and decodes synchronously; call off the main thread.
+    func diskImage(for urlStr: String, targetPixelSize: CGSize? = nil) -> NSImage? {
         let path = imageFilePath(for: urlStr)
-        if FileManager.default.fileExists(atPath: path.path),
-           let data = try? Data(contentsOf: path),
-           let img = NSImage(data: data) {
-            // Hardware bitmap decompression before putting into memory cache
-            if let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                _ = cg.width
-            }
-            memoryCache.setObject(img, forKey: nsKey)
-            
-            // Touch file date for LRU tracking
-            ioQueue.async {
-                try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: path.path)
-            }
-            return img
+        guard FileManager.default.fileExists(atPath: path.path),
+              let data = try? Data(contentsOf: path),
+              let img = cacheDecodedImage(from: data, for: urlStr, targetPixelSize: targetPixelSize) else {
+            return nil
         }
-        return nil
+        // Touch file date for LRU tracking
+        ioQueue.async {
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: path.path)
+        }
+        return img
+    }
+
+    // Cheap existence check (no disk read or decode), safe on the main thread.
+    func hasCachedImage(for urlStr: String) -> Bool {
+        memoryImage(for: urlStr) != nil || FileManager.default.fileExists(atPath: imageFilePath(for: urlStr).path)
+    }
+
+    // Decodes freshly downloaded bytes (call off the main thread), caches the bitmap in memory and persists the raw bytes.
+    func storeImageData(_ data: Data, for urlStr: String, targetPixelSize: CGSize? = nil) -> NSImage? {
+        guard let img = cacheDecodedImage(from: data, for: urlStr, targetPixelSize: targetPixelSize) else { return nil }
+        writeImageDataIfNeeded(data, for: urlStr)
+        return img
+    }
+
+    private func memoryKey(for urlStr: String, targetPixelSize: CGSize?) -> NSString {
+        guard let size = targetPixelSize else { return urlStr as NSString }
+        return "\(urlStr)#\(Int(size.width))x\(Int(size.height))" as NSString
+    }
+
+    private func cacheDecodedImage(from data: Data, for urlStr: String, targetPixelSize: CGSize?) -> NSImage? {
+        guard let cg = Self.decodeImage(data: data, targetPixelSize: targetPixelSize) else { return nil }
+        let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        memoryCache.setObject(img, forKey: memoryKey(for: urlStr, targetPixelSize: targetPixelSize), cost: cg.bytesPerRow * cg.height)
+        return img
+    }
+
+    // Fully decodes into a bitmap up front (kCGImageSourceShouldCacheImmediately) so drawing never decompresses
+    // on the main thread. With a target size, uses ImageIO thumbnailing to decode only the pixels needed for aspect-fill.
+    static func decodeImage(data: Data, targetPixelSize: CGSize?) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            return nil
+        }
+        if let target = targetPixelSize,
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+           let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+           w > 0, h > 0 {
+            let scale = max(target.width / w, target.height / h)
+            if scale < 1.0 {
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceThumbnailMaxPixelSize: ceil(max(w, h) * scale)
+                ]
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+            }
+        }
+        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+    }
+
+    private func writeImageDataIfNeeded(_ data: Data, for urlStr: String) {
+        ioQueue.async { [weak self] in
+            guard let self = self else { return }
+            let path = self.imageFilePath(for: urlStr)
+            if !FileManager.default.fileExists(atPath: path.path) {
+                try? data.write(to: path, options: .atomic)
+            }
+        }
     }
     
     func image(for urlStr: String) -> NSImage? {
@@ -170,20 +225,22 @@ final class MediaCacheManager: ObservableObject {
     // MARK: - Prefetching Engine (Background Concurrency Controlled)
     func prefetchImages(urls: [String]) {
         for urlStr in urls {
-            if image(for: urlStr) != nil { continue }
+            // Existence check only: decoding cached files here would block the caller (often the main thread)
+            if hasCachedImage(for: urlStr) { continue }
             guard let url = URL(string: urlStr) else { continue }
-            
+
             let op = BlockOperation { [weak self] in
                 guard let self = self else { return }
-                if self.image(for: urlStr) != nil { return }
-                
+                if self.hasCachedImage(for: urlStr) { return }
+
                 let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
                 let semaphore = DispatchSemaphore(value: 0)
-                
+
+                // Persist raw bytes only; rows decode at their own display size when they appear
                 URLSession.shared.dataTask(with: request) { data, _, _ in
                     defer { semaphore.signal() }
-                    if let data = data, let img = NSImage(data: data) {
-                        self.storeImage(img, rawData: data, for: urlStr)
+                    if let data = data, CGImageSourceCreateWithData(data as CFData, nil) != nil {
+                        self.writeImageDataIfNeeded(data, for: urlStr)
                     }
                 }.resume()
                 
