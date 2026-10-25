@@ -360,6 +360,7 @@ private struct MediaTile: View {
             .buttonStyle(.plain)
         )
         .mediaContextMenu(media: media, tweet: tweet)
+        .peekable(media.isVideo ? .video(media) : .image(media))
     }
     
     private func open() {

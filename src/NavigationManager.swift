@@ -65,6 +65,7 @@ final class NavigationManager: ObservableObject {
     }
     
     func openTweetDetail(_ tweet: Tweet) {
+        guard !PeekCoordinator.shared.suppressesActivation else { return }
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
                 self.selectedTweetDetail = tweet

@@ -101,6 +101,7 @@ final class LightboxManager: ObservableObject {
     private var lastScrollTime = Date()
     
     func present(mediaList: [TweetMedia], initialIndex: Int, sourceRect: CGRect = .zero, tweet: Tweet? = nil) {
+        guard !PeekCoordinator.shared.suppressesActivation else { return }
         guard !mediaList.isEmpty, initialIndex >= 0, initialIndex < mediaList.count else { return }
         self.mediaList = mediaList
         self.initialIndex = initialIndex

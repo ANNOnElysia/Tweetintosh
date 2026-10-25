@@ -74,10 +74,30 @@ struct TweetUser: Codable, Hashable, Identifiable {
     var screenName: String
     var avatarUrl: String?
     var isVerified: Bool
+    // Profile details for the deep-press profile peek (optional: older caches and some payloads lack them)
+    var bio: String? = nil
+    var followersCount: Int? = nil
+    var followingCount: Int? = nil
+    var bannerUrl: String? = nil
+    var location: String? = nil
     
     var formattedHandle: String {
         return "@" + screenName
     }
+}
+
+// A URL entity from the tweet text: `url` is the t.co link as it appears in the raw text
+struct TweetLink: Codable, Hashable {
+    var url: String
+    var expandedUrl: String
+    var displayUrl: String
+}
+
+// A link's position in displayBodyText (UTF-16 offsets, matching NSString / NSRange)
+struct DisplayLink: Hashable {
+    var location: Int
+    var length: Int
+    var url: String
 }
 
 final class QuotedTweetBox: Codable, Hashable {
@@ -120,6 +140,7 @@ struct Tweet: Codable, Hashable, Identifiable {
     var inReplyToScreenName: String? = nil
     var inReplyToStatusId: String? = nil
     var isPromoted: Bool = false
+    var links: [TweetLink] = []
     
     var quoted: Tweet? {
         quotedTweet?.tweet
@@ -128,6 +149,7 @@ struct Tweet: Codable, Hashable, Identifiable {
     // Cached precomputed strings for zero-cost 120Hz scrolling
     var displayBodyText: String = ""
     var replyContextText: String? = nil
+    var displayLinks: [DisplayLink] = []
     var cleanText: String { displayBodyText }
     
     private static let mmmDDateFormatter: DateFormatter = {
@@ -152,6 +174,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         case quotedTweet
         case inReplyToScreenName, inReplyToStatusId
         case isPromoted
+        case links
     }
     
     init(
@@ -173,7 +196,8 @@ struct Tweet: Codable, Hashable, Identifiable {
         quotedTweet: QuotedTweetBox? = nil,
         inReplyToScreenName: String? = nil,
         inReplyToStatusId: String? = nil,
-        isPromoted: Bool = false
+        isPromoted: Bool = false,
+        links: [TweetLink] = []
     ) {
         self.id = id
         self.text = text
@@ -194,6 +218,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         self.inReplyToScreenName = inReplyToScreenName
         self.inReplyToStatusId = inReplyToStatusId
         self.isPromoted = isPromoted
+        self.links = links
         computeParsedTexts()
     }
     
@@ -218,6 +243,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         inReplyToScreenName = try container.decodeIfPresent(String.self, forKey: .inReplyToScreenName)
         inReplyToStatusId = try container.decodeIfPresent(String.self, forKey: .inReplyToStatusId)
         isPromoted = try container.decodeIfPresent(Bool.self, forKey: .isPromoted) ?? false
+        links = try container.decodeIfPresent([TweetLink].self, forKey: .links) ?? []
         computeParsedTexts()
     }
     
@@ -231,12 +257,16 @@ struct Tweet: Codable, Hashable, Identifiable {
         var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // 1. Strip trailing media or quote t.co URLs when media or quote is present
+        //    (real link entities stay: they're shown and previewable)
         if !media.isEmpty || quotedTweet != nil {
             if let tcoRegex = Self.trailingTCoRegex {
+                let linkUrls = Set(links.map { $0.url })
                 while true {
                     let nsRaw = raw as NSString
                     let match = tcoRegex.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length))
                     guard let m = match, m.range.location != NSNotFound else { break }
+                    let matched = nsRaw.substring(with: m.range).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if linkUrls.contains(matched) { break }
                     raw = nsRaw.substring(to: m.range.location).trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             }
@@ -263,6 +293,20 @@ struct Tweet: Codable, Hashable, Identifiable {
         if mentions.isEmpty, let replyScreenName = inReplyToScreenName, !replyScreenName.isEmpty {
             mentions.append("@" + replyScreenName)
         }
+        
+        // 3. Show links by their display URL and record where each one sits for styling and deep-press previews
+        var linkRanges: [DisplayLink] = []
+        var searchFrom = 0
+        for link in links {
+            let ns = remainder as NSString
+            let found = ns.range(of: link.url, range: NSRange(location: searchFrom, length: ns.length - searchFrom))
+            guard found.location != NSNotFound else { continue }
+            remainder = ns.replacingCharacters(in: found, with: link.displayUrl)
+            let length = (link.displayUrl as NSString).length
+            linkRanges.append(DisplayLink(location: found.location, length: length, url: link.expandedUrl))
+            searchFrom = found.location + length
+        }
+        self.displayLinks = linkRanges
         
         self.displayBodyText = remainder
         self.replyContextText = mentions.isEmpty ? nil : LocalizationManager.shared.formatReplyContext(mentions: mentions)

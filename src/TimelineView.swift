@@ -616,6 +616,7 @@ struct MainTimelineView: View {
                 )
             }
             .coordinateSpace(name: "timelineScrollViewSpace")
+            .environment(\.peekScope, .timeline)
             .overlay(alignment: .top) {
                 TimelinePullRefreshIndicatorOverlay()
             }

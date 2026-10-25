@@ -23,6 +23,13 @@ final class FocusCachingHostingView<Content: View>: NSHostingView<Content> {
         cachedAt = now
         return value
     }
+    
+    // System Look Up (three-finger tap, or Force Click when Look Up is set to it) opens MaX's peek card
+    override func quickLook(with event: NSEvent) {
+        if !PeekCoordinator.shared.quickLook(with: event) {
+            super.quickLook(with: event)
+        }
+    }
 }
 
 @main
@@ -108,6 +115,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         hostingView.autoresizingMask = [.width, .height]
         
         window.contentView?.addSubview(hostingView)
+        PeekCoordinator.shared.start(hostingView: hostingView)
         self.mainWindow = window
         window.makeKeyAndOrderFront(nil)
     }

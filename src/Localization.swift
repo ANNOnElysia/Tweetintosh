@@ -419,6 +419,20 @@ final class LocalizationManager: ObservableObject {
                 .simplifiedChinese: "次浏览",
                 .traditionalChinese: "次瀏覽"
             ],
+            "peek_following": [
+                .english: "Following",
+                .japanese: "フォロー中",
+                .korean: "팔로잉",
+                .simplifiedChinese: "正在关注",
+                .traditionalChinese: "跟隨中"
+            ],
+            "peek_followers": [
+                .english: "Followers",
+                .japanese: "フォロワー",
+                .korean: "팔로워",
+                .simplifiedChinese: "关注者",
+                .traditionalChinese: "跟隨者"
+            ],
             "theme_colour": [
                 .english: "Theme Colour",
                 .japanese: "テーマカラー",

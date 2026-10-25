@@ -91,6 +91,7 @@ final class VideoLightboxManager: ObservableObject {
     }
     
     func present(tweet: Tweet, media: TweetMedia) {
+        guard !PeekCoordinator.shared.suppressesActivation else { return }
         self.currentTweet = tweet
         self.currentMedia = media
         self.selectedQuality = .highest

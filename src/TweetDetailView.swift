@@ -138,6 +138,7 @@ struct TweetDetailView: View {
             bottomReplyDock
                 .frame(maxHeight: .infinity, alignment: .bottom)
         }
+        .environment(\.peekScope, .detail)
         .onAppear {
             viewModel.loadDetail()
         }

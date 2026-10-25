@@ -40,6 +40,7 @@ struct TweetRowView: View {
                         .frame(width: 40, height: 40)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
+                        .peekable(.profile(tweet.author))
                     
                     // Content Column
                     VStack(alignment: .leading, spacing: 6) {
@@ -49,6 +50,7 @@ struct TweetRowView: View {
                                 .font(.system(size: 14.5, weight: .bold))
                                 .foregroundColor(ThemeManager.primaryText)
                                 .lineLimit(1)
+                                .peekable(.profile(tweet.author))
                             
                             if tweet.author.isVerified {
                                 Image(systemName: "checkmark.seal.fill")
@@ -60,6 +62,7 @@ struct TweetRowView: View {
                                 .font(.system(size: 13.5))
                                 .foregroundColor(ThemeManager.secondaryText)
                                 .lineLimit(1)
+                                .peekable(.profile(tweet.author))
                             
                             Text("·")
                                 .font(.system(size: 13.5))
@@ -86,11 +89,19 @@ struct TweetRowView: View {
                         
                         // Tweet Body Text (Clean text with leading reply mentions & trailing media t.co URLs stripped)
                         if !tweet.displayBodyText.isEmpty {
-                            Text(tweet.displayBodyText)
+                            bodyText
                                 .font(theme.tweetFont(size: 14.5))
                                 .lineSpacing(theme.lineSpacing())
                                 .foregroundColor(ThemeManager.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
+                                // A deep press on a link previews it; its release must not also open the browser
+                                .environment(\.openURL, OpenURLAction { url in
+                                    PeekCoordinator.shared.suppressesActivation ? .handled : .systemAction(url)
+                                })
+                                .peekable { [tweet] point, size in
+                                    PeekTextLinks.link(at: point, size: size, text: tweet.displayBodyText, links: tweet.displayLinks)
+                                        .map { PeekTarget.link($0) }
+                                }
                         }
                         
                         // Media Photo / Video Grid
@@ -126,6 +137,20 @@ struct TweetRowView: View {
                 .background(ThemeManager.divider)
         }
         .background(ThemeManager.background)
+    }
+    
+    // Body text with links shown by their display URL in the accent colour; clicking one opens it in the browser
+    private var bodyText: Text {
+        guard !tweet.displayLinks.isEmpty else { return Text(tweet.displayBodyText) }
+        let body = tweet.displayBodyText
+        var attributed = AttributedString(body)
+        for link in tweet.displayLinks {
+            guard let range = Range(NSRange(location: link.location, length: link.length), in: body),
+                  let attrRange = Range(range, in: attributed) else { continue }
+            attributed[attrRange].foregroundColor = ThemeManager.accent
+            attributed[attrRange].link = URL(string: link.url)
+        }
+        return Text(attributed)
     }
     
     private func metricItem(icon: String, count: Int) -> some View {

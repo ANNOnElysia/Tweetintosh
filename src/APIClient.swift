@@ -386,13 +386,20 @@ final class APIClient {
         let avatarUrl = rawAvatar?.replacingOccurrences(of: "_normal", with: "_bigger")
         let isVerified = (userResult["is_blue_verified"] as? Bool) ?? (ulegacy["verified"] as? Bool) ?? false
         let authorId = (userResult["rest_id"] as? String) ?? (userResult["id"] as? String) ?? ""
+        // Newer payloads leave user "legacy" empty and move counts/banner into their own objects
+        let relationshipCounts = (userResult["relationship_counts"] as? [String: Any]) ?? [:]
         
         let author = TweetUser(
             id: authorId,
             name: userName,
             screenName: screenName,
             avatarUrl: avatarUrl,
-            isVerified: isVerified
+            isVerified: isVerified,
+            bio: (ulegacy["description"] as? String) ?? ((userResult["profile_bio"] as? [String: Any])?["description"] as? String),
+            followersCount: (relationshipCounts["followers"] as? Int) ?? (ulegacy["followers_count"] as? Int),
+            followingCount: (relationshipCounts["following"] as? Int) ?? (ulegacy["friends_count"] as? Int),
+            bannerUrl: ((userResult["banner"] as? [String: Any])?["image_url"] as? String) ?? (ulegacy["profile_banner_url"] as? String),
+            location: ((userResult["location"] as? [String: Any])?["location"] as? String) ?? (ulegacy["location"] as? String)
         )
         
         // Media extraction
@@ -486,8 +493,18 @@ final class APIClient {
             viewCount: viewCount,
             quotedTweet: quotedTweet.map { QuotedTweetBox(tweet: $0) },
             inReplyToScreenName: inReplyToScreenName,
-            inReplyToStatusId: inReplyToStatusId
+            inReplyToStatusId: inReplyToStatusId,
+            links: Self.parseLinks(legacy["entities"] as? [String: Any])
         )
+    }
+    
+    // URL entities (t.co → expanded / display URL) from a tweet's legacy "entities"
+    static func parseLinks(_ entities: [String: Any]?) -> [TweetLink] {
+        let urls = (entities?["urls"] as? [[String: Any]]) ?? []
+        return urls.compactMap { u in
+            guard let url = u["url"] as? String, let expanded = u["expanded_url"] as? String else { return nil }
+            return TweetLink(url: url, expandedUrl: expanded, displayUrl: (u["display_url"] as? String) ?? expanded)
+        }
     }
     
     // MARK: - Legacy Fetch Home Timeline
@@ -939,7 +956,12 @@ final class APIClient {
             name: userName,
             screenName: screenName,
             avatarUrl: avatarUrl,
-            isVerified: isVerified
+            isVerified: isVerified,
+            bio: userObj["description"] as? String,
+            followersCount: userObj["followers_count"] as? Int,
+            followingCount: userObj["friends_count"] as? Int,
+            bannerUrl: userObj["profile_banner_url"] as? String,
+            location: userObj["location"] as? String
         )
         
         // Extract Media
@@ -1023,7 +1045,8 @@ final class APIClient {
             viewCount: viewCount,
             quotedTweet: nil,
             inReplyToScreenName: inReplyToScreenName,
-            inReplyToStatusId: inReplyToStatusId
+            inReplyToStatusId: inReplyToStatusId,
+            links: Self.parseLinks(tweetObj["entities"] as? [String: Any])
         )
     }
     

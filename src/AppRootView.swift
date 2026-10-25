@@ -204,6 +204,10 @@ struct AppRootView: View {
             VideoLightboxOverlay()
                 .zIndex(1000)
             
+            // Deep-press peek card (media, links, profiles)
+            PeekOverlay()
+                .zIndex(9000)
+            
             // Global App Toast Overlay (Action Feedback: Copy, Save, Retweet)
             AppToastOverlay()
                 .zIndex(9999)
