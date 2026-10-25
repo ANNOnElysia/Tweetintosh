@@ -307,8 +307,56 @@ struct ImageGridView: View {
                     )
                 }
             }
+            // Inside the ScrollView, so the accessor finds the carousel's scroll view and not the timeline's
+            .background(ScrollViewAccessor { sv in HorizontalOnlyScrolling.shared.register(sv) })
         }
         .frame(height: height)
+    }
+}
+
+// MARK: - Horizontal-only Scrolling
+// A horizontal ScrollView nested in the timeline keeps hold of vertical scroll gestures that start over it, so
+// once the images have been scrolled sideways the timeline stops following the trackpad. A gesture that starts out
+// mostly vertical over such a scroll view is handed to the enclosing scroll view instead, for its whole length
+// (momentum included). Done with an event monitor: SwiftUI observes its scroll views, so they can't be subclassed.
+final class HorizontalOnlyScrolling {
+    static let shared = HorizontalOnlyScrolling()
+
+    private let carousels = NSHashTable<NSScrollView>.weakObjects()
+    private var monitor: Any?
+    // Where the gesture in progress is being redirected, if it is
+    private weak var redirectTarget: NSScrollView?
+
+    func register(_ scrollView: NSScrollView) {
+        carousels.add(scrollView)
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.handle(event) ?? event
+        }
+    }
+
+    private func handle(_ event: NSEvent) -> NSEvent? {
+        let startsGesture = event.phase.contains(.began) || event.phase.contains(.mayBegin)
+            || (event.phase.isEmpty && event.momentumPhase.isEmpty)
+        if startsGesture {
+            redirectTarget = nil
+            if abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX), let carousel = carousel(under: event) {
+                redirectTarget = carousel.enclosingScrollView
+            }
+        }
+        guard let target = redirectTarget else { return event }
+        target.scrollWheel(with: event)
+        return nil
+    }
+
+    private func carousel(under event: NSEvent) -> NSScrollView? {
+        guard let content = event.window?.contentView, let frameView = content.superview else { return nil }
+        var view = content.hitTest(frameView.convert(event.locationInWindow, from: nil))
+        while let current = view {
+            if let scrollView = current as? NSScrollView, carousels.contains(scrollView) { return scrollView }
+            view = current.superview
+        }
+        return nil
     }
 }
 
