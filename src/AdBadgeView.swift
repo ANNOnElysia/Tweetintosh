@@ -1,11 +1,11 @@
 //
 //  AdBadgeView.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import SwiftUI
 
-/// Elegant Ad Badge conforming to Apple HIG & MaX Liquid Glass Aesthetic
+/// Elegant Ad Badge conforming to Apple HIG & Tweetintosh Liquid Glass Aesthetic
 struct AdBadgeView: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared

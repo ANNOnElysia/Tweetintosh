@@ -1,6 +1,6 @@
 //
 //  LoginWindowController.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import Cocoa
@@ -18,7 +18,7 @@ final class LoginWindowController: NSWindowController, WKNavigationDelegate, WKH
             backing: .buffered,
             defer: false
         )
-        window.title = "Sign in to X (MaX Authentication)"
+        window.title = "Sign in to X (Tweetintosh Authentication)"
         window.center()
         window.backgroundColor = .black
         

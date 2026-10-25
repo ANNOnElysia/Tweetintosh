@@ -1,4 +1,4 @@
-// MaX: Ultra-lightweight macOS X Client - DOM Inject Script
+// Tweetintosh: Ultra-lightweight macOS X Client - DOM Inject Script
 
 (function() {
     'use strict';

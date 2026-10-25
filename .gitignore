@@ -9,7 +9,7 @@
 *.dia
 
 # Compiled Application Bundle (Rebuildable via ./build.sh)
-MaX.app/
+Tweetintosh.app/
 
 # Editor & Temporary Files
 *.swp

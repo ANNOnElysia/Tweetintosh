@@ -1,6 +1,6 @@
 //
 //  Localization.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import Foundation
@@ -56,11 +56,11 @@ final class LocalizationManager: ObservableObject {
     // rebuilding this table on every call was a measurable per-row cost
     private static let table: [String: [AppLanguage: String]] = [
         "app_title": [
-            .english: "MaX",
-            .japanese: "MaX",
-            .korean: "MaX",
-            .simplifiedChinese: "MaX",
-            .traditionalChinese: "MaX"
+            .english: "Tweetintosh",
+            .japanese: "Tweetintosh",
+            .korean: "Tweetintosh",
+            .simplifiedChinese: "Tweetintosh",
+            .traditionalChinese: "Tweetintosh"
         ],
         "timeline": [
             .english: "Timeline",

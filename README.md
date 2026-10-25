@@ -1,4 +1,4 @@
-# MaX v2 (Headless Data-driven Native macOS Client for X)
+# Tweetintosh v2 (Headless Data-driven Native macOS Client for X)
 
 > 彻底废弃 WebView 直接渲染主界面的套壳方案，重构为 **“Headless 凭证捕获 + 内部 GraphQL API 同步 + SwiftUI 纯原生渲染”** 的真·原生 macOS 客户端。
 
@@ -52,11 +52,11 @@
 ## 📁 目录与工程结构
 
 ```
-~/Documents/Antigravity/MaX/
-├── MaX.app/                       # 可直接双击运行的独立原生 macOS 应用包
+~/Documents/Antigravity/Tweetintosh/
+├── Tweetintosh.app/                       # 可直接双击运行的独立原生 macOS 应用包
 │   └── Contents/
 │       ├── Info.plist             # 应用配置清单
-│       ├── MacOS/MaX              # 纯 Swift 编译的原生二进制（~839 KB）
+│       ├── MacOS/Tweetintosh              # 纯 Swift 编译的原生二进制（~839 KB）
 │       └── Resources/             # AppIcon 等打包资源
 ├── Package.swift                  # Swift Package Manager 工程规范文件
 ├── build.sh                       # 自动化 Release 编译、打包与 Ad-hoc 签名脚本

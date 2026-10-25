@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "MaX",
+    name: "Tweetintosh",
     platforms: [
         .macOS(.v15)
     ],
     targets: [
         .executableTarget(
-            name: "MaX",
+            name: "Tweetintosh",
             path: "src",
             exclude: ["custom.css", "inject.js", "Info.plist", "AppIcon.icns"],
             swiftSettings: [

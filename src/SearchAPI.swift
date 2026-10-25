@@ -1,6 +1,6 @@
 //
 //  SearchAPI.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  Search: X's SearchTimeline operation for posts (Top, Latest) and people.
 //

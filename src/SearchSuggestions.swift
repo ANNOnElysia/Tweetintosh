@@ -1,6 +1,6 @@
 //
 //  SearchSuggestions.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  Suggestions under the top-bar search field: live typeahead (topics and people) from X while you type,
 //  and recent searches when the field is empty.

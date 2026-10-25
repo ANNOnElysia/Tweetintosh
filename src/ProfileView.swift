@@ -1,6 +1,6 @@
 //
 //  ProfileView.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  User profile page: a tall banner with the identity and follower stats on it, which collapses into the
 //  Liquid Glass bar as you scroll; then bio details and Posts / Media / Replies tabs.

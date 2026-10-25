@@ -1,6 +1,6 @@
 //
 //  PeekPreview.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  Deep-press (Force Click) peek previews for media, links and profiles.
 //

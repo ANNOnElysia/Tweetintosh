@@ -1,6 +1,6 @@
 //
 //  NotificationCacheManager.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import Foundation

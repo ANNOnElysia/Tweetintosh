@@ -1,6 +1,6 @@
 //
 //  MediaActions.swift
-//  MaX - macOS Native Twitter/X Client
+//  Tweetintosh - macOS Native Twitter/X Client
 //
 
 import SwiftUI

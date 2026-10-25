@@ -4,12 +4,12 @@ set -e
 # Base directories
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_DIR="$BASE_DIR/src"
-APP_DIR="$BASE_DIR/MaX.app"
+APP_DIR="$BASE_DIR/Tweetintosh.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
-echo "=== Building MaX v2 (Headless Native Swift & SwiftUI) ==="
+echo "=== Building Tweetintosh (Headless Native Swift & SwiftUI) ==="
 
 # 1. Clean previous build directory
 rm -rf "$APP_DIR"
@@ -23,8 +23,8 @@ swift build -c release
 
 # 3. Copy binary into app bundle
 echo "-> Packaging binary..."
-cp "$BASE_DIR/.build/release/MaX" "$MACOS_DIR/MaX"
-strip "$MACOS_DIR/MaX"
+cp "$BASE_DIR/.build/release/Tweetintosh" "$MACOS_DIR/Tweetintosh"
+strip "$MACOS_DIR/Tweetintosh"
 
 # 4. Copy resources into app bundle
 echo "-> Packaging resources & Info.plist..."
@@ -47,4 +47,4 @@ rm -rf "$BASE_DIR/.build"
 
 echo "=== Build succeeded! ==="
 echo "Application created at: $APP_DIR"
-ls -lh "$MACOS_DIR/MaX"
+ls -lh "$MACOS_DIR/Tweetintosh"

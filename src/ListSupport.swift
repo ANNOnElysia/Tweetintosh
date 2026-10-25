@@ -1,6 +1,6 @@
 //
 //  ListSupport.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  Scrolling screens are hosted in a SwiftUI List (backed by NSTableView on macOS), which scrolls far more
 //  smoothly than ScrollView + LazyVStack.

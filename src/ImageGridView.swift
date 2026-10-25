@@ -1,6 +1,6 @@
 //
 //  ImageGridView.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import SwiftUI

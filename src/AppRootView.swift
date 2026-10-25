@@ -1,6 +1,6 @@
 //
 //  AppRootView.swift
-//  MaX - Liquid Glass adaptive navigation shell
+//  Tweetintosh - Liquid Glass adaptive navigation shell
 //
 
 import SwiftUI
@@ -606,7 +606,7 @@ private struct LiquidGlassSidebar: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header: App Logo + Sidebar Close Button
             HStack(alignment: .center) {
-                Text("MaX")
+                Text("Tweetintosh")
                     .font(.system(size: 16.5, weight: .bold, design: .rounded))
                     .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
                 

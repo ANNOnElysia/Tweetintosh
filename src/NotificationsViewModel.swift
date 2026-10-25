@@ -1,6 +1,6 @@
 //
 //  NotificationsViewModel.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import SwiftUI
@@ -375,7 +375,7 @@ final class NotificationsViewModel: ObservableObject {
                     TweetUser(id: "u2", name: "Amber", screenName: "outrider_amber", avatarUrl: nil, isVerified: false)
                 ],
                 actionSummary: "Lumine and Amber liked your post",
-                targetTweetSnippet: "MaX native macOS client Liquid Glass UI is rolling out smoothly! #SwiftUI",
+                targetTweetSnippet: "Tweetintosh native macOS client Liquid Glass UI is rolling out smoothly! #SwiftUI",
                 replyBody: nil,
                 createdAt: now.addingTimeInterval(-180)
             ),

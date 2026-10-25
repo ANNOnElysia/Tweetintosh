@@ -1,6 +1,6 @@
 //
 //  Engagement.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  Engagement rules shared by every screen: what to do when the author has blocked you, how rejections from X
 //  are reported, and keeping every on-screen copy of a post in sync when you like, repost, or bookmark it.

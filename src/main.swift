@@ -1,6 +1,6 @@
 //
 //  main.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import Cocoa
@@ -24,7 +24,7 @@ final class FocusCachingHostingView<Content: View>: NSHostingView<Content> {
         return value
     }
     
-    // System Look Up (three-finger tap, or Force Click when Look Up is set to it) opens MaX's peek card
+    // System Look Up (three-finger tap, or Force Click when Look Up is set to it) opens the peek card
     override func quickLook(with event: NSEvent) {
         if !PeekCoordinator.shared.quickLook(with: event) {
             super.quickLook(with: event)
@@ -90,7 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             defer: false
         )
         
-        window.title = "MaX"
+        window.title = "Tweetintosh"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.backgroundColor = ThemeManager.windowBackgroundColor
@@ -214,20 +214,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         // 1. App Menu
         let appMenuItem = NSMenuItem()
-        let appMenu = NSMenu(title: "MaX")
-        appMenu.addItem(withTitle: "About MaX", action: #selector(showAbout), keyEquivalent: "")
+        let appMenu = NSMenu(title: "Tweetintosh")
+        appMenu.addItem(withTitle: "About Tweetintosh", action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         let prefItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         prefItem.keyEquivalentModifierMask = .command
         appMenu.addItem(prefItem)
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Hide MaX", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide Tweetintosh", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(hideOthers)
         appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit MaX", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Tweetintosh", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
         
@@ -320,7 +320,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     @objc func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "MaX v2.0"
+        alert.messageText = "Tweetintosh v2.0"
         alert.informativeText = "Headless Data-driven Native macOS Client for X.\nBuilt with pure SwiftUI, high performance GraphQL synchronization, and 120Hz micro-animations."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")

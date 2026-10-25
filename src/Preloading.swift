@@ -1,6 +1,6 @@
 //
 //  Preloading.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  Preloading modelled on X's web client: hovering a person warms their profile (X's hover card calls preload()
 //  on hover-in and fetches the user "if needed"), and hovering a post warms its detail page (X ships a

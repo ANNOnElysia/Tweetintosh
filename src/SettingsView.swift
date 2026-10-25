@@ -1,6 +1,6 @@
 //
 //  SettingsView.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 
 import SwiftUI
@@ -518,7 +518,7 @@ struct SettingsView: View {
             // Footer
             HStack {
                 Spacer()
-                Text("MaX v2.0 (Headless Native Swift)")
+                Text("Tweetintosh v2.0 (Headless Native Swift)")
                     .font(.system(size: 11))
                     .foregroundColor(ThemeManager.tertiaryText)
                 Spacer()

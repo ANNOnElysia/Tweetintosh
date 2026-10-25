@@ -1,6 +1,6 @@
 //
 //  ProfileAPI.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  User profiles: profile lookup, the Posts / Replies / Media timelines, and follow / unfollow.
 //

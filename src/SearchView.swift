@@ -1,6 +1,6 @@
 //
 //  SearchView.swift
-//  MaX - Headless Data-driven Client
+//  Tweetintosh - Headless Data-driven Client
 //
 //  Search results page: an editable glass search field, a glass tab capsule (Top / Latest / People),
 //  and the results below, reusing the timeline's post rows and the profile page's navigation.
