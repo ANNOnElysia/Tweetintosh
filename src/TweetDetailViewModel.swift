@@ -95,11 +95,15 @@ final class TweetDetailViewModel: ObservableObject {
                 case .success(let data):
                     // Append new unique replies
                     var existingIds = Set(self.replies.map { $0.id })
+                    var added = 0
                     for r in data.replies where !existingIds.contains(r.id) {
                         self.replies.append(r)
                         existingIds.insert(r.id)
+                        added += 1
                     }
-                    self.bottomCursor = data.bottomCursor
+                    // X keeps handing back a cursor even when the replies have run out; stop paging (and the
+                    // spinner) once a page brings nothing new
+                    self.bottomCursor = (added == 0 || data.bottomCursor == cursor) ? nil : data.bottomCursor
                 case .failure:
                     break
                 }
