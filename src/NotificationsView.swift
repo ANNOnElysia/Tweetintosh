@@ -41,7 +41,6 @@ struct NotificationsView: View {
     @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
-    @ObservedObject var liveScroll = TimelineLiveScrollState.shared
 
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
@@ -93,40 +92,39 @@ struct NotificationsView: View {
     // MARK: - Notifications Scroll Content
     private var notificationsContent: some View {
         ScrollViewReader { scrollProxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule)
-                    // During refreshing, expands by 40pt so items stay pushed down for the 40pt animation area!
-                    Color.clear
-                        .frame(height: (nav.sidebarExpanded ? 72 : 118) + (viewModel.isRefreshing ? 40 : 0))
-                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
+            // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule)
+            // During refreshing, expands by 40pt so items stay pushed down for the 40pt animation area!
+            ScrollContainer(
+                topSpacer: (nav.sidebarExpanded ? 72 : 118) + (viewModel.isRefreshing ? 40 : 0),
+                onScrollView: { sv in
+                    TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")
+                },
+            ) {
                     
                     // Items List or Empty Placeholder
                     if viewModel.filteredItems.isEmpty {
                         emptyFilterView
                     } else {
                         ForEach(viewModel.filteredItems) { item in
-                            NotificationRowView(item: item)
-                                .id(item.id)
-                            
-                            // Subtle divider separating notification items (matching Home)
-                            Rectangle()
-                                .fill(ThemeManager.divider)
-                                .frame(height: 0.5)
+                            // Row and its divider in one view: a 0.5pt divider on its own would be padded to a full
+                            // row height in a List
+                            VStack(spacing: 0) {
+                                NotificationRowView(item: item)
+                                
+                                // Subtle divider separating notification items (matching Home)
+                                Rectangle()
+                                    .fill(ThemeManager.divider)
+                                    .frame(height: 0.5)
+                            }
+                            .id(item.id)
                         }
                     }
                     
                     // Bottom Spacer
                     Color.clear
                         .frame(height: 40)
-                }
-                .allowsHitTesting(!liveScroll.isLiveScrolling)
-                .background(
-                    ScrollViewAccessor { sv in
-                        TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")
-                    }
-                )
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
             .coordinateSpace(name: "notifScrollViewSpace")
             .overlay(alignment: .top) {
                 NotificationsPullRefreshIndicatorOverlay()

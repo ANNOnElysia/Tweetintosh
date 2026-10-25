@@ -148,12 +148,9 @@ struct SearchView: View {
             ThemeManager.background
                 .ignoresSafeArea()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    // Room for the floating search bar and tab capsule
-                    Color.clear.frame(height: 108)
-                    results
-                }
+            // Room for the floating search bar and tab capsule
+            ScrollContainer(topSpacer: 108, onNearBottom: { vm.loadTab(vm.selectedTab, more: true) }) {
+                results
             }
 
             VStack(spacing: 10) {

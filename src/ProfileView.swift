@@ -173,6 +173,9 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
 // Only flips when the header crosses under the bar, so scrolling doesn't re-render the whole page
 private final class ProfileChromeState: ObservableObject {
     @Published var isCollapsed = false
+    // Page width, for sizing the media grid's square cells explicitly (a List measures a row's height before
+    // aspect-ratio sizing applies, so self-sizing squares would overlap)
+    @Published var contentWidth: CGFloat = 0
 }
 
 // MARK: - Profile Page
@@ -198,13 +201,12 @@ struct ProfileView: View {
             ThemeManager.background
                 .ignoresSafeArea()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    header
-                    details
-                    tabBar
-                    tabContent
-                }
+            ScrollContainer(onNearBottom: { vm.loadTab(vm.selectedTab, more: true) }) {
+                header
+                    .reportsListScrollView()
+                details
+                tabBar
+                tabContent
             }
             .coordinateSpace(name: "profileScroll")
             .ignoresSafeArea(edges: .top)
@@ -427,6 +429,9 @@ struct ProfileView: View {
         .overlay(alignment: .bottom) {
             Divider().background(ThemeManager.divider)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            if abs(chrome.contentWidth - width) > 0.5 { chrome.contentWidth = width }
+        }
     }
 
     @ViewBuilder private var tabContent: some View {
@@ -453,12 +458,22 @@ struct ProfileView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 48)
         } else if tab == .media {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3), spacing: 3) {
-                ForEach(list.filter { !$0.tweet.media.isEmpty }) { item in
-                    ProfileMediaCell(tweet: item.tweet)
+            // Rows of three cells: each row is its own list row, so the grid stays lazy inside a List too
+            let cells = list.filter { !$0.tweet.media.isEmpty }
+            let side = max(1, floor((chrome.contentWidth - 12) / 3))
+            ForEach(Array(stride(from: 0, to: cells.count, by: 3)), id: \.self) { start in
+                HStack(spacing: 3) {
+                    ForEach(start..<min(start + 3, cells.count), id: \.self) { index in
+                        ProfileMediaCell(tweet: cells[index].tweet)
+                            .frame(width: side, height: side)
+                    }
+                    Spacer(minLength: 0)
                 }
+                .frame(height: side)
+                .padding(.horizontal, 3)
+                .padding(.top, start == 0 ? 3 : 0)
+                .padding(.bottom, 3)
             }
-            .padding(3)
             footer(for: tab)
         } else {
             ForEach(list) { item in

@@ -30,6 +30,15 @@ final class TimelineScrollState: ObservableObject {
     var hasTriggeredHaptic: Bool = false
 }
 
+extension NSScrollView {
+    // Where the content rests at the top. A SwiftUI ScrollView keeps the titlebar safe area inside its document
+    // (it rests at -28), while a List's table view rests at 0, so this asks the clip view instead of assuming.
+    var restingTopY: CGFloat {
+        let bounds = contentView.bounds
+        return contentView.constrainBoundsRect(NSRect(x: bounds.minX, y: -100_000, width: bounds.width, height: bounds.height)).minY
+    }
+}
+
 // MARK: - Native NSScrollView Anchor & Viewport Coordinator
 class CustomAnchorNSView: NSView {
     var onFound: ((NSScrollView) -> Void)?
@@ -164,7 +173,7 @@ final class TimelineScrollCoordinator: ObservableObject {
     }
     
     private func clampedKeyY(_ y: CGFloat, in sv: NSScrollView) -> CGFloat {
-        let minY = -sv.safeAreaInsets.top
+        let minY = sv.restingTopY
         let maxY = max(minY, (sv.documentView?.frame.height ?? 0) - sv.contentView.bounds.height)
         return min(maxY, max(minY, y))
     }
@@ -207,7 +216,7 @@ final class TimelineScrollCoordinator: ObservableObject {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.35
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                sv.contentView.animator().scroll(to: NSPoint(x: 0, y: 0))
+                sv.contentView.animator().scroll(to: NSPoint(x: 0, y: sv.restingTopY))
             } completionHandler: {
                 sv.reflectScrolledClipView(sv.contentView)
                 self.unreadCountAbove = 0
@@ -283,6 +292,9 @@ final class TrackpadPullCoordinator {
     
     private var currentOverscroll: CGFloat = 0.0
     private var hasTriggeredHaptic: Bool = false
+    // Deepest point of the current pull, and whether this pull has already refreshed
+    private var pullPeak: CGFloat = 0
+    private var pullTriggered = false
     
     func attachScrollView(_ sv: NSScrollView, owner: String) {
         scrollViewOwner = owner
@@ -394,7 +406,7 @@ final class TrackpadPullCoordinator {
             noteScrollActivity()
         }
         lastBoundsOriginY = y
-        let restingTopY = -sv.safeAreaInsets.top
+        let restingTopY = sv.restingTopY
         
         // Exact 0ms top detection: y <= restingTopY + 0.5 means top tweet is at top of viewport
         let atTop = (y <= restingTopY + 0.5)
@@ -414,6 +426,14 @@ final class TrackpadPullCoordinator {
             currentOverscroll = overscroll
             onPullProgress?(overscroll)
             
+            // A List's scroll view tracks the trackpad in its own loop, so the gesture-ended event never reaches
+            // the monitor below. Release shows up here instead: past the threshold, the pull starts snapping back.
+            pullPeak = max(pullPeak, overscroll)
+            if !pullTriggered && pullPeak >= threshold && overscroll <= pullPeak - 6 {
+                triggerRefresh()
+                return
+            }
+            
             if overscroll >= threshold {
                 if !hasTriggeredHaptic {
                     hasTriggeredHaptic = true
@@ -425,6 +445,8 @@ final class TrackpadPullCoordinator {
                 }
             }
         } else {
+            pullPeak = 0
+            pullTriggered = false
             if currentOverscroll > 0 {
                 currentOverscroll = 0
                 hasTriggeredHaptic = false
@@ -433,17 +455,22 @@ final class TrackpadPullCoordinator {
         }
     }
     
+    private func triggerRefresh() {
+        pullTriggered = true
+        currentOverscroll = 0
+        hasTriggeredHaptic = false
+        onPullProgress?(0)
+        onTriggerRefresh?()
+    }
+    
     private func handleScrollEvent(_ event: NSEvent) {
         guard !isRefreshing else { return }
         guard event.window == NSApp.mainWindow || event.window == nil else { return }
         
         // When touch gesture finishes (user lifts two fingers from trackpad)
         if event.phase == .ended {
-            if currentOverscroll >= threshold {
-                currentOverscroll = 0
-                hasTriggeredHaptic = false
-                onPullProgress?(0)
-                onTriggerRefresh?()
+            if currentOverscroll >= threshold && !pullTriggered {
+                triggerRefresh()
             } else if currentOverscroll > 0 {
                 currentOverscroll = 0
                 hasTriggeredHaptic = false
@@ -467,11 +494,8 @@ final class TrackpadPullCoordinator {
                 wheelReleaseTimer?.invalidate()
                 let timer = Timer(timeInterval: 0.25, repeats: false) { [weak self] _ in
                     guard let self = self else { return }
-                    if self.currentOverscroll >= self.threshold {
-                        self.currentOverscroll = 0
-                        self.hasTriggeredHaptic = false
-                        self.onPullProgress?(0)
-                        self.onTriggerRefresh?()
+                    if self.currentOverscroll >= self.threshold && !self.pullTriggered {
+                        self.triggerRefresh()
                     } else {
                         self.currentOverscroll = 0
                         self.hasTriggeredHaptic = false
@@ -524,7 +548,7 @@ struct MainTimelineView: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var scrollCoordinator = TimelineScrollCoordinator.shared
-    @ObservedObject var liveScroll = TimelineLiveScrollState.shared
+    @ObservedObject var listMetrics = ListMetrics.shared
 
     var onOpenSettings: () -> Void
     var onLoginRequest: () -> Void
@@ -588,59 +612,43 @@ struct MainTimelineView: View {
     }
     
     // MARK: - Timeline Scroll Content with Pull-to-Refresh
+    // The timeline is a SwiftUI List (backed by NSTableView on macOS)
     private var timelineContent: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    // Top spacing under native navigation (capsule vs sidebar)
-                    // During refreshing, expands by 40pt so tweets stay pushed down to accommodate the 40pt animation!
-                    Color.clear
-                        .frame(height: (nav.sidebarExpanded ? 36 : 64) + (viewModel.isRefreshing ? 40 : 0))
-                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
-                    
-                    // Tweets List
-                    ForEach(viewModel.tweets, id: \.id) { tweet in
-                        TweetRowView(tweet: tweet)
-                            .id(tweet.id)
-                    }
-                    
-                    // Bottom Loading Footer
-                    bottomLoadingFooter
-                }
-                .allowsHitTesting(!liveScroll.isLiveScrolling)
+        List {
+            // The list's scroll view has no titlebar inset (unlike ScrollView), so the titlebar height is added here
+            Color.clear
+                .frame(height: (nav.sidebarExpanded ? 36 : 64) + (viewModel.isRefreshing ? 40 : 0) + listMetrics.titlebarInset)
                 .background(
                     ScrollViewAccessor { sv in
                         TimelineScrollCoordinator.shared.registerScrollView(sv)
                         TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Timeline")
+                        ListLoadMoreWatcher.shared.attach(sv) { viewModel.loadMore() }
                     }
                 )
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            
+            ForEach(viewModel.tweets, id: \.id) { tweet in
+                TweetRowView(tweet: tweet)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
-            .coordinateSpace(name: "timelineScrollViewSpace")
-            .environment(\.peekScope, .timeline)
-            .overlay(alignment: .top) {
-                TimelinePullRefreshIndicatorOverlay()
-            }
+            
+            GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 16)
+                .opacity(viewModel.isLoadingMore ? 1 : 0)
+                .frame(maxWidth: .infinity)
+                .frame(height: 60)
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
         }
-    }
-    
-    // MARK: - Bottom Loading Footer
-    private var bottomLoadingFooter: some View {
-        VStack(spacing: 12) {
-            if viewModel.isLoadingMore {
-                HStack(spacing: 8) {
-                    GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 16)
-                    Text(loc.t("loading_more"))
-                        .font(.system(size: 13))
-                        .foregroundColor(ThemeManager.secondaryText)
-                }
-                .padding(.vertical, 20)
-            } else {
-                Color.clear
-                    .frame(height: 30)
-                    .onAppear {
-                        viewModel.loadMore()
-                    }
-            }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+.environment(\.peekScope, .timeline)
+        .overlay(alignment: .top) {
+            TimelinePullRefreshIndicatorOverlay()
         }
     }
     
@@ -706,4 +714,38 @@ struct MainTimelineView: View {
     }
 }
 
+// MARK: - List Prototype Support
 
+import os
+
+// Loads the next page when the reader gets within 1.5 screens of the bottom, read straight from the scroll view
+// instead of a footer row's onAppear (List recycles rows, so that callback is unreliable)
+final class ListLoadMoreWatcher {
+    static let shared = ListLoadMoreWatcher()
+    
+    private weak var scrollView: NSScrollView?
+    private var observer: Any?
+    private var onLoadMore: (() -> Void)?
+    
+    func attach(_ sv: NSScrollView, onLoadMore: @escaping () -> Void) {
+        self.onLoadMore = onLoadMore
+        ListMetrics.shared.update(from: sv.window)
+        guard scrollView !== sv else { return }
+        if let observer = observer { NotificationCenter.default.removeObserver(observer) }
+        scrollView = sv
+        sv.contentView.postsBoundsChangedNotifications = true
+        observer = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: sv.contentView, queue: .main
+        ) { [weak self] _ in
+            self?.check()
+        }
+    }
+    
+    private func check() {
+        guard let sv = scrollView, let doc = sv.documentView else { return }
+        let clip = sv.contentView.bounds
+        if doc.frame.height - clip.maxY < clip.height * 1.5 {
+            onLoadMore?()
+        }
+    }
+}

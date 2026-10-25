@@ -34,11 +34,8 @@ struct TweetDetailView: View {
                 .ignoresSafeArea()
             
             // Main Scrollable Thread Content
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    // Spacing for top floating Liquid Glass navigation header
-                    Color.clear
-                        .frame(height: 54)
+            // Spacing for top floating Liquid Glass navigation header
+            ScrollContainer(topSpacer: 54, onNearBottom: { viewModel.loadMoreReplies() }) {
                     
                     // 1. Ancestors (Parent tweets in the conversation thread)
                     if !viewModel.ancestors.isEmpty {
@@ -50,13 +47,14 @@ struct TweetDetailView: View {
                     // 2. Focal Hero Tweet Card
                     focalHeroTweetCard
                     
-                    // Divider between focal tweet and replies
+                    // 3. Replies Section Header, with the divider between focal tweet and replies above it
+                    // (one row: a 1pt divider on its own would be padded to a full row height in a List)
+                    VStack(spacing: 0) {
                     Rectangle()
                         .fill(ThemeManager.divider)
                         .frame(height: 1)
                         .padding(.vertical, 8)
                     
-                    // 3. Replies Section Header
                     HStack {
                         Text(loc.t("thread_replies"))
                             .font(.system(size: 15, weight: .bold))
@@ -72,6 +70,7 @@ struct TweetDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 8)
+                    }
                     
                     // 4. Replies List
                     if viewModel.replies.isEmpty {
@@ -128,7 +127,6 @@ struct TweetDetailView: View {
                     // Bottom padding to avoid overlapping the sticky reply dock
                     Color.clear
                         .frame(height: 72)
-                }
             }
             
             // Top Floating Liquid Glass Navigation Bar
