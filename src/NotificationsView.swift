@@ -17,7 +17,7 @@ private struct NotificationsPullRefreshIndicatorOverlay: View {
         if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
             let baseTop: CGFloat = nav.sidebarExpanded ? 72 : 118
             let pullDist = viewModel.isRefreshing ? 40.0 : scrollState.pullDistance
-            let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / 40.0))
+            let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / TrackpadPullCoordinator.refreshThreshold))
             let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(pullDist - 2.0) / 8.0))
             let offsetY: CGFloat = baseTop + (pullDist - 40.0) / 2.0
             
@@ -62,7 +62,7 @@ struct NotificationsView: View {
         .onAppear {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
                 TimelineScrollState.shared.pullDistance = distance
-                TimelineScrollState.shared.isPullThresholdExceeded = (distance >= 45.0)
+                TimelineScrollState.shared.isPullThresholdExceeded = (distance >= TrackpadPullCoordinator.refreshThreshold)
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
                 TimelineScrollState.shared.isPullThresholdExceeded = false
@@ -121,7 +121,7 @@ struct NotificationsView: View {
                 }
                 .background(
                     ScrollViewAccessor { sv in
-                        TrackpadPullCoordinator.shared.attachScrollView(sv)
+                        TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")
                     }
                 )
             }

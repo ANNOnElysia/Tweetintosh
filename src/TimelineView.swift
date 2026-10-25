@@ -35,7 +35,10 @@ class CustomAnchorNSView: NSView {
     var onFound: ((NSScrollView) -> Void)?
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let sv = enclosingScrollView { onFound?(sv) }
+        // viewDidMoveToWindow also fires with window == nil when a page is torn down (e.g. on a tab switch), while
+        // enclosingScrollView is still set. Reporting it then would re-register the dying page's scroll view over
+        // the page that just appeared.
+        if window != nil, let sv = enclosingScrollView { onFound?(sv) }
     }
 }
 
@@ -47,7 +50,7 @@ struct ScrollViewAccessor: NSViewRepresentable {
         return v
     }
     func updateNSView(_ nsView: CustomAnchorNSView, context: Context) {
-        if let sv = nsView.enclosingScrollView { onScrollView(sv) }
+        if nsView.window != nil, let sv = nsView.enclosingScrollView { onScrollView(sv) }
     }
 }
 
@@ -260,9 +263,15 @@ final class TrackpadPullCoordinator {
     private var liveScrollObservers: [Any] = []
     private weak var registeredScrollView: NSScrollView?
     private var wheelReleaseTimer: Timer?
-    private let threshold: CGFloat = 45.0
+    // Single pull-to-refresh threshold shared by the spinner fill, the haptic and the release trigger
+    // (Home and Notifications), so a full ring always means "release to refresh"
+    static let refreshThreshold: CGFloat = 38.0
+    private let threshold: CGFloat = TrackpadPullCoordinator.refreshThreshold
     private var activeOwner: String?
-    
+    // Which page attached the current scroll view. On a tab switch SwiftUI attaches the new page's scroll view
+    // before the old page's onDisappear runs, so stopMonitoring must only detach a scroll view its own page attached.
+    private var scrollViewOwner: String?
+
     var onPullProgress: ((CGFloat) -> Void)?
     var onTriggerRefresh: (() -> Void)?
     var onCancelPull: (() -> Void)?
@@ -273,7 +282,8 @@ final class TrackpadPullCoordinator {
     private var currentOverscroll: CGFloat = 0.0
     private var hasTriggeredHaptic: Bool = false
     
-    func attachScrollView(_ sv: NSScrollView) {
+    func attachScrollView(_ sv: NSScrollView, owner: String) {
+        scrollViewOwner = owner
         if registeredScrollView === sv { return }
         registeredScrollView = sv
         
@@ -342,12 +352,15 @@ final class TrackpadPullCoordinator {
                 NSEvent.removeMonitor(m)
                 eventMonitor = nil
             }
-            if let obs = boundsObserver {
-                NotificationCenter.default.removeObserver(obs)
-                boundsObserver = nil
+            if scrollViewOwner == owner {
+                if let obs = boundsObserver {
+                    NotificationCenter.default.removeObserver(obs)
+                    boundsObserver = nil
+                }
+                removeLiveScrollObservers()
+                registeredScrollView = nil
+                scrollViewOwner = nil
             }
-            removeLiveScrollObservers()
-            registeredScrollView = nil
             wheelReleaseTimer?.invalidate()
             wheelReleaseTimer = nil
             currentOverscroll = 0
@@ -462,7 +475,7 @@ private struct TimelinePullRefreshIndicatorOverlay: View {
         if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
             let baseTop: CGFloat = nav.sidebarExpanded ? 36 : 64
             let pullDist = viewModel.isRefreshing ? 40.0 : scrollState.pullDistance
-            let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / 40.0))
+            let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / TrackpadPullCoordinator.refreshThreshold))
             let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(pullDist - 2.0) / 8.0))
             
             // Pure GPU translation offset to avoid subpixel frame resizing passes
@@ -525,7 +538,7 @@ struct MainTimelineView: View {
         .onAppear {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
                 TimelineScrollState.shared.pullDistance = distance
-                TimelineScrollState.shared.isPullThresholdExceeded = (distance >= 45.0)
+                TimelineScrollState.shared.isPullThresholdExceeded = (distance >= TrackpadPullCoordinator.refreshThreshold)
             }
             TrackpadPullCoordinator.shared.onTriggerRefresh = {
                 TimelineScrollState.shared.isPullThresholdExceeded = false
@@ -576,7 +589,7 @@ struct MainTimelineView: View {
                 .background(
                     ScrollViewAccessor { sv in
                         TimelineScrollCoordinator.shared.registerScrollView(sv)
-                        TrackpadPullCoordinator.shared.attachScrollView(sv)
+                        TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Timeline")
                     }
                 )
             }
