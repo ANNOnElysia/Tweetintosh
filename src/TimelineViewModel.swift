@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+import os
+
+private let pollLogger = Logger(subsystem: "com.antigravity.max", category: "preload")
 import Combine
 
 final class TimelineViewModel: ObservableObject {
@@ -95,6 +98,7 @@ final class TimelineViewModel: ObservableObject {
             self.selectedListId = first.id
         }
         checkAuth()
+        startPolling()
         fetchUserLists()
         
         NotificationCenter.default.addObserver(
@@ -114,6 +118,37 @@ final class TimelineViewModel: ObservableObject {
                 self.refresh(silently: false, isUserInitiated: true)
             }
         }
+    }
+    
+    // MARK: - Background Polling
+    // Checks for new posts on the intervals X's web client uses (gryphon_timeline_polling_*): every 30 s on
+    // chronological feeds (Following, lists) and every 2 minutes on For You. New posts are queued behind the
+    // floating "N new posts" pill, never inserted under the reader. Polling pauses while the app is in the
+    // background or off the Home tab, and catches up as soon as it comes back.
+    private var pollTimer: Timer?
+    private var lastFetchAt = Date()
+    
+    private func pollInterval(for feed: HomeFeedType) -> TimeInterval {
+        feed == .forYou ? 120 : 30
+    }
+    
+    private func startPolling() {
+        guard pollTimer == nil else { return }
+        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            self?.pollIfDue()
+        }
+        timer.tolerance = 1
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+    }
+    
+    private func pollIfDue() {
+        guard isAuthenticated, !isRefreshing, !isLoadingInitial, !isLoadingMore else { return }
+        guard NSApp.isActive, NavigationManager.shared.currentTab == .home,
+              let window = NSApp.mainWindow, window.isVisible, !window.isMiniaturized else { return }
+        guard Date().timeIntervalSince(lastFetchAt) >= pollInterval(for: selectedFeed) else { return }
+        pollLogger.notice("poll \(self.selectedFeed.rawValue, privacy: .public)")
+        refresh(silently: true, isUserInitiated: false)
     }
     
     func fetchUserLists(completion: (() -> Void)? = nil) {
@@ -319,10 +354,11 @@ final class TimelineViewModel: ObservableObject {
     
     // MARK: - Refresh (Pull or Initial)
     func refresh(silently: Bool = false, isUserInitiated: Bool = false) {
+        lastFetchAt = Date()
         if !silently {
             isRefreshing = true
         }
-        
+
         let currentFeed = selectedFeed
         let seenIdsToSend = (currentFeed == .forYou) ? seenTweetIds : []
         let startTime = Date()

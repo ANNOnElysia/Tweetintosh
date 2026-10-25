@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+import os
+
+private let detailLogger = Logger(subsystem: "com.antigravity.max", category: "preload")
 import AppKit
 import Combine
 
@@ -42,9 +45,27 @@ final class TweetDetailViewModel: ObservableObject {
     }
     
     // MARK: - Load Tweet Detail & Conversation Thread
+    private func applyDetail(_ data: TweetDetailPrefetcher.Detail) {
+        if let freshFocal = data.focalTweet {
+            focalTweet = freshFocal
+        }
+        ancestors = data.ancestors
+        replies = data.replies
+        bottomCursor = data.bottomCursor
+    }
+    
     func loadDetail() {
         guard !isLoading else { return }
-        isLoading = true
+        
+        // A detail page warmed by hovering opens already filled in; it is only refetched if it has gone stale
+        var hasCached = false
+        if let cached = TweetDetailPrefetcher.shared.cached(focalTweet.id) {
+            detailLogger.notice("detail opened from prefetch cache \(self.focalTweet.id, privacy: .public)")
+            applyDetail(cached.detail)
+            hasCached = true
+            if Date().timeIntervalSince(cached.fetchedAt) < 30 { return }
+        }
+        if !hasCached { isLoading = true }
         error = nil
         
         apiClient.fetchTweetDetail(tweetId: focalTweet.id) { [weak self] result in
@@ -53,14 +74,9 @@ final class TweetDetailViewModel: ObservableObject {
                 self.isLoading = false
                 switch result {
                 case .success(let data):
-                    if let freshFocal = data.focalTweet {
-                        self.focalTweet = freshFocal
-                    }
-                    self.ancestors = data.ancestors
-                    self.replies = data.replies
-                    self.bottomCursor = data.bottomCursor
+                    self.applyDetail(data)
                 case .failure(let err):
-                    self.error = err.localizedDescription
+                    if !hasCached { self.error = err.localizedDescription }
                 }
             }
         }

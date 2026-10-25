@@ -8,6 +8,9 @@
 
 import SwiftUI
 import AppKit
+import os
+
+private let preloadLogger = Logger(subsystem: "com.antigravity.max", category: "preload")
 
 // MARK: - View Model
 
@@ -64,6 +67,27 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
     }
 
     func load() {
+        // A profile warmed by hovering opens already filled in; only what is missing is fetched
+        var hasProfile = false
+        if let preloaded = ProfilePreloader.shared.cached(user.screenName) {
+            preloadLogger.notice("profile opened from preload cache @\(self.user.screenName, privacy: .public)")
+            if let profile = preloaded.profile {
+                self.profile = profile
+                self.user = profile.user
+                self.isFollowing = profile.isFollowing
+                hasProfile = true
+            }
+            if let posts = preloaded.posts, tweets[.posts] == nil {
+                tweets[.posts] = posts.items
+                cursors[.posts] = posts.cursor
+                if posts.cursor == nil || posts.items.isEmpty { exhausted.insert(.posts) }
+                if hasProfile { return }
+            }
+            if hasProfile {
+                loadTab(selectedTab)
+                return
+            }
+        }
         APIClient.shared.fetchUserProfile(screenName: user.screenName) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -623,6 +647,10 @@ extension View {
             .contentShape(Rectangle())
             .onTapGesture {
                 NavigationManager.shared.openProfile(user)
+            }
+            // Warm the profile once the pointer rests here, like X's hover card does
+            .preloadOnHover(kind: "profile", key: user.screenName, delay: 0.2) {
+                ProfilePreloader.shared.preload(user)
             }
     }
 }

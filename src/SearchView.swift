@@ -378,5 +378,8 @@ private struct SearchUserRow: View {
         .onTapGesture {
             NavigationManager.shared.openProfile(user)
         }
+        .preloadOnHover(kind: "profile", key: user.screenName, delay: 0.2) {
+            ProfilePreloader.shared.preload(user)
+        }
     }
 }

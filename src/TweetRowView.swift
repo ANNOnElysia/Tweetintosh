@@ -129,6 +129,10 @@ struct TweetRowView: View {
             .onTapGesture {
                 NavigationManager.shared.openTweetDetail(tweet)
             }
+            // Warm the detail page once the pointer rests on the post
+            .preloadOnHover(kind: "detail", key: tweet.id, delay: 0.3) {
+                TweetDetailPrefetcher.shared.prefetch(tweet)
+            }
             
             // 3. Interaction Metrics Bar: Impressions (Views) on Left, Actions on Right
             // Kept outside content onTapGesture to allow direct, uninhibited interaction with buttons & menus
