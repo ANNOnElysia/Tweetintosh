@@ -9,6 +9,17 @@ struct TweetVideoVariant: Codable, Hashable {
     var contentType: String
     var url: String
     var bitrate: Int?
+    
+    private static let sizePattern = try! NSRegularExpression(pattern: #"/(\d{2,4})x(\d{2,4})/"#)
+    
+    // Quality as "p" (the shorter side, so portrait 720x1280 is 720p), read from X's URL (".../vid/avc1/1280x720/...")
+    var qualityHeight: Int? {
+        let range = NSRange(url.startIndex..., in: url)
+        guard let match = Self.sizePattern.firstMatch(in: url, range: range),
+              let w = Range(match.range(at: 1), in: url).flatMap({ Int(url[$0]) }),
+              let h = Range(match.range(at: 2), in: url).flatMap({ Int(url[$0]) }) else { return nil }
+        return min(w, h)
+    }
 }
 
 struct TweetVideoInfo: Codable, Hashable {
@@ -32,7 +43,16 @@ struct TweetVideoInfo: Codable, Hashable {
             .filter { $0.contentType == "video/mp4" }
             .sorted(by: { ($0.bitrate ?? 0) > ($1.bitrate ?? 0) })
     }
-
+    
+    // The distinct MP4 resolutions this video is offered in, best first
+    var availableHeights: [Int] {
+        Array(Set(sortedMp4Variants.compactMap { $0.qualityHeight })).sorted(by: >)
+    }
+    
+    // The best MP4 at a given resolution
+    func mp4Variant(height: Int) -> TweetVideoVariant? {
+        sortedMp4Variants.first { $0.qualityHeight == height }
+    }
     
     var durationSeconds: Double {
         Double(durationMillis ?? 0) / 1000.0

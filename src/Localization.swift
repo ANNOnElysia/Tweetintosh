@@ -847,6 +847,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "自动 (自适应网络)",
             .traditionalChinese: "自動 (自適應網路)"
         ],
+        "video_quality_1080p": [
+            .english: "1080p Full HD",
+            .japanese: "1080p フルHD",
+            .korean: "1080p 풀HD",
+            .simplifiedChinese: "1080p 全高清",
+            .traditionalChinese: "1080p 全高畫質"
+        ],
         "video_quality_720p": [
             .english: "720p HD",
             .japanese: "720p 高画質",

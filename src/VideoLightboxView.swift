@@ -9,23 +9,23 @@ import AVKit
 import AVFoundation
 
 // MARK: - Video Quality Options
-enum VideoQualityOption: String, CaseIterable, Identifiable {
+enum VideoQualityOption: Hashable, Identifiable {
     case highest
     case auto
-    case p720
-    case p480
-    case p360
+    // A specific MP4 resolution the video is offered in (shorter side, e.g. 720)
+    case resolution(Int)
     
-    var id: String { rawValue }
+    var id: String { storageValue }
     
     var localizedTitle: String {
         let loc = LocalizationManager.shared
         switch self {
         case .highest: return loc.t("video_quality_highest")
         case .auto: return loc.t("video_quality_auto")
-        case .p720: return loc.t("video_quality_720p")
-        case .p480: return loc.t("video_quality_480p")
-        case .p360: return loc.t("video_quality_360p")
+        case .resolution(let h):
+            let key = "video_quality_\(h)p"
+            let title = loc.t(key)
+            return title == key ? "\(h)p" : title
         }
     }
     
@@ -33,9 +33,24 @@ enum VideoQualityOption: String, CaseIterable, Identifiable {
         switch self {
         case .highest: return "MAX"
         case .auto: return "AUTO"
-        case .p720: return "720p"
-        case .p480: return "480p"
-        case .p360: return "360p"
+        case .resolution(let h): return "\(h)p"
+        }
+    }
+    
+    // Persisted form of the viewer's choice: "highest", "auto", or a height like "720"
+    var storageValue: String {
+        switch self {
+        case .highest: return "highest"
+        case .auto: return "auto"
+        case .resolution(let h): return String(h)
+        }
+    }
+    
+    init(storageValue: String?) {
+        switch storageValue {
+        case "auto": self = .auto
+        case let value? where Int(value) != nil: self = .resolution(Int(value)!)
+        default: self = .highest
         }
     }
 }
@@ -48,7 +63,15 @@ final class VideoLightboxManager: ObservableObject {
     @Published var currentTweet: Tweet?
     @Published var currentMedia: TweetMedia?
     
+    // The quality actually playing, and the choices this video offers
     @Published var selectedQuality: VideoQualityOption = .highest
+    @Published var availableQualities: [VideoQualityOption] = [.highest]
+    
+    // The viewer's choice, remembered across videos and launches
+    private var preferredQuality: VideoQualityOption {
+        get { VideoQualityOption(storageValue: UserDefaults.standard.string(forKey: "MaX_VideoQuality")) }
+        set { UserDefaults.standard.set(newValue.storageValue, forKey: "MaX_VideoQuality") }
+    }
     @Published var isPlaying: Bool = false
     @Published var currentTime: Double = 0.0
     @Published var duration: Double = 0.0
@@ -94,7 +117,11 @@ final class VideoLightboxManager: ObservableObject {
         guard !PeekCoordinator.shared.suppressesActivation else { return }
         self.currentTweet = tweet
         self.currentMedia = media
-        self.selectedQuality = .highest
+        let info = media.videoInfo
+        self.availableQualities = [.highest]
+            + (info?.hlsVariant != nil ? [.auto] : [])
+            + (info?.availableHeights ?? []).map { .resolution($0) }
+        self.selectedQuality = effectiveQuality(for: preferredQuality, in: info)
         self.currentTime = 0
         self.duration = media.videoInfo?.durationSeconds ?? 0
         self.isLiked = false
@@ -251,7 +278,23 @@ final class VideoLightboxManager: ObservableObject {
         player.isMuted = isMuted
     }
     
+    // Maps the remembered choice onto what this video offers: a missing resolution falls back to the
+    // closest one at or below it (or the smallest, if all are larger); no HLS stream means Highest
+    private func effectiveQuality(for preference: VideoQualityOption, in info: TweetVideoInfo?) -> VideoQualityOption {
+        switch preference {
+        case .highest:
+            return .highest
+        case .auto:
+            return info?.hlsVariant != nil ? .auto : .highest
+        case .resolution(let wanted):
+            let heights = info?.availableHeights ?? []
+            guard !heights.isEmpty else { return .highest }
+            return .resolution(heights.first(where: { $0 <= wanted }) ?? heights.last!)
+        }
+    }
+    
     func switchQuality(to quality: VideoQualityOption) {
+        self.preferredQuality = quality
         self.selectedQuality = quality
         let seekTime = self.currentTime
         let wasPlaying = self.isPlaying
@@ -277,12 +320,8 @@ final class VideoLightboxManager: ObservableObject {
             targetUrlStr = videoInfo.highestBitrateVariant?.url ?? videoInfo.variants.first?.url
         case .auto:
             targetUrlStr = videoInfo.hlsVariant?.url ?? videoInfo.highestBitrateVariant?.url
-        case .p720:
-            targetUrlStr = matchVariant(in: videoInfo.sortedMp4Variants, targetBitrate: 832000)
-        case .p480:
-            targetUrlStr = matchVariant(in: videoInfo.sortedMp4Variants, targetBitrate: 400000)
-        case .p360:
-            targetUrlStr = matchVariant(in: videoInfo.sortedMp4Variants, targetBitrate: 256000)
+        case .resolution(let height):
+            targetUrlStr = videoInfo.mp4Variant(height: height)?.url ?? videoInfo.highestBitrateVariant?.url
         }
         
         guard let urlStr = targetUrlStr else { return }
@@ -306,20 +345,7 @@ final class VideoLightboxManager: ObservableObject {
         player.isMuted = isMuted
     }
     
-    private func matchVariant(in mp4s: [TweetVideoVariant], targetBitrate: Int) -> String? {
-        guard !mp4s.isEmpty else { return nil }
-        var closest = mp4s[0]
-        var minDiff = abs((closest.bitrate ?? 0) - targetBitrate)
-        for v in mp4s {
-            let diff = abs((v.bitrate ?? 0) - targetBitrate)
-            if diff < minDiff {
-                minDiff = diff
-                closest = v
-            }
-        }
-        return closest.url
-    }
-    
+
     private func setupTimeObserver() {
         let interval = CMTime(seconds: 0.04, preferredTimescale: 600)
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
@@ -582,19 +608,9 @@ struct VideoLightboxOverlay: View {
                         HStack(alignment: .center, spacing: 14) {
                             Spacer()
                             
-                            // Quality Switcher Glass Dropdown Menu
-                            Menu {
-                                ForEach(VideoQualityOption.allCases) { opt in
-                                    Button(action: { manager.switchQuality(to: opt) }) {
-                                        HStack {
-                                            Text(opt.localizedTitle)
-                                            if manager.selectedQuality == opt {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                }
-                            } label: {
+                            // Quality switcher: a glass button that pops up a native menu of this video's qualities
+                            // (a SwiftUI Menu with this custom label didn't render)
+                            Button(action: showQualityMenu) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "gearshape.fill")
                                         .font(.system(size: 11))
@@ -614,7 +630,7 @@ struct VideoLightboxOverlay: View {
                                 )
                                 .shadow(color: Color.black.opacity(0.30), radius: 8, x: 0, y: 2)
                             }
-                            .menuStyle(BorderlessButtonMenuStyle())
+                            .buttonStyle(.plain)
                             .fixedSize()
                             
                             // Close Button
@@ -768,6 +784,17 @@ struct VideoLightboxOverlay: View {
             .allowsHitTesting(false)
     }
     
+    // Pops up the quality choices under the pointer, with a checkmark on the one playing
+    private func showQualityMenu() {
+        let menu = NSMenu()
+        for option in manager.availableQualities {
+            menu.addItem(ClosureMenuItem(title: option.localizedTitle, isChecked: manager.selectedQuality == option) {
+                manager.switchQuality(to: option)
+            })
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
     // MARK: - Smooth Glass Video Scrubber Bar (Theme-tinted or Pure Monochrome Glass)
     private var videoScrubberBar: some View {
         HStack(spacing: 12) {

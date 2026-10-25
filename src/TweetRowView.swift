@@ -375,14 +375,16 @@ private struct TweetActionBar: View {
 }
 
 // MARK: - Closure Menu Item
-private final class ClosureMenuItem: NSMenuItem {
+// An NSMenuItem that runs a closure; used for menus popped up from plain buttons instead of SwiftUI Menu
+final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
     
-    init(title: String, symbol: String, handler: @escaping () -> Void) {
+    init(title: String, symbol: String? = nil, isChecked: Bool = false, handler: @escaping () -> Void) {
         self.handler = handler
         super.init(title: title, action: #selector(run), keyEquivalent: "")
         self.target = self
-        self.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        self.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+        self.state = isChecked ? .on : .off
     }
     
     required init(coder: NSCoder) {
