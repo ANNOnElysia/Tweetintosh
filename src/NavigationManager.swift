@@ -92,6 +92,12 @@ final class NavigationManager: ObservableObject {
         push(.tweet(tweet))
     }
     
+    // The profile page, when it is the page in front
+    func activeProfilePage() -> ProfileViewModel? {
+        if case .profile? = overlayStack.last?.page { return ProfileViewModel.live.last }
+        return nil
+    }
+    
     // The search results page, when it is the page in front
     func activeSearchPage() -> SearchViewModel? {
         if case .search? = overlayStack.last?.page { return SearchViewModel.current }
@@ -297,6 +303,10 @@ final class NavigationManager: ObservableObject {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { search.stepTab(keyCode == 123 ? -1 : 1) }
                         return nil
                     }
+                    if (keyCode == 123 || keyCode == 124), let profile = self.activeProfilePage() {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { profile.stepTab(keyCode == 123 ? -1 : 1) }
+                        return nil
+                    }
                     if keyCode == 123 { // Left Arrow
                         if self.currentTab == .home {
                             TimelineViewModel.shared.prevFeed()
@@ -325,6 +335,13 @@ final class NavigationManager: ObservableObject {
                         self.nextTab()
                         return nil
                     }
+                }
+                
+                // Profile page: Option + 1, 2, 3 -> Posts, Media, Replies (the first menu on that page)
+                if hasOption && !hasCmd && !hasCtrl, let tab = ProfileTab.forKeyCode(keyCode),
+                   let profile = self.activeProfilePage() {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { profile.select(tab) }
+                    return nil
                 }
                 
                 // Option + 1, 2, 3 (or Cmd + 1, 2, 3) -> Primary Tab Switching

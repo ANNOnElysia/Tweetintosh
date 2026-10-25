@@ -37,6 +37,24 @@ enum ProfileTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     
+    // ⌥1 / ⌥2 / ⌥3: the profile tabs are the first menu on the page, so they take the number keys
+    var shortcutKey: String {
+        switch self {
+        case .posts: return "⌥1"
+        case .media: return "⌥2"
+        case .replies: return "⌥3"
+        }
+    }
+    
+    static func forKeyCode(_ keyCode: UInt16) -> ProfileTab? {
+        switch keyCode {
+        case 18: return .posts
+        case 19: return .media
+        case 20: return .replies
+        default: return nil
+        }
+    }
+    
     var operationName: String {
         switch self {
         case .posts: return "UserTweets"

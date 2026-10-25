@@ -24,6 +24,17 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
     private var cursors: [ProfileTab: String] = [:]
     private var exhausted: Set<ProfileTab> = []
     
+    // Profile pages currently on screen, oldest first, so the keyboard shortcuts reach the one in front
+    // (even after another page above it is closed)
+    static var live: [ProfileViewModel] = []
+    
+    // ⌥⌘← / ⌥⌘→
+    func stepTab(_ delta: Int) {
+        let all = ProfileTab.allCases
+        guard let index = all.firstIndex(of: selectedTab) else { return }
+        let next = index + delta
+        if all.indices.contains(next) { select(all[next]) }
+    }
 
     init(user: TweetUser) {
         // The tweet's author data (name, avatar, bio, banner, counts) renders the header right away
@@ -148,6 +159,7 @@ struct ProfileView: View {
     @StateObject private var chrome = ProfileChromeState()
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var nav = NavigationManager.shared
     @Namespace private var tabNamespace
 
     private let bannerHeight: CGFloat = 250
@@ -176,7 +188,11 @@ struct ProfileView: View {
             topBar
         }
         .onAppear {
+            if !ProfileViewModel.live.contains(where: { $0 === vm }) { ProfileViewModel.live.append(vm) }
             vm.load()
+        }
+        .onDisappear {
+            ProfileViewModel.live.removeAll { $0 === vm }
         }
     }
 
@@ -295,12 +311,14 @@ struct ProfileView: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let bio = vm.user.bio, !bio.isEmpty {
-                LinkedText.make(bio, links: vm.user.bioLinks ?? [])
-                    .font(theme.tweetFont(size: 14.5))
-                    .lineSpacing(theme.lineSpacing())
-                    .foregroundColor(ThemeManager.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                // Long bios fold after 6 lines, with "Show more" underneath
+                FoldableText(limit: 6) {
+                    LinkedText.make(bio, links: vm.user.bioLinks ?? [])
+                        .font(theme.tweetFont(size: 14.5))
+                        .lineSpacing(theme.lineSpacing())
+                        .foregroundColor(ThemeManager.primaryText)
+                        .textSelection(.enabled)
+                }
             }
 
             HStack(spacing: 16) {
@@ -345,8 +363,24 @@ struct ProfileView: View {
                         vm.select(tab)
                     }
                 } label: {
-                    Text(loc.t("profile_tab_\(tab.rawValue)"))
-                        .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    HStack(spacing: 5) {
+                        Text(loc.t("profile_tab_\(tab.rawValue)"))
+                            .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                        
+                        // Shortcut hint, revealed while ⌘ is held
+                        if nav.showShortcutBadges {
+                            Text(tab.shortcutKey)
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(selected ? ThemeManager.accent.opacity(0.9) : ThemeManager.tertiaryText)
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3.5)
+                                        .fill(selected ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06)))
+                                )
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
+                    }
                         .foregroundColor(selected ? ThemeManager.accent : ThemeManager.secondaryText)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 7)
@@ -618,5 +652,65 @@ enum LinkedText {
             attributed[ar].link = URL(string: url)
         }
         return Text(attributed)
+    }
+}
+
+// MARK: - Foldable Text
+
+private final class FoldState: ObservableObject {
+    @Published var isExpanded = false
+    // True once the text is seen to need more than `limit` lines; stays true after expanding so "Show less" remains
+    @Published var canFold = false
+    var fullHeight: CGFloat = 0
+    var visibleHeight: CGFloat = 0
+    
+    func recompute() {
+        guard !isExpanded else { return }
+        let overflows = fullHeight - visibleHeight > 1
+        if overflows != canFold { canFold = overflows }
+    }
+}
+
+// Shows its content limited to `limit` lines; if it needs more, a "Show more" button unfolds it. Overflow is found
+// by measuring a hidden unlimited copy against the limited one.
+struct FoldableText<Content: View>: View {
+    let limit: Int
+    @ViewBuilder let content: () -> Content
+    @StateObject private var fold = FoldState()
+    @ObservedObject private var loc = LocalizationManager.shared
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            content()
+                .lineLimit(fold.isExpanded ? nil : limit)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    fold.visibleHeight = height
+                    fold.recompute()
+                }
+                .background(
+                    content()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .hidden()
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            fold.fullHeight = height
+                            fold.recompute()
+                        }
+                )
+            
+            if fold.canFold {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        fold.isExpanded.toggle()
+                    }
+                } label: {
+                    Text(loc.t(fold.isExpanded ? "profile_show_less" : "profile_show_more"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ThemeManager.accent)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }

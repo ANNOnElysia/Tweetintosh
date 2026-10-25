@@ -559,6 +559,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "最近搜索",
             .traditionalChinese: "最近搜尋"
         ],
+        "profile_show_more": [
+            .english: "Show more",
+            .japanese: "もっと見る",
+            .korean: "더 보기",
+            .simplifiedChinese: "展开",
+            .traditionalChinese: "展開"
+        ],
+        "profile_show_less": [
+            .english: "Show less",
+            .japanese: "閉じる",
+            .korean: "접기",
+            .simplifiedChinese: "收起",
+            .traditionalChinese: "收合"
+        ],
         "profile_blocked": [
             .english: "Blocked",
             .japanese: "ブロックされています",
