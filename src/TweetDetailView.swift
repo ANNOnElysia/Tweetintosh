@@ -101,8 +101,13 @@ struct TweetDetailView: View {
                         }
                     } else {
                         let depths = viewModel.replyDepths
-                        ForEach(viewModel.replies, id: \.id) { reply in
-                            replyTweetRow(reply, depth: depths[reply.id] ?? 0)
+                        let links = viewModel.replyThreadLinks
+                        ForEach(Array(viewModel.replies.enumerated()), id: \.element.id) { index, reply in
+                            let depth = depths[reply.id] ?? 0
+                            let link = links[reply.id] ?? (false, false)
+                            // The line above comes down from the parent's avatar, which sits one level out
+                            let parentDepth = index > 0 ? (depths[viewModel.replies[index - 1].id] ?? 0) : 0
+                            replyTweetRow(reply, depth: depth, linkAbove: link.above, linkBelow: link.below, parentDepth: parentDepth)
                         }
                         
                         // Pagination trigger
@@ -591,7 +596,7 @@ struct TweetDetailView: View {
     
     // MARK: - Reply Tweet Row
     @ViewBuilder
-    private func replyTweetRow(_ tweet: Tweet, depth: Int = 0) -> some View {
+    private func replyTweetRow(_ tweet: Tweet, depth: Int = 0, linkAbove: Bool = false, linkBelow: Bool = false, parentDepth: Int = 0) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 avatarView(url: tweet.author.avatarUrl, size: 36)
@@ -732,11 +737,35 @@ struct TweetDetailView: View {
             .padding(.vertical, 8)
             // A reply to another reply sits one tab in
             .padding(.leading, CGFloat(depth) * 28)
+            .overlay(alignment: .topLeading) {
+                // A straight line from the avatar of the reply being answered down to the reply that answers it.
+                // Avatar: 16 from the edge, 36 wide, 8 below the row's top.
+                ZStack(alignment: .topLeading) {
+                    if linkAbove {
+                        Rectangle()
+                            .fill(ThemeManager.secondaryText.opacity(0.3))
+                            .frame(width: 2, height: 8 + 18)
+                            .padding(.leading, 16 + 18 + CGFloat(parentDepth) * 28 - 1)
+                    }
+                    if linkBelow {
+                        Rectangle()
+                            .fill(ThemeManager.secondaryText.opacity(0.3))
+                            .frame(width: 2)
+                            .frame(maxHeight: .infinity)
+                            .padding(.top, 8 + 36 + 3)
+                            .padding(.leading, 16 + 18 + CGFloat(depth) * 28 - 1)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
             
-            Rectangle()
-                .fill(ThemeManager.divider.opacity(0.6))
-                .frame(height: 0.5)
-                .padding(.leading, 62 + CGFloat(depth) * 28)
+            // The line carries on into the next row, so no divider between a reply and the one answering it
+            if !linkBelow {
+                Rectangle()
+                    .fill(ThemeManager.divider.opacity(0.6))
+                    .frame(height: 0.5)
+                    .padding(.leading, 62 + CGFloat(depth) * 28)
+            }
         }
     }
     

@@ -19,6 +19,18 @@ final class TweetDetailViewModel: ObservableObject {
     // another reply (capped, so deep chains keep a readable width). A reply to something that isn't loaded counts
     // as one level in, since it is not a direct reply to the post.
     static let maxReplyDepth = 3
+    
+    // Replies that directly follow the reply they answer are joined by a line: `below` means the next reply answers
+    // this one, `above` means this one answers the reply just before it
+    var replyThreadLinks: [String: (above: Bool, below: Bool)] {
+        var links: [String: (above: Bool, below: Bool)] = [:]
+        for i in replies.indices {
+            let answersPrevious = i > 0 && replies[i].inReplyToStatusId == replies[i - 1].id
+            let answeredByNext = i + 1 < replies.count && replies[i + 1].inReplyToStatusId == replies[i].id
+            links[replies[i].id] = (answersPrevious, answeredByNext)
+        }
+        return links
+    }
     var replyDepths: [String: Int] {
         let byId = Dictionary(replies.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var depths: [String: Int] = [:]
