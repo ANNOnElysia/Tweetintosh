@@ -194,6 +194,38 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
+    // Back to the signed-out state: nothing from the previous account stays on screen, and the login prompt shows
+    func resetForSignOut() {
+        isAuthenticated = false
+        isLoadingInitial = false
+        isRefreshing = false
+        isLoadingMore = false
+        errorMessage = nil
+        tweets = []
+        forYouTweets = []
+        followingTweets = []
+        listTweets = [:]
+        forYouPendingTweets = []
+        followingPendingTweets = []
+        listPendingTweets = [:]
+        forYouTopCursor = nil
+        forYouBottomCursor = nil
+        followingTopCursor = nil
+        followingBottomCursor = nil
+        listTopCursors = [:]
+        listBottomCursors = [:]
+        seenTweetIds = []
+        userLists = []
+        selectedListId = ""
+    }
+    
+    // After a login: the same checks and first load as at launch
+    func signedIn() {
+        isLoadingInitial = true
+        checkAuth()
+        fetchUserLists()
+    }
+    
     func checkAuth() {
         if let creds = CredentialsManager.shared.loadCredentials(), creds.isValid {
             self.isAuthenticated = true

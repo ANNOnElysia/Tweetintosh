@@ -6,6 +6,7 @@
 import Cocoa
 import SwiftUI
 import Combine
+import WebKit
 
 // SwiftUI's NSHostingView.acceptsFirstResponder walks the whole focus/responder tree on every call, and AppKit
 // asks for it on every frame while content scrolls under the transparent titlebar (window drag-region updates).
@@ -159,6 +160,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
     
+    // Tears the main window down for real and opens a fresh one. Merely closing it only hides it (see
+    // windowShouldClose), and a hidden window's timeline stays alive: it shares the same view model, keeps
+    // re-registering its own invisible scroll view with the pull-to-refresh coordinator, and so takes pull-to-refresh
+    // away from the visible one.
+    private func replaceMainWindow() {
+        let old = mainWindow
+        mainWindow = nil          // no longer the main window, so windowShouldClose lets it close
+        old?.contentView = nil    // drops the SwiftUI tree now, so its onDisappear runs before the new page appears
+        old?.close()
+        DispatchQueue.main.async { [weak self] in
+            self?.setupMainWindow()
+        }
+    }
+    
     // MARK: - NSWindowDelegate (Prevent Deallocation on Close)
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if sender == mainWindow {
@@ -175,6 +190,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if let creds = creds {
                 CredentialsManager.shared.saveCredentials(creds)
                 self.setupMainWindow()
+                // The window is already open, showing the signed-out page: start loading for the new account
+                TimelineViewModel.shared.signedIn()
+                NotificationsViewModel.shared.signedIn()
             }
             self.loginController = nil
         }
@@ -231,9 +249,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 NotificationCacheManager.shared.clearCache()
                 MediaCacheManager.shared.clearAllCache()
                 self?.settingsWindow?.close()
-                self?.mainWindow?.close()
-                self?.mainWindow = nil
-                self?.setupMainWindow()
+                TimelineViewModel.shared.resetForSignOut()
+                NotificationsViewModel.shared.resetForSignOut()
+                // The login page signs in by itself when it finds X's cookies, so they have to go too
+                WKWebsiteDataStore.default().removeData(
+                    ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+                    modifiedSince: .distantPast
+                ) {
+                    DispatchQueue.main.async { self?.replaceMainWindow() }
+                }
             },
             onClearCache: {
                 TimelineCacheManager.shared.clearCache()

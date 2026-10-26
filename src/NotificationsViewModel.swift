@@ -248,6 +248,19 @@ final class NotificationsViewModel: ObservableObject {
         loadInitialData()
     }
     
+    func resetForSignOut() {
+        items = []
+        topCursor = nil
+        bottomCursor = nil
+        isLoading = false
+        isRefreshing = false
+        isLoadingMore = false
+    }
+    
+    func signedIn() {
+        refresh(silently: false)
+    }
+    
     private func loadInitialData() {
         // 1. Load cached snapshot from disk if available
         if let snapshot = NotificationCacheManager.shared.loadCachedSnapshot(), !snapshot.items.isEmpty {
