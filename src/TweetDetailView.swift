@@ -100,8 +100,9 @@ struct TweetDetailView: View {
                             }
                         }
                     } else {
+                        let depths = viewModel.replyDepths
                         ForEach(viewModel.replies, id: \.id) { reply in
-                            replyTweetRow(reply)
+                            replyTweetRow(reply, depth: depths[reply.id] ?? 0)
                         }
                         
                         // Pagination trigger
@@ -590,7 +591,7 @@ struct TweetDetailView: View {
     
     // MARK: - Reply Tweet Row
     @ViewBuilder
-    private func replyTweetRow(_ tweet: Tweet) -> some View {
+    private func replyTweetRow(_ tweet: Tweet, depth: Int = 0) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 avatarView(url: tweet.author.avatarUrl, size: 36)
@@ -729,11 +730,13 @@ struct TweetDetailView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            // A reply to another reply sits one tab in
+            .padding(.leading, CGFloat(depth) * 28)
             
             Rectangle()
                 .fill(ThemeManager.divider.opacity(0.6))
                 .frame(height: 0.5)
-                .padding(.leading, 62)
+                .padding(.leading, 62 + CGFloat(depth) * 28)
         }
     }
     

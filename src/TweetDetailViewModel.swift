@@ -14,6 +14,31 @@ final class TweetDetailViewModel: ObservableObject {
     @Published var focalTweet: Tweet
     @Published var ancestors: [Tweet] = []
     @Published var replies: [Tweet] = []
+    
+    // How far each reply is nested: 0 for a direct reply to the post, one more than its parent when it answers
+    // another reply (capped, so deep chains keep a readable width). A reply to something that isn't loaded counts
+    // as one level in, since it is not a direct reply to the post.
+    static let maxReplyDepth = 3
+    var replyDepths: [String: Int] {
+        let byId = Dictionary(replies.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var depths: [String: Int] = [:]
+        func depth(of tweet: Tweet, visiting: Set<String>) -> Int {
+            if let known = depths[tweet.id] { return known }
+            var result = 0
+            if let parentId = tweet.inReplyToStatusId, parentId != focalTweet.id {
+                if let parent = byId[parentId], !visiting.contains(parentId) {
+                    result = depth(of: parent, visiting: visiting.union([tweet.id])) + 1
+                } else {
+                    result = 1
+                }
+            }
+            result = min(result, Self.maxReplyDepth)
+            depths[tweet.id] = result
+            return result
+        }
+        for reply in replies { _ = depth(of: reply, visiting: []) }
+        return depths
+    }
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
     @Published var error: String? = nil
