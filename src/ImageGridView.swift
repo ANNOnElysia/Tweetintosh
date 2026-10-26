@@ -178,6 +178,11 @@ struct CachedAsyncImage: View {
         .onAppear {
             loader.load(urlString: urlString)
         }
+        // The address can arrive after the view does (a profile opened from an @mention knows only the handle until
+        // X has answered), so a new address is loaded too
+        .onChange(of: urlString) {
+            loader.load(urlString: urlString)
+        }
     }
 }
 

@@ -63,7 +63,8 @@ struct QuotedTweetCard: View {
             }
             
             if !tweet.displayBodyText.isEmpty {
-                Text(tweet.displayBodyText)
+                Text(TweetText.attributed(tweet))
+                    .handlesTweetLinks()
                     .font(theme.tweetFont(size: 13))
                     .lineSpacing(theme.lineSpacing() * 0.8)
                     .foregroundColor(ThemeManager.primaryText.opacity(0.92))

@@ -356,7 +356,8 @@ struct TweetDetailView: View {
             
             // Tweet Body Text (Large, crisp typography)
             if !viewModel.focalTweet.displayBodyText.isEmpty {
-                Text(viewModel.focalTweet.displayBodyText)
+                Text(TweetText.attributed(viewModel.focalTweet))
+                    .handlesTweetLinks()
                     .font(theme.tweetFont(size: 17))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineSpacing(5)
@@ -577,7 +578,8 @@ struct TweetDetailView: View {
                 }
                 
                 if !tweet.displayBodyText.isEmpty {
-                    Text(tweet.displayBodyText)
+                    Text(TweetText.attributed(tweet))
+                        .handlesTweetLinks()
                         .font(.system(size: 13.5))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineSpacing(3)
@@ -716,7 +718,8 @@ struct TweetDetailView: View {
                     
                     // Reply Text (Clean text with leading reply mentions & trailing media URLs stripped)
                     if !tweet.displayBodyText.isEmpty {
-                        Text(tweet.displayBodyText)
+                        Text(TweetText.attributed(tweet))
+                            .handlesTweetLinks()
                             .font(.system(size: 13.5))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineSpacing(3)

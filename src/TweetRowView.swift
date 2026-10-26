@@ -101,12 +101,9 @@ struct TweetRowView: View {
                                 .foregroundColor(ThemeManager.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                                 // A deep press on a link previews it; its release must not also open the browser
-                                .environment(\.openURL, OpenURLAction { url in
-                                    PeekCoordinator.shared.suppressesActivation ? .handled : .systemAction(url)
-                                })
+                                .handlesTweetLinks()
                                 .peekable { [tweet] point, size in
-                                    PeekTextLinks.link(at: point, size: size, text: tweet.displayBodyText, links: tweet.displayLinks)
-                                        .map { PeekTarget.link($0) }
+                                    PeekTextLinks.target(at: point, size: size, text: tweet.displayBodyText, links: tweet.displayLinks)
                                 }
                         }
                         
@@ -175,18 +172,10 @@ struct TweetRowView: View {
         }
     }
     
-    // Body text with links shown by their display URL in the accent colour; clicking one opens it in the browser
+    // Body text with links shown by their display URL in the accent colour; clicking one opens it in the browser,
+    // and clicking an @mention opens that profile
     private var bodyText: Text {
-        guard !tweet.displayLinks.isEmpty else { return Text(tweet.displayBodyText) }
-        let body = tweet.displayBodyText
-        var attributed = AttributedString(body)
-        for link in tweet.displayLinks {
-            guard let range = Range(NSRange(location: link.location, length: link.length), in: body),
-                  let attrRange = Range(range, in: attributed) else { continue }
-            attributed[attrRange].foregroundColor = ThemeManager.accent
-            attributed[attrRange].link = URL(string: link.url)
-        }
-        return Text(attributed)
+        Text(TweetText.attributed(tweet))
     }
     
     private func metricItem(icon: String, count: Int) -> some View {

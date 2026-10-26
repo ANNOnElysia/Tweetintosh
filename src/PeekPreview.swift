@@ -119,11 +119,13 @@ extension View {
 // MARK: - Link Hit Testing
 
 enum PeekTextLinks {
-    // Finds the link under a point in tweet body text by laying the text out with TextKit using the same font,
-    // line spacing and width as the SwiftUI Text. A body with a single link previews it from anywhere on the text.
-    static func link(at point: CGPoint, size: CGSize, text: String, links: [DisplayLink]) -> URL? {
-        guard !links.isEmpty else { return nil }
-        if links.count == 1 { return URL(string: links[0].url) }
+    // Finds the link or @mention under a point in tweet body text by laying the text out with TextKit using the same
+    // font, line spacing and width as the SwiftUI Text. A body with a single link and no mentions previews that link
+    // from anywhere on the text.
+    static func target(at point: CGPoint, size: CGSize, text: String, links: [DisplayLink]) -> PeekTarget? {
+        let mentions = TweetText.mentionRanges(in: text, excluding: links)
+        guard !links.isEmpty || !mentions.isEmpty else { return nil }
+        if links.count == 1 && mentions.isEmpty { return URL(string: links[0].url).map(PeekTarget.link) }
 
         let theme = ThemeManager.shared
         let font: NSFont = theme.fontType == .mincho
@@ -145,8 +147,13 @@ enum PeekTextLinks {
         guard glyphRect.insetBy(dx: -6, dy: -4).contains(point) else { return nil }
         let index = layout.characterIndexForGlyph(at: glyph)
 
-        guard let hit = links.first(where: { index >= $0.location && index < $0.location + $0.length }) else { return nil }
-        return URL(string: hit.url)
+        if let hit = links.first(where: { index >= $0.location && index < $0.location + $0.length }) {
+            return URL(string: hit.url).map(PeekTarget.link)
+        }
+        if let mention = mentions.first(where: { NSLocationInRange(index, $0.range) }) {
+            return .profile(TweetUser(id: "", name: mention.name, screenName: mention.name, avatarUrl: nil, isVerified: false))
+        }
+        return nil
     }
 }
 
@@ -446,9 +453,38 @@ final class PeekPlayerView: NSView {
 
 // MARK: - Profile
 
+// A profile peek for something that is only a handle (an @mention) asks X for the rest first
+private final class PeekProfileLoader: ObservableObject {
+    @Published var user: TweetUser
+    init(user: TweetUser) {
+        self.user = user
+        loadIfNeeded()
+    }
+
+    func loadIfNeeded() {
+        guard user.id.isEmpty else { return }
+        let handle = user.screenName
+        if let profile = ProfilePreloader.shared.cached(handle)?.profile {
+            user = profile.user
+            return
+        }
+        APIClient.shared.fetchUserProfile(screenName: handle) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success(let profile) = result { self?.user = profile.user }
+            }
+        }
+    }
+}
+
 private struct PeekProfileCard: View {
-    let user: TweetUser
+    @StateObject private var loader: PeekProfileLoader
     @ObservedObject private var loc = LocalizationManager.shared
+
+    init(user: TweetUser) {
+        _loader = StateObject(wrappedValue: PeekProfileLoader(user: user))
+    }
+
+    private var user: TweetUser { loader.user }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
