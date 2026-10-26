@@ -858,28 +858,25 @@ private struct SidebarHomeFeedSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // Three parallel choices if user has lists; two if user has NO lists
+            // First row: For You and Following. Second row: Lists (with its dropdown), only if the user has lists.
             HStack(spacing: 2) {
                 // 1. 推荐 (For You)
                 feedButton(type: .forYou)
                 
                 // 2. 关注中 (Following)
                 feedButton(type: .following)
-                
-                // 3. 列表 (List with dropdown menu) - ONLY if user has lists
-                if !timelineVM.userLists.isEmpty {
-                    listFeedButton
-                }
             }
             .padding(2.5)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08), lineWidth: 0.6)
-                    )
-            )
+            .background(feedRowBackground)
+            
+            if !timelineVM.userLists.isEmpty {
+                HStack(spacing: 2) {
+                    // 3. 列表 (List with dropdown menu)
+                    listFeedButton
+                }
+                .padding(2.5)
+                .background(feedRowBackground)
+            }
             
             // If List is currently selected and user has lists, show active list banner
             if timelineVM.selectedFeed == .list && !timelineVM.userLists.isEmpty {
@@ -922,6 +919,16 @@ private struct SidebarHomeFeedSection: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+    }
+    
+    // The rounded track behind each row of feed buttons
+    private var feedRowBackground: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08), lineWidth: 0.6)
+            )
     }
     
     // Regular feed button (For You / Following)
