@@ -566,6 +566,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "展开",
             .traditionalChinese: "展開"
         ],
+        "show_replies": [
+            .english: "Show replies",
+            .japanese: "返信を表示",
+            .korean: "답글 표시",
+            .simplifiedChinese: "显示回复",
+            .traditionalChinese: "顯示回覆"
+        ],
         "profile_show_less": [
             .english: "Show less",
             .japanese: "閉じる",

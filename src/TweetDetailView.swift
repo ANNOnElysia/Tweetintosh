@@ -12,6 +12,8 @@ final class TweetDetailState: ObservableObject {
     @Published var isHoveredBack: Bool = false
     @Published var isHoveredShare: Bool = false
     @Published var copiedLinkAlert: Bool = false
+    // Conversations (by their first reply) that have been opened past the first few replies
+    @Published var expandedThreads: Set<String> = []
 }
 
 struct TweetDetailView: View {
@@ -100,14 +102,9 @@ struct TweetDetailView: View {
                             }
                         }
                     } else {
-                        let depths = viewModel.replyDepths
-                        let links = viewModel.replyThreadLinks
-                        ForEach(Array(viewModel.replies.enumerated()), id: \.element.id) { index, reply in
-                            let depth = depths[reply.id] ?? 0
-                            let link = links[reply.id] ?? (false, false)
-                            // The line above comes down from the parent's avatar, which sits one level out
-                            let parentDepth = index > 0 ? (depths[viewModel.replies[index - 1].id] ?? 0) : 0
-                            replyTweetRow(reply, depth: depth, linkAbove: link.above, linkBelow: link.below, parentDepth: parentDepth)
+                        // Each conversation is one list row: its replies run straight down, joined by a line
+                        ForEach(viewModel.replyThreads, id: \.first!.id) { thread in
+                            replyThreadView(thread)
                         }
                         
                         // Pagination trigger
@@ -591,6 +588,74 @@ struct TweetDetailView: View {
             }
             .padding(.trailing, 16)
             .padding(.bottom, 12)
+        }
+    }
+    
+    // MARK: - Reply Conversation
+    // Like the official app: under each reply, only the post author's answer to it is shown. Anything further
+    // down the conversation sits behind "Show replies", which expands inline when it is a single chain and opens
+    // the reply's own page when it branches.
+    @ViewBuilder
+    private func replyThreadView(_ thread: [Tweet]) -> some View {
+        let root = thread[0]
+        let authorId = viewModel.focalTweet.author.id
+        let authorAnswer = thread.dropFirst().first { $0.inReplyToStatusId == root.id && $0.author.id == authorId }
+        let expanded = state.expandedThreads.contains(root.id)
+        let shown: [Tweet] = expanded ? thread : (authorAnswer.map { [root, $0] } ?? [root])
+        // What "Show replies" would reveal: only offered under the author's answer
+        let tail = authorAnswer ?? root
+        let hasMore: Bool = {
+            guard !expanded, let answer = authorAnswer else { return false }
+            return answer.replyCount > 0 || root.replyCount > 1 || thread.count > 2
+        }()
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, reply in
+                let isLast = index == shown.count - 1
+                replyTweetRow(reply, linkAbove: index > 0, linkBelow: isLast ? hasMore : true)
+            }
+            if hasMore {
+                showRepliesRow {
+                    // One reply beneath each (and loaded): open it here. More than one, or not loaded: its own page.
+                    let inlineIsEnough = root.replyCount <= 1 && tail.replyCount <= 1 && thread.count > 2
+                    if inlineIsEnough {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            _ = state.expandedThreads.insert(root.id)
+                        }
+                    } else {
+                        NavigationManager.shared.openTweetDetail(root.replyCount > 1 ? root : tail)
+                    }
+                }
+            }
+        }
+    }
+    
+    // The line from the reply above ends in three dots, then the link
+    private func showRepliesRow(action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
+                VStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Circle()
+                            .fill(ThemeManager.secondaryText.opacity(0.45))
+                            .frame(width: 3.5, height: 3.5)
+                    }
+                }
+                .frame(width: 36)
+                .padding(.leading, 16)
+                Button(action: action) {
+                    Text(loc.t("show_replies"))
+                        .font(.system(size: 13.5))
+                        .foregroundColor(ThemeManager.accent)
+                        .padding(.vertical, 10)
+                        .padding(.leading, 10)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            Rectangle()
+                .fill(ThemeManager.divider.opacity(0.6))
+                .frame(height: 0.5)
         }
     }
     

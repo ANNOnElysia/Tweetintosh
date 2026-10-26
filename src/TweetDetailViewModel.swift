@@ -15,42 +15,27 @@ final class TweetDetailViewModel: ObservableObject {
     @Published var ancestors: [Tweet] = []
     @Published var replies: [Tweet] = []
     
-    // How far each reply is nested: 0 for a direct reply to the post, one more than its parent when it answers
-    // another reply (capped, so deep chains keep a readable width). A reply to something that isn't loaded counts
-    // as one level in, since it is not a direct reply to the post.
-    static let maxReplyDepth = 3
-    
-    // Replies that directly follow the reply they answer are joined by a line: `below` means the next reply answers
-    // this one, `above` means this one answers the reply just before it
-    var replyThreadLinks: [String: (above: Bool, below: Bool)] {
-        var links: [String: (above: Bool, below: Bool)] = [:]
-        for i in replies.indices {
-            let answersPrevious = i > 0 && replies[i].inReplyToStatusId == replies[i - 1].id
-            let answeredByNext = i + 1 < replies.count && replies[i + 1].inReplyToStatusId == replies[i].id
-            links[replies[i].id] = (answersPrevious, answeredByNext)
-        }
-        return links
-    }
-    var replyDepths: [String: Int] {
-        let byId = Dictionary(replies.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var depths: [String: Int] = [:]
-        func depth(of tweet: Tweet, visiting: Set<String>) -> Int {
-            if let known = depths[tweet.id] { return known }
-            var result = 0
-            if let parentId = tweet.inReplyToStatusId, parentId != focalTweet.id {
-                if let parent = byId[parentId], !visiting.contains(parentId) {
-                    result = depth(of: parent, visiting: visiting.union([tweet.id])) + 1
-                } else {
-                    result = 1
-                }
+    // Replies grouped into conversations: each direct reply to the post starts one, followed by the replies that
+    // answer it (and each other). A reply whose parent is not loaded starts its own.
+    var replyThreads: [[Tweet]] {
+        var threads: [[Tweet]] = []
+        var currentIds = Set<String>()
+        for reply in replies {
+            let continuesCurrent = !threads.isEmpty
+                && reply.inReplyToStatusId != nil
+                && reply.inReplyToStatusId != focalTweet.id
+                && currentIds.contains(reply.inReplyToStatusId!)
+            if continuesCurrent {
+                threads[threads.count - 1].append(reply)
+            } else {
+                threads.append([reply])
+                currentIds = []
             }
-            result = min(result, Self.maxReplyDepth)
-            depths[tweet.id] = result
-            return result
+            currentIds.insert(reply.id)
         }
-        for reply in replies { _ = depth(of: reply, visiting: []) }
-        return depths
+        return threads
     }
+    
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
     @Published var error: String? = nil
