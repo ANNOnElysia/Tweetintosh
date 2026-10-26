@@ -14,6 +14,8 @@ final class TweetDetailState: ObservableObject {
     @Published var copiedLinkAlert: Bool = false
     // Conversations (by their first reply) that have been opened past the first few replies
     @Published var expandedThreads: Set<String> = []
+    // Conversations whose further replies are being fetched
+    @Published var loadingThreads: Set<String> = []
 }
 
 struct TweetDetailView: View {
@@ -616,13 +618,25 @@ struct TweetDetailView: View {
             if hasMore {
                 showRepliesRow {
                     // One reply beneath each (and loaded): open it here. More than one, or not loaded: its own page.
-                    let inlineIsEnough = root.replyCount <= 1 && tail.replyCount <= 1 && thread.count > 2
-                    if inlineIsEnough {
+                    // On a reply's own page there is no further page to go to, so it always opens in place.
+                    let onReplyPage = viewModel.focalTweet.inReplyToStatusId != nil
+                    let opensInPlace = onReplyPage || (root.replyCount <= 1 && tail.replyCount <= 1)
+                    guard opensInPlace else {
+                        NavigationManager.shared.openTweetDetail(root.replyCount > 1 ? root : tail)
+                        return
+                    }
+                    let expand = {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                             _ = state.expandedThreads.insert(root.id)
+                            _ = state.loadingThreads.remove(root.id)
                         }
-                    } else {
-                        NavigationManager.shared.openTweetDetail(root.replyCount > 1 ? root : tail)
+                    }
+                    if thread.count > shown.count {
+                        expand()
+                    } else if !state.loadingThreads.contains(root.id) {
+                        // X didn't send these replies: fetch the ones under the author's answer, then show them
+                        state.loadingThreads.insert(root.id)
+                        viewModel.loadSubReplies(of: tail, completion: expand)
                     }
                 }
             }

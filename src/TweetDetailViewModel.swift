@@ -13,27 +13,65 @@ import Combine
 final class TweetDetailViewModel: ObservableObject {
     @Published var focalTweet: Tweet
     @Published var ancestors: [Tweet] = []
-    @Published var replies: [Tweet] = []
+    @Published var replies: [Tweet] = [] {
+        didSet { debugDumpReplies() } // TEMP(reply-debug)
+    }
     
-    // Replies grouped into conversations: each direct reply to the post starts one, followed by the replies that
-    // answer it (and each other). A reply whose parent is not loaded starts its own.
-    var replyThreads: [[Tweet]] {
-        var threads: [[Tweet]] = []
-        var currentIds = Set<String>()
-        for reply in replies {
-            let continuesCurrent = !threads.isEmpty
-                && reply.inReplyToStatusId != nil
-                && reply.inReplyToStatusId != focalTweet.id
-                && currentIds.contains(reply.inReplyToStatusId!)
-            if continuesCurrent {
-                threads[threads.count - 1].append(reply)
-            } else {
-                threads.append([reply])
-                currentIds = []
-            }
-            currentIds.insert(reply.id)
+    // TEMP(reply-debug)
+    private func debugDumpReplies() {
+        guard ProcessInfo.processInfo.environment["MAX_DEBUG_DETAIL"] != nil else { return }
+        let log = Logger(subsystem: "com.anno.tweetintosh", category: "replydebug")
+        let authorId = focalTweet.author.id
+        log.notice("focal=\(self.focalTweet.id, privacy: .public) author=\(authorId, privacy: .public) replies=\(self.replies.count, privacy: .public)")
+        for (i, r) in replies.enumerated() {
+            log.notice("#\(i, privacy: .public) id=\(r.id, privacy: .public) parent=\(r.inReplyToStatusId ?? "-", privacy: .public) by=\(r.author.screenName, privacy: .public)\(r.author.id == authorId ? "(AUTHOR)" : "", privacy: .public) replyCount=\(r.replyCount, privacy: .public)")
         }
-        return threads
+        for (t, thread) in replyThreads.enumerated() {
+            log.notice("thread \(t, privacy: .public): \(thread.map { $0.id.suffix(5) }.joined(separator: ","), privacy: .public)")
+        }
+    }
+    
+    // Replies grouped into conversations by who they answer, wherever X happens to list them: each reply to the
+    // post (or to something that isn't loaded) starts one, and every reply that answers a reply in it, directly or
+    // further down, belongs to it. Within a conversation the replies keep the order X sent them in.
+    var replyThreads: [[Tweet]] {
+        let byId = Dictionary(replies.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var rootOf: [String: String] = [:]
+        func root(of tweet: Tweet, visiting: Set<String>) -> String {
+            if let known = rootOf[tweet.id] { return known }
+            var result = tweet.id
+            if let parentId = tweet.inReplyToStatusId, parentId != focalTweet.id,
+               let parent = byId[parentId], !visiting.contains(parentId) {
+                result = root(of: parent, visiting: visiting.union([tweet.id]))
+            }
+            rootOf[tweet.id] = result
+            return result
+        }
+        var order: [String] = []
+        var threads: [String: [Tweet]] = [:]
+        for reply in replies {
+            let rootId = root(of: reply, visiting: [])
+            if threads[rootId] == nil { order.append(rootId) }
+            threads[rootId, default: []].append(reply)
+        }
+        // Root first, then each reply directly after the one it answers (replies to the same parent keep X's order)
+        return order.compactMap { rootId -> [Tweet]? in
+            guard let members = threads[rootId], let rootTweet = byId[rootId] else { return threads[rootId] }
+            var children: [String: [Tweet]] = [:]
+            for member in members where member.id != rootId {
+                if let parentId = member.inReplyToStatusId { children[parentId, default: []].append(member) }
+            }
+            var ordered: [Tweet] = []
+            var placed = Set<String>()
+            func place(_ tweet: Tweet) {
+                guard placed.insert(tweet.id).inserted else { return }
+                ordered.append(tweet)
+                for child in children[tweet.id] ?? [] { place(child) }
+            }
+            place(rootTweet)
+            for member in members { place(member) }   // anything that didn't hang off the tree
+            return ordered
+        }
     }
     
     @Published var isLoading: Bool = false
@@ -99,6 +137,22 @@ final class TweetDetailViewModel: ObservableObject {
                     self.applyDetail(data)
                 case .failure(let err):
                     if !hasCached { self.error = err.localizedDescription }
+                }
+            }
+        }
+    }
+    
+    // X lists only the first replies of each conversation. This fetches the replies to one of them (for "Show
+    // replies") and adds the new ones to the list, where they group under the reply they answer.
+    func loadSubReplies(of tweet: Tweet, completion: @escaping () -> Void) {
+        apiClient.fetchTweetDetail(tweetId: tweet.id) { [weak self] result in
+            DispatchQueue.main.async {
+                defer { completion() }
+                guard let self = self, case .success(let data) = result else { return }
+                var existing = Set(self.replies.map { $0.id })
+                for reply in data.replies where !existing.contains(reply.id) && !reply.isPromoted {
+                    self.replies.append(reply)
+                    existing.insert(reply.id)
                 }
             }
         }
