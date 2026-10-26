@@ -80,6 +80,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     var mainWindow: NSWindow?
     var settingsWindow: NSWindow?
+    private var tilingMonitor: Any?
     private var settingsTitleObserver: AnyCancellable?
     var loginController: LoginWindowController?
     
@@ -424,6 +425,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainMenu.addItem(windowMenuItem)
         
         NSApp.mainMenu = mainMenu
+        installWindowTilingShortcuts()
+        // Registering the Window menu as the app's window menu lets macOS add its "Move & Resize" items to it, which
+        // is also what makes the window respond to fn + Control + Left / Right (tile to that half of the screen)
+        NSApp.windowsMenu = windowMenu
+    }
+    
+    // fn + Control + Left / Right snaps the window to that half of its screen. macOS does this for apps with a standard
+    // Window menu; handling it here too means it also works when the system doesn't deliver it to the app.
+    private func installWindowTilingShortcuts() {
+        guard tilingMonitor == nil else { return }
+        tilingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard (event.keyCode == 123 || event.keyCode == 124),
+                  flags.contains(.control), flags.contains(.function),
+                  flags.isDisjoint(with: [.command, .option, .shift]),
+                  let window = event.window, window.styleMask.contains(.resizable),
+                  let screen = window.screen ?? NSScreen.main else { return event }
+            let area = screen.visibleFrame
+            let half = (area.width / 2).rounded(.down)
+            let x = event.keyCode == 123 ? area.minX : area.maxX - half
+            window.setFrame(NSRect(x: x, y: area.minY, width: half, height: area.height), display: true, animate: true)
+            return nil
+        }
     }
     
     @objc func reloadTimeline() {
