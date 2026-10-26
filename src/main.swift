@@ -5,6 +5,7 @@
 
 import Cocoa
 import SwiftUI
+import Combine
 
 // SwiftUI's NSHostingView.acceptsFirstResponder walks the whole focus/responder tree on every call, and AppKit
 // asks for it on every frame while content scrolls under the transparent titlebar (window drag-region updates).
@@ -78,6 +79,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     var mainWindow: NSWindow?
     var settingsWindow: NSWindow?
+    private var settingsTitleObserver: AnyCancellable?
     var loginController: LoginWindowController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -210,6 +212,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             defer: false
         )
         win.title = LocalizationManager.shared.t("settings")
+        // The title bar is AppKit, so it has to be told when the language changes. @Published announces the change
+        // before the new value is stored, hence the hop to the next main-queue turn before reading the title.
+        settingsTitleObserver = LocalizationManager.shared.$currentLanguage
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak win] _ in
+                win?.title = LocalizationManager.shared.t("settings")
+            }
         win.center()
         win.isReleasedWhenClosed = false
         win.backgroundColor = ThemeManager.windowBackgroundColor
