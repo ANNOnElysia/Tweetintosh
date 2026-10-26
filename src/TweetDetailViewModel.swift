@@ -75,6 +75,9 @@ final class TweetDetailViewModel: ObservableObject {
     }
     
     @Published var isLoading: Bool = false
+    @Published var isRefreshing: Bool = false
+    // Replies sent from here that X's answers may not include yet; they stay in the list until X lists them
+    private var ownPendingReplies: [String: Tweet] = [:]
     @Published var isLoadingMore: Bool = false
     @Published var error: String? = nil
     @Published var bottomCursor: String? = nil
@@ -88,6 +91,14 @@ final class TweetDetailViewModel: ObservableObject {
     init(focalTweet: Tweet, apiClient: APIClient = .shared) {
         self.focalTweet = focalTweet
         self.apiClient = apiClient
+        
+        // A reply sent from the reply sheet to this post (or to a reply shown here): show it
+        NotificationCenter.default.addObserver(forName: NSNotification.Name("Tweetintosh_ReplyPosted"), object: nil, queue: .main) { [weak self] note in
+            guard let self = self, let targetId = note.userInfo?["targetId"] as? String else { return }
+            if targetId == self.focalTweet.id || self.replies.contains(where: { $0.id == targetId }) || self.ancestors.contains(where: { $0.id == targetId }) {
+                self.refreshAfterReply()
+            }
+        }
         
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("Tweetintosh_PromotedPostsSettingDidChange"),
@@ -154,6 +165,45 @@ final class TweetDetailViewModel: ObservableObject {
                     self.replies.append(reply)
                     existing.insert(reply.id)
                 }
+            }
+        }
+    }
+    
+    // MARK: - Refresh
+    
+    // Fetches the page again (pull-down, Command+R, or after a reply was sent). New replies appear; replies already
+    // sent from this page stay in place until X starts listing them.
+    func refresh(minimumDuration: TimeInterval = 0.8) {
+        guard !isRefreshing, !isLoading else { return }
+        isRefreshing = true
+        let started = Date()
+        apiClient.fetchTweetDetail(tweetId: focalTweet.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let finish = {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        if case .success(let data) = result {
+                            self.applyDetail(data)
+                            // Keep own replies X hasn't listed yet; drop the ones it now lists
+                            let listed = Set(self.replies.map { $0.id })
+                            self.ownPendingReplies = self.ownPendingReplies.filter { !listed.contains($0.key) }
+                            self.replies.insert(contentsOf: self.ownPendingReplies.values.sorted { $0.id > $1.id }, at: 0)
+                        }
+                        self.isRefreshing = false
+                    }
+                }
+                let wait = max(0, minimumDuration - Date().timeIntervalSince(started))
+                if wait > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: finish) } else { finish() }
+            }
+        }
+    }
+    
+    // X can take a moment to list a reply that was just sent, so the page is refreshed shortly after and again a
+    // little later
+    func refreshAfterReply() {
+        for delay in [1.2, 4.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.refresh(minimumDuration: 0)
             }
         }
     }
@@ -235,6 +285,8 @@ final class TweetDetailViewModel: ObservableObject {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         self.replies.insert(newTweet, at: 0)
                     }
+                    self.ownPendingReplies[newTweetId] = newTweet
+                    self.refreshAfterReply()
                     completion?(true)
                 case .failure(let error):
                     // Restore text on failure

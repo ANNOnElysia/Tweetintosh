@@ -6,7 +6,83 @@
 import SwiftUI
 import AppKit
 
+// Pull-down to refresh for the post page, owned by the page itself (the timeline's coordinator is a single shared
+// object tied to the page underneath). Works like the timeline's: a pull past the threshold that starts to spring
+// back refreshes.
+final class DetailPullController: ObservableObject {
+    @Published var pullDistance: CGFloat = 0
+    var onTrigger: (() -> Void)?
+    var isBusy = false
+
+    private weak var scrollView: NSScrollView?
+    private var observer: Any?
+    private var peak: CGFloat = 0
+    private var triggered = false
+    private var hapticSent = false
+    private let threshold = TrackpadPullCoordinator.refreshThreshold
+
+    func attach(_ sv: NSScrollView) {
+        guard scrollView !== sv else { return }
+        if let observer = observer { NotificationCenter.default.removeObserver(observer) }
+        scrollView = sv
+        sv.verticalScrollElasticity = .allowed
+        sv.contentView.postsBoundsChangedNotifications = true
+        observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: sv.contentView, queue: .main) { [weak self] _ in
+            self?.boundsChanged()
+        }
+    }
+
+    deinit {
+        if let observer = observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    private func boundsChanged() {
+        guard let sv = scrollView, !isBusy else { return }
+        let overscroll = sv.restingTopY - sv.contentView.bounds.origin.y
+        if overscroll > 0.5 {
+            pullDistance = overscroll
+            peak = max(peak, overscroll)
+            if overscroll >= threshold && !hapticSent {
+                hapticSent = true
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            }
+            if !triggered && peak >= threshold && overscroll <= peak - 6 {
+                triggered = true
+                pullDistance = 0
+                onTrigger?()
+            }
+        } else {
+            peak = 0
+            triggered = false
+            hapticSent = false
+            if pullDistance != 0 { pullDistance = 0 }
+        }
+    }
+}
+
+// The spinner that follows a pull and stays while the page refreshes
+private struct DetailPullIndicator: View {
+    @ObservedObject var pull: DetailPullController
+    @ObservedObject var viewModel: TweetDetailViewModel
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        if viewModel.isRefreshing || pull.pullDistance > 2 {
+            let distance = viewModel.isRefreshing ? 40.0 : pull.pullDistance
+            let progress = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, distance / TrackpadPullCoordinator.refreshThreshold))
+            SVGRefreshIndicatorView(pullProgress: progress, isRefreshing: viewModel.isRefreshing, colorScheme: theme.themeColor)
+                .frame(height: 40)
+                .frame(maxWidth: .infinity)
+                .offset(y: 62 + (distance - 40.0) / 2.0)
+                .opacity(viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(distance - 2.0) / 8.0)))
+                .allowsHitTesting(false)
+        }
+    }
+}
+
 final class TweetDetailState: ObservableObject {
+    // Not published: the page must not redraw on every pull, only the spinner does
+    let pull = DetailPullController()
     @Published var isReplyingModal: Bool = false
     @Published var modalReplyTargetTweet: Tweet? = nil
     @Published var isHoveredBack: Bool = false
@@ -39,7 +115,7 @@ struct TweetDetailView: View {
             
             // Main Scrollable Thread Content
             // Spacing for top floating Liquid Glass navigation header
-            ScrollContainer(topSpacer: 54, onNearBottom: { viewModel.loadMoreReplies() }) {
+            ScrollContainer(topSpacer: 54 + (viewModel.isRefreshing ? 40 : 0), onScrollView: { state.pull.attach($0) }, onNearBottom: { viewModel.loadMoreReplies() }) {
                     
                     // 1. Ancestors (Parent tweets in the conversation thread)
                     if !viewModel.ancestors.isEmpty {
@@ -133,6 +209,9 @@ struct TweetDetailView: View {
                     Color.clear
                         .frame(height: 72)
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
+            
+            DetailPullIndicator(pull: state.pull, viewModel: viewModel)
             
             // Top Floating Liquid Glass Navigation Bar
             topNavigationBar
@@ -143,6 +222,16 @@ struct TweetDetailView: View {
         }
         .onAppear {
             viewModel.loadDetail()
+            state.pull.onTrigger = { [weak viewModel] in viewModel?.refresh() }
+        }
+        .onChange(of: viewModel.isRefreshing) {
+            state.pull.isBusy = viewModel.isRefreshing
+        }
+        // Command+R refreshes the page in front, like it does the timeline
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_RefreshTimeline"))) { _ in
+            if case .tweet(let page)? = NavigationManager.shared.overlayStack.last?.page, page.id == viewModel.focalTweet.id {
+                viewModel.refresh()
+            }
         }
         .sheet(isPresented: $state.isReplyingModal) {
             if let target = state.modalReplyTargetTweet ?? Optional(viewModel.focalTweet) {

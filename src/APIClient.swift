@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 
 enum APIError: LocalizedError {
     case unauthenticated
@@ -1627,12 +1628,15 @@ final class APIClient {
                     completion(.failure(.serverError(msg.isEmpty ? "Reply failed" : msg)))
                     return
                 }
-                guard let dataObj = json["data"] as? [String: Any],
-                      let createTweet = dataObj["create_tweet"] as? [String: Any],
-                      let tweetResults = createTweet["tweet_results"] as? [String: Any],
-                      let result = tweetResults["result"] as? [String: Any],
-                      let restId = result["rest_id"] as? String ?? (result["legacy"] as? [String: Any])?["id_str"] as? String else {
-                    completion(.failure(.serverError("Tweet created but no ID returned")))
+                // The new post is normally at result.rest_id; X wraps some posts (limited-visibility ones) in
+                // result.tweet instead
+                let result = (((json["data"] as? [String: Any])?["create_tweet"] as? [String: Any])?["tweet_results"] as? [String: Any])?["result"] as? [String: Any]
+                let post = (result?["tweet"] as? [String: Any]) ?? result
+                guard let restId = (post?["rest_id"] as? String) ?? (post?["legacy"] as? [String: Any])?["id_str"] as? String else {
+                    // Keep what X actually said, so an answer in a shape not seen before can be recognised
+                    let body = String(data: data.prefix(700), encoding: .utf8) ?? "<not text>"
+                    Logger(subsystem: "com.anno.tweetintosh", category: "graphql").error("CreateTweet answered without a post: \(body, privacy: .public)")
+                    completion(.failure(.serverError("X accepted the post but didn't confirm it, so it may not have been published. Check your profile before trying again.")))
                     return
                 }
                 completion(.success(restId))

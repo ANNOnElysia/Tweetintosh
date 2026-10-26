@@ -254,6 +254,8 @@ struct ReplyComposerSheet: View {
                 switch result {
                 case .success:
                     NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_ReplyPosted"), object: nil,
+                                                    userInfo: ["targetId": self.tweet.id])
                     self.dismiss()
                 case .failure(let err):
                     self.state.errorMessage = err.localizedDescription

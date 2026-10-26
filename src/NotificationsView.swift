@@ -83,7 +83,7 @@ struct NotificationsView: View {
             TrackpadPullCoordinator.shared.stopMonitoring(owner: "Notifications")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_RefreshTimeline"))) { _ in
-            if nav.currentTab == .notifications {
+            if nav.currentTab == .notifications && !nav.hasOverlay {
                 viewModel.refresh(silently: false)
             }
         }

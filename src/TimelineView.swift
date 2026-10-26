@@ -605,7 +605,7 @@ struct MainTimelineView: View {
             TrackpadPullCoordinator.shared.stopMonitoring(owner: "Timeline")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_RefreshTimeline"))) { _ in
-            if nav.currentTab == .home {
+            if nav.currentTab == .home && !nav.hasOverlay {
                 viewModel.reloadFromShortcut()
             }
         }
