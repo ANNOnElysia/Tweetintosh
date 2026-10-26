@@ -261,6 +261,14 @@ final class NavigationManager: ObservableObject {
                 let hasCtrl = event.modifierFlags.contains(.control)
                 let keyCode = event.keyCode
                 
+                // Command + V (keyCode 9) while composing, with an image or media file on the clipboard -> attach it.
+                // Anything else on the clipboard (text) pastes as usual.
+                if keyCode == 9 && hasCmd && !hasOption && !hasCtrl && self.isShowingCompose
+                    && !event.modifierFlags.contains(.shift) && MediaAttachments.hasPastableMedia(.general) {
+                    NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_PasteMedia"), object: nil)
+                    return nil
+                }
+                
                 // Option + A (keyCode 0) while composing -> Attach media
                 if keyCode == 0 && hasOption && !hasCmd && !hasCtrl && self.isShowingCompose {
                     NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_AttachMedia"), object: nil)

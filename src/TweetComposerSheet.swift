@@ -78,6 +78,18 @@ struct TweetComposerSheet: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_AttachMedia"))) { _ in
             chooseMedia()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_PasteMedia"))) { _ in
+            addMedia(MediaAttachments.pastedMedia(from: .general), pasted: true)
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url = url else { return }
+                    DispatchQueue.main.async { addMedia([url], pasted: false) }
+                }
+            }
+            return true
+        }
         .onDisappear {
             state.attachments.filter(\.isTemporaryCopy).forEach { try? FileManager.default.removeItem(at: $0.url) }
         }
@@ -290,20 +302,29 @@ struct TweetComposerSheet: View {
     private func chooseMedia() {
         guard !state.isSending else { return }
         MediaAttachments.pick(parent: nil) { urls in
-            state.errorMessage = nil
-            for url in urls {
+            addMedia(urls, pasted: false)
+        }
+    }
+    
+    // Adds chosen, pasted or dropped files, checking each against the supported formats and X's limits
+    private func addMedia(_ urls: [URL], pasted: Bool) {
+        guard !state.isSending else { return }
+        state.errorMessage = nil
+        for url in urls {
+            do {
+                var attachment = try MediaAttachments.makeAttachment(from: url)
+                // A pasted image only exists as the temporary file made for it, which goes with the attachment
+                if pasted && !attachment.isTemporaryCopy { attachment = attachment.asTemporaryCopy() }
                 do {
-                    let attachment = try MediaAttachments.makeAttachment(from: url)
-                    do {
-                        try MediaAttachments.validateAdding(attachment, to: state.attachments)
-                    } catch {
-                        if attachment.isTemporaryCopy { try? FileManager.default.removeItem(at: attachment.url) }
-                        throw error
-                    }
-                    state.attachments.append(attachment)
+                    try MediaAttachments.validateAdding(attachment, to: state.attachments)
                 } catch {
-                    state.errorMessage = error.localizedDescription
+                    if attachment.isTemporaryCopy { try? FileManager.default.removeItem(at: attachment.url) }
+                    throw error
                 }
+                state.attachments.append(attachment)
+            } catch {
+                if pasted { try? FileManager.default.removeItem(at: url) }
+                state.errorMessage = error.localizedDescription
             }
         }
     }

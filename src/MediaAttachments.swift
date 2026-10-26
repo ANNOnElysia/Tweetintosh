@@ -42,6 +42,13 @@ struct ComposerAttachment: Identifiable {
     let isTemporaryCopy: Bool
 }
 
+extension ComposerAttachment {
+    // The same attachment, flagged so its file is removed with it (used for pasted images saved to a temporary file)
+    func asTemporaryCopy() -> ComposerAttachment {
+        ComposerAttachment(url: url, kind: kind, mimeType: mimeType, byteCount: byteCount, thumbnail: thumbnail, isTemporaryCopy: true)
+    }
+}
+
 enum MediaAttachmentError: LocalizedError {
     case unsupported(String)
     case tooLarge(String, Int)
@@ -91,6 +98,31 @@ enum MediaAttachments {
         }
     }
 
+    // MARK: Pasting
+
+    // Files copied in Finder, or an image copied from anywhere (a screenshot, "Copy Image" in a browser). Plain text,
+    // even alongside an image, stays a normal paste unless the text is just the image's address.
+    static func pastedMedia(from pasteboard: NSPasteboard) -> [URL] {
+        let fileURLs = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        let supported = fileURLs.filter { url in
+            UTType(filenameExtension: url.pathExtension.lowercased()).map { type in pickerTypes.contains { type.conforms(to: $0) } } ?? false
+        }
+        if !supported.isEmpty { return supported }
+        guard fileURLs.isEmpty else { return [] }
+
+        if let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty,
+           !(text.hasPrefix("http") && !text.contains(" ") && !text.contains("\n")) { return [] }
+        guard let image = NSImage(pasteboard: pasteboard), let png = pngData(from: image) else { return [] }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("pasted-\(UUID().uuidString.prefix(6)).png")
+        guard (try? png.write(to: url)) != nil else { return [] }
+        return [url]
+    }
+
+    static func hasPastableMedia(_ pasteboard: NSPasteboard) -> Bool {
+        if pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) { return !pastedMedia(from: pasteboard).isEmpty }
+        return pasteboard.canReadObject(forClasses: [NSImage.self], options: nil) && !pastedMedia(from: pasteboard).isEmpty
+    }
+
     // Checks the file against the supported formats and X's size limits and prepares it for upload
     static func makeAttachment(from url: URL) throws -> ComposerAttachment {
         let name = url.lastPathComponent
@@ -137,6 +169,11 @@ enum MediaAttachments {
         guard let first = current.first else { return }
         guard first.kind == .image, new.kind == .image else { throw MediaAttachmentError.mixedKinds }
         guard current.count < maxImages else { throw MediaAttachmentError.tooManyImages }
+    }
+
+    private static func pngData(from image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
     }
 
     private static func jpegData(from image: NSImage) -> Data? {
