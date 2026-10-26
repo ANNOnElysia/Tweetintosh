@@ -327,6 +327,9 @@ final class NavigationManager: ObservableObject {
                         return nil
                     }
                     self.lastReturnPress = canCompose ? now : 0
+                    // The first press is the first half of the double press: swallow it, or macOS beeps at a Return
+                    // that nothing handles
+                    if canCompose { return nil }
                 }
                 
                 // Command + [ (keyCode 33) -> Back from Tweet Detail
