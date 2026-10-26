@@ -254,6 +254,12 @@ final class NavigationManager: ObservableObject {
                 let hasCtrl = event.modifierFlags.contains(.control)
                 let keyCode = event.keyCode
                 
+                // Option + A (keyCode 0) while composing -> Attach media
+                if keyCode == 0 && hasOption && !hasCmd && !hasCtrl && self.isShowingCompose {
+                    NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_AttachMedia"), object: nil)
+                    return nil
+                }
+                
                 // If Esc key is pressed
                 if keyCode == 53 {
                     if self.isShowingCompose {

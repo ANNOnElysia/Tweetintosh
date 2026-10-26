@@ -1436,11 +1436,93 @@ final class APIClient {
         createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, completion: completion)
     }
     
+    // MARK: - Media Upload
+    
+    /// Uploads one photo, GIF or video the way X's own apps do (INIT, then the file in chunks, then FINALIZE, then
+    /// waiting for X to process videos and GIFs) and returns the media id to attach to a post.
+    func uploadMedia(_ attachment: ComposerAttachment, progress: ((Double) -> Void)? = nil) async throws -> String {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else { throw APIError.unauthenticated }
+        let base = "https://upload.x.com/i/media/upload.json"
+        
+        func request(_ query: [String: String], method: String = "POST") throws -> URLRequest {
+            var comps = URLComponents(string: base)!
+            comps.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+            guard let url = comps.url else { throw APIError.invalidResponse }
+            var req = URLRequest(url: url)
+            req.httpMethod = method
+            req.timeoutInterval = 120
+            req.setValue(bearerToken, forHTTPHeaderField: "authorization")
+            req.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+            req.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+            req.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+            req.setValue("OAuth2Session", forHTTPHeaderField: "x-twitter-auth-type")
+            req.setValue("https://x.com/compose/post", forHTTPHeaderField: "referer")
+            req.setValue("https://x.com", forHTTPHeaderField: "origin")
+            req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+            return req
+        }
+        func send(_ req: URLRequest) async throws -> [String: Any] {
+            let (data, response) = try await session.data(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status) else {
+                throw APIError.serverError(Self.errorMessage(from: data) ?? "HTTP \(status)")
+            }
+            return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        }
+        
+        let fileData = try Data(contentsOf: attachment.url, options: .mappedIfSafe)
+        
+        // 1. INIT
+        let initResponse = try await send(request([
+            "command": "INIT", "total_bytes": String(fileData.count),
+            "media_type": attachment.mimeType, "media_category": attachment.kind.uploadCategory
+        ]))
+        guard let mediaId = initResponse["media_id_string"] as? String else { throw APIError.parseError }
+        
+        // 2. APPEND, in chunks
+        let chunkSize = 2 * 1024 * 1024
+        var offset = 0, index = 0
+        while offset < fileData.count {
+            let chunk = fileData.subdata(in: offset..<min(offset + chunkSize, fileData.count))
+            let boundary = "Boundary-\(UUID().uuidString)"
+            var body = Data()
+            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"media\"; filename=\"blob\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+            body.append(chunk)
+            body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+            var req = try request(["command": "APPEND", "media_id": mediaId, "segment_index": String(index)])
+            req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+            _ = try await send(req)
+            offset += chunk.count
+            index += 1
+            progress?(Double(offset) / Double(max(fileData.count, 1)))
+        }
+        
+        // 3. FINALIZE, then wait while X processes videos and GIFs
+        var finalize = try await send(request(["command": "FINALIZE", "media_id": mediaId]))
+        var waited = 0.0
+        while let info = finalize["processing_info"] as? [String: Any], let state = info["state"] as? String {
+            if state == "succeeded" { break }
+            if state == "failed" {
+                let message = (info["error"] as? [String: Any])?["message"] as? String
+                throw APIError.serverError(message ?? "X couldn't process the media")
+            }
+            let delay = max(1.0, (info["check_after_secs"] as? Double) ?? 2.0)
+            waited += delay
+            if waited > 180 { throw APIError.serverError("X took too long to process the media") }
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            finalize = try await send(request(["command": "STATUS", "media_id": mediaId], method: "GET"))
+        }
+        return mediaId
+    }
+    
     /// Create a new tweet (standalone post, reply, or quote post)
     func createTweet(
         text: String,
         replyToTweetId: String? = nil,
         attachmentUrl: String? = nil,
+        mediaIds: [String] = [],
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
         guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
@@ -1493,7 +1575,7 @@ final class APIClient {
             "tweet_text": text,
             "dark_request": false,
             "media": [
-                "media_entities": [],
+                "media_entities": mediaIds.map { ["media_id": $0, "tagged_users": []] as [String: Any] },
                 "possibly_sensitive": false
             ],
             "semantic_annotation_ids": []

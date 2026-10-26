@@ -759,6 +759,7 @@ final class TimelineViewModel: ObservableObject {
     func postTweet(
         text: String,
         quoting tweet: Tweet? = nil,
+        mediaIds: [String] = [],
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
         let attachmentUrl = tweet.map { "https://x.com/\($0.author.screenName)/status/\($0.id)" }
@@ -769,7 +770,7 @@ final class TimelineViewModel: ObservableObject {
             }
         }
         
-        APIClient.shared.createTweet(text: text, attachmentUrl: attachmentUrl) { [weak self] result in
+        APIClient.shared.createTweet(text: text, attachmentUrl: attachmentUrl, mediaIds: mediaIds) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {

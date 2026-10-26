@@ -272,6 +272,55 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "已登录",
             .traditionalChinese: "已登入"
         ],
+        "attach_media": [
+            .english: "Attach media",
+            .japanese: "メディアを添付",
+            .korean: "미디어 첨부",
+            .simplifiedChinese: "添加媒体",
+            .traditionalChinese: "新增媒體"
+        ],
+        "media_unsupported": [
+            .english: "{name} isn't a supported format. Use JPG, PNG, GIF, WebP, MP4 or MOV.",
+            .japanese: "{name} は対応していない形式です。JPG、PNG、GIF、WebP、MP4、MOV を使用してください。",
+            .korean: "{name}은(는) 지원되지 않는 형식입니다. JPG, PNG, GIF, WebP, MP4, MOV를 사용하세요.",
+            .simplifiedChinese: "{name} 不是支持的格式。请使用 JPG、PNG、GIF、WebP、MP4 或 MOV。",
+            .traditionalChinese: "{name} 不是支援的格式。請使用 JPG、PNG、GIF、WebP、MP4 或 MOV。"
+        ],
+        "media_too_large": [
+            .english: "{name} is too large (the limit is {limit}).",
+            .japanese: "{name} は大きすぎます（上限 {limit}）。",
+            .korean: "{name}이(가) 너무 큽니다(최대 {limit}).",
+            .simplifiedChinese: "{name} 太大了（上限 {limit}）。",
+            .traditionalChinese: "{name} 太大了（上限 {limit}）。"
+        ],
+        "media_too_many": [
+            .english: "A post can have up to 4 photos.",
+            .japanese: "1つのポストに添付できる写真は最大4枚です。",
+            .korean: "게시물에는 사진을 최대 4장까지 첨부할 수 있습니다.",
+            .simplifiedChinese: "一条帖子最多可添加 4 张照片。",
+            .traditionalChinese: "一則貼文最多可新增 4 張照片。"
+        ],
+        "media_mixed": [
+            .english: "A post can have up to 4 photos, or one GIF, or one video — not a mix.",
+            .japanese: "1つのポストに添付できるのは、写真（最大4枚）、GIF 1つ、動画 1つのいずれかです。",
+            .korean: "게시물에는 사진(최대 4장), GIF 1개, 동영상 1개 중 하나만 첨부할 수 있습니다.",
+            .simplifiedChinese: "一条帖子可添加最多 4 张照片、1 个 GIF 或 1 个视频，不能混合。",
+            .traditionalChinese: "一則貼文可新增最多 4 張照片、1 個 GIF 或 1 個影片，不能混合。"
+        ],
+        "media_unreadable": [
+            .english: "Couldn't read {name}.",
+            .japanese: "{name} を読み込めませんでした。",
+            .korean: "{name}을(를) 읽을 수 없습니다.",
+            .simplifiedChinese: "无法读取 {name}。",
+            .traditionalChinese: "無法讀取 {name}。"
+        ],
+        "media_uploading": [
+            .english: "Uploading media {current} of {total}…",
+            .japanese: "メディアをアップロード中 {current}/{total}…",
+            .korean: "미디어 업로드 중 {current}/{total}…",
+            .simplifiedChinese: "正在上传媒体 {current}/{total}…",
+            .traditionalChinese: "正在上傳媒體 {current}/{total}…"
+        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",
