@@ -4,8 +4,6 @@
 //
 
 import Foundation
-import WebKit
-import Security
 
 struct AuthCredentials: Codable, Equatable {
     var authToken: String
@@ -24,69 +22,19 @@ struct AuthCredentials: Codable, Equatable {
     }
 }
 
+// The login used for every request is the active account's (see Accounts.swift)
 final class CredentialsManager {
     static let shared = CredentialsManager()
-    
-    private let fileURL: URL
-    
-    private init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let maxDir = appSupport.appendingPathComponent("Tweetintosh", isDirectory: true)
-        try? FileManager.default.createDirectory(at: maxDir, withIntermediateDirectories: true)
-        self.fileURL = maxDir.appendingPathComponent("credentials.json")
-    }
+    private init() {}
     
     func loadCredentials() -> AuthCredentials? {
-        guard let data = try? Data(contentsOf: fileURL),
-              let creds = try? JSONDecoder().decode(AuthCredentials.self, from: data) else {
-            return nil
-        }
-        return creds.isValid ? creds : nil
+        guard let creds = AccountManager.shared.active?.credentials, creds.isValid else { return nil }
+        return creds
     }
     
-    func saveCredentials(_ creds: AuthCredentials) {
-        if let data = try? JSONEncoder().encode(creds) {
-            try? data.write(to: fileURL, options: .atomic)
-        }
-    }
-    
-    func clearCredentials() {
-        try? FileManager.default.removeItem(at: fileURL)
-    }
-    
-    /// Attempt to silently extract existing auth cookies from WKWebsiteDataStore without showing any UI
+    /// The signed-in account's login, if there is one (nothing is read from the web view's cookies any more: the
+    /// login window clears them before every sign-in, so they never belong to an account the app knows about)
     func tryExtractFromDefaultStore(completion: @escaping (AuthCredentials?) -> Void) {
-        if let existing = loadCredentials() {
-            completion(existing)
-            return
-        }
-        
-        let store = WKWebsiteDataStore.default().httpCookieStore
-        store.getAllCookies { [weak self] cookies in
-            var authToken: String?
-            var ct0: String?
-            
-            for cookie in cookies {
-                if cookie.domain.contains("x.com") || cookie.domain.contains("twitter.com") {
-                    if cookie.name == "auth_token" && !cookie.value.isEmpty {
-                        authToken = cookie.value
-                    } else if cookie.name == "ct0" && !cookie.value.isEmpty {
-                        ct0 = cookie.value
-                    }
-                }
-            }
-            
-            if let token = authToken, let csrf = ct0 {
-                let creds = AuthCredentials(authToken: token, ct0: csrf, userId: nil, screenName: nil, updatedAt: Date())
-                self?.saveCredentials(creds)
-                DispatchQueue.main.async {
-                    completion(creds)
-                }
-            } else {
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
-            }
-        }
+        completion(loadCredentials())
     }
 }

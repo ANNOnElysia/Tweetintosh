@@ -15,15 +15,11 @@ struct NotificationSnapshot: Codable {
 final class NotificationCacheManager {
     static let shared = NotificationCacheManager()
     
-    private let cacheURL: URL
+    // The active account's data folder, so each account keeps its own cached notifications
+    private var cacheURL: URL { AccountManager.shared.activeDirectory.appendingPathComponent("notifications_cache.json") }
     private let queue = DispatchQueue(label: "com.anno.tweetintosh.notifcache", qos: .utility)
     
-    private init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let maxDir = appSupport.appendingPathComponent("Tweetintosh", isDirectory: true)
-        try? FileManager.default.createDirectory(at: maxDir, withIntermediateDirectories: true)
-        self.cacheURL = maxDir.appendingPathComponent("notifications_cache.json")
-    }
+    private init() {}
     
     func loadCachedSnapshot() -> NotificationSnapshot? {
         guard let data = try? Data(contentsOf: cacheURL) else { return nil }
@@ -33,8 +29,10 @@ final class NotificationCacheManager {
     }
     
     func saveSnapshot(items: [NotificationItem], topCursor: String?, bottomCursor: String?) {
-        queue.async { [weak self] in
-            guard let self = self else { return }
+        // The file is chosen now, not when the write runs, so a write queued just before an account switch
+        // can't land in the next account's folder
+        let url = cacheURL
+        queue.async {
             let snapshot = NotificationSnapshot(
                 items: Array(items.prefix(100)),
                 topCursor: topCursor,
@@ -44,15 +42,15 @@ final class NotificationCacheManager {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             if let data = try? encoder.encode(snapshot) {
-                try? data.write(to: self.cacheURL, options: .atomic)
+                try? data.write(to: url, options: .atomic)
             }
         }
     }
     
     func clearCache() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            try? FileManager.default.removeItem(at: self.cacheURL)
+        let url = cacheURL
+        queue.async {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 }

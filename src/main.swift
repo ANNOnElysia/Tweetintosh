@@ -86,6 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
         setupMainWindow()
+        AccountManager.shared.refreshActiveInfo()
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
     }
     
@@ -164,13 +165,58 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // windowShouldClose), and a hidden window's timeline stays alive: it shares the same view model, keeps
     // re-registering its own invisible scroll view with the pull-to-refresh coordinator, and so takes pull-to-refresh
     // away from the visible one.
-    private func replaceMainWindow() {
+    private func replaceMainWindow(then afterwards: (() -> Void)? = nil) {
         let old = mainWindow
         mainWindow = nil          // no longer the main window, so windowShouldClose lets it close
         old?.contentView = nil    // drops the SwiftUI tree now, so its onDisappear runs before the new page appears
         old?.close()
         DispatchQueue.main.async { [weak self] in
             self?.setupMainWindow()
+            afterwards?()
+        }
+    }
+    
+    // MARK: - Accounts
+    
+    // Everything on screen belongs to the account that was active: empty it, open the window afresh and load the
+    // active account's timeline and notifications
+    private func reloadForActiveAccount() {
+        TimelineViewModel.shared.resetForSignOut()
+        NotificationsViewModel.shared.resetForSignOut()
+        NavigationManager.shared.resetForAccountChange()
+        replaceMainWindow {
+            TimelineViewModel.shared.signedIn()
+            NotificationsViewModel.shared.signedIn()
+            AccountManager.shared.refreshActiveInfo()
+        }
+    }
+    
+    private func switchAccount(to id: String) {
+        guard id != AccountManager.shared.activeId else { return }
+        AccountManager.shared.setActive(id)
+        reloadForActiveAccount()
+    }
+    
+    private func signOutActiveAccount() {
+        TimelineCacheManager.shared.clearCache()
+        NotificationCacheManager.shared.clearCache()
+        MediaCacheManager.shared.clearAllCache()
+        let next = AccountManager.shared.removeActive()
+        if next != nil {
+            // Another account is signed in: carry on as that one
+            reloadForActiveAccount()
+            return
+        }
+        settingsWindow?.close()
+        TimelineViewModel.shared.resetForSignOut()
+        NotificationsViewModel.shared.resetForSignOut()
+        NavigationManager.shared.resetForAccountChange()
+        // The login page signs in by itself when it finds X's cookies, so they have to go too
+        WKWebsiteDataStore.default().removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: .distantPast
+        ) {
+            DispatchQueue.main.async { [weak self] in self?.replaceMainWindow() }
         }
     }
     
@@ -187,14 +233,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func startLoginFlow() {
         loginController = LoginWindowController { [weak self] creds in
             guard let self = self else { return }
-            if let creds = creds {
-                CredentialsManager.shared.saveCredentials(creds)
-                self.setupMainWindow()
-                // The window is already open, showing the signed-out page: start loading for the new account
-                TimelineViewModel.shared.signedIn()
-                NotificationsViewModel.shared.signedIn()
-            }
             self.loginController = nil
+            guard let creds = creds else { return }
+            // Ask X who just signed in, add them to the accounts and switch to them
+            AccountManager.fetchInfo(for: creds) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let info):
+                        AccountManager.shared.addOrUpdate(creds: creds, info: info)
+                        self.reloadForActiveAccount()
+                    case .failure:
+                        let alert = NSAlert()
+                        alert.messageText = "Couldn't read the account that signed in"
+                        alert.informativeText = "X didn't answer. Check the connection and try adding the account again."
+                        alert.runModal()
+                    }
+                }
+            }
         }
         loginController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -222,7 +277,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         
-        let settingsRect = NSRect(x: 0, y: 0, width: 480, height: 660)
+        let settingsRect = NSRect(x: 0, y: 0, width: 480, height: 860)
         let win = NSWindow(
             contentRect: settingsRect,
             styleMask: [.titled, .closable],
@@ -244,20 +299,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         let settingsView = SettingsView(
             onSignOut: { [weak self] in
-                CredentialsManager.shared.clearCredentials()
-                TimelineCacheManager.shared.clearCache()
-                NotificationCacheManager.shared.clearCache()
-                MediaCacheManager.shared.clearAllCache()
-                self?.settingsWindow?.close()
-                TimelineViewModel.shared.resetForSignOut()
-                NotificationsViewModel.shared.resetForSignOut()
-                // The login page signs in by itself when it finds X's cookies, so they have to go too
-                WKWebsiteDataStore.default().removeData(
-                    ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
-                    modifiedSince: .distantPast
-                ) {
-                    DispatchQueue.main.async { self?.replaceMainWindow() }
-                }
+                self?.signOutActiveAccount()
+            },
+            onSwitchAccount: { [weak self] id in
+                self?.switchAccount(to: id)
+            },
+            onAddAccount: { [weak self] in
+                self?.startLoginFlow()
             },
             onClearCache: {
                 TimelineCacheManager.shared.clearCache()

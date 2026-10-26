@@ -62,6 +62,17 @@ final class NavigationManager: ObservableObject {
     @Published var isShowingCompose: Bool = false
     @Published var composeQuotedTweet: Tweet? = nil
     
+    // Back to a clean Home page, as after launching: used when the active account changes
+    func resetForAccountChange() {
+        overlayStack = []
+        currentTab = .home
+        isShowingCompose = false
+        composeQuotedTweet = nil
+        replyTargetTweet = nil
+        isSearchActive = false
+        searchQuery = ""
+    }
+    
     func openComposer(quoting tweet: Tweet? = nil) {
         if let tweet = tweet, !EngagementGuard.allows(tweet) { return }
         DispatchQueue.main.async {

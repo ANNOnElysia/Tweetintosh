@@ -244,6 +244,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "清理本地推文缓存",
             .traditionalChinese: "清除本機推文快取"
         ],
+        "accounts": [
+            .english: "Accounts",
+            .japanese: "アカウント",
+            .korean: "계정",
+            .simplifiedChinese: "账户",
+            .traditionalChinese: "帳戶"
+        ],
+        "add_account": [
+            .english: "Add account",
+            .japanese: "アカウントを追加",
+            .korean: "계정 추가",
+            .simplifiedChinese: "添加账户",
+            .traditionalChinese: "新增帳戶"
+        ],
+        "switch_account": [
+            .english: "Switch to this account",
+            .japanese: "このアカウントに切り替える",
+            .korean: "이 계정으로 전환",
+            .simplifiedChinese: "切换到此账户",
+            .traditionalChinese: "切換到此帳戶"
+        ],
+        "account_signed_in": [
+            .english: "Signed in",
+            .japanese: "ログイン中",
+            .korean: "로그인됨",
+            .simplifiedChinese: "已登录",
+            .traditionalChinese: "已登入"
+        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",

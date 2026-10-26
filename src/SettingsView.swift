@@ -317,11 +317,85 @@ struct SettingsView: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var mediaCache = MediaCacheManager.shared
     
+    @ObservedObject var accountManager = AccountManager.shared
+    
     var onSignOut: () -> Void
+    var onSwitchAccount: (String) -> Void
+    var onAddAccount: () -> Void
     var onClearCache: () -> Void
     
+    // Accounts: tap one to switch to it, or add another
+    private var accountsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(loc.t("accounts"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ThemeManager.secondaryText)
+            
+            ForEach(accountManager.accounts) { account in
+                let isActive = account.id == accountManager.active?.id
+                Button {
+                    onSwitchAccount(account.id)
+                } label: {
+                    HStack(spacing: 10) {
+                        Group {
+                            if let url = account.avatarUrl {
+                                CachedAsyncImage(urlString: url, targetSize: CGSize(width: 32, height: 32))
+                            } else {
+                                Circle().fill(ThemeManager.secondaryText.opacity(0.25))
+                            }
+                        }
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                        
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(account.name.isEmpty ? loc.t("account_signed_in") : account.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(ThemeManager.primaryText)
+                                .lineLimit(1)
+                            if !account.screenName.isEmpty {
+                                Text("@\(account.screenName)")
+                                    .font(.system(size: 11.5))
+                                    .foregroundColor(ThemeManager.secondaryText)
+                                    .lineLimit(1)
+                            }
+                        }
+                        Spacer()
+                        if isActive {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 15))
+                                .foregroundColor(ThemeManager.accent)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help(isActive ? "" : loc.t("switch_account"))
+            }
+            
+            Button(action: onAddAccount) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 13))
+                    Text(loc.t("add_account"))
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundColor(ThemeManager.accent)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(12)
+        .background(cardBackground)
+    }
+    
     var body: some View {
+        ScrollView(showsIndicators: false) {
         VStack(alignment: .leading, spacing: 14) {
+            // 0. Accounts
+            accountsSection
+            
             // 1. Language Section
             VStack(alignment: .leading, spacing: 8) {
                 Text(loc.t("language"))
@@ -513,7 +587,7 @@ struct SettingsView: View {
             .padding(12)
             .background(cardBackground)
             
-            Spacer()
+            Spacer(minLength: 8)
             
             // Footer
             HStack {
@@ -527,7 +601,8 @@ struct SettingsView: View {
         .padding(.horizontal, 18)
         .padding(.top, 16)
         .padding(.bottom, 14)
-        .frame(width: 480, height: 660)
+        }
+        .frame(width: 480, height: 860)
         .background(ThemeManager.background)
     }
     
