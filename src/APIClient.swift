@@ -470,8 +470,18 @@ final class APIClient {
             quotedTweet: quotedTweet.map { QuotedTweetBox(tweet: $0) },
             inReplyToScreenName: inReplyToScreenName,
             inReplyToStatusId: inReplyToStatusId,
-            links: Self.parseLinks(legacy["entities"] as? [String: Any])
+            links: Self.parseLinks(legacy["entities"] as? [String: Any]),
+            article: Self.parseArticlePreview(result["article"] as? [String: Any])
         )
+    }
+    
+    // The article attached to a post: its title, opening lines and cover. The text itself comes from fetchArticle.
+    static func parseArticlePreview(_ article: [String: Any]?) -> TweetArticle? {
+        guard let entity = (article?["article_results"] as? [String: Any])?["result"] as? [String: Any],
+              let id = entity["rest_id"] as? String,
+              let title = entity["title"] as? String else { return nil }
+        let cover = ((entity["cover_media"] as? [String: Any])?["media_info"] as? [String: Any])?["original_img_url"] as? String
+        return TweetArticle(id: id, title: title, previewText: (entity["preview_text"] as? String) ?? "", coverUrl: cover)
     }
     
     // A GraphQL user "result" object (tweet authors, profiles)

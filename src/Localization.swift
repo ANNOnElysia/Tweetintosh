@@ -349,6 +349,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "暂时没有可显示的用户。",
             .traditionalChinese: "暫時沒有可顯示的使用者。"
         ],
+        "article_label": [
+            .english: "Article",
+            .japanese: "記事",
+            .korean: "아티클",
+            .simplifiedChinese: "文章",
+            .traditionalChinese: "文章"
+        ],
+        "article_read_time": [
+            .english: "{minutes} min read",
+            .japanese: "読了 約{minutes}分",
+            .korean: "읽는 시간 {minutes}분",
+            .simplifiedChinese: "阅读约 {minutes} 分钟",
+            .traditionalChinese: "閱讀約 {minutes} 分鐘"
+        ],
+        "article_load_failed": [
+            .english: "Couldn't load this article.",
+            .japanese: "この記事を読み込めませんでした。",
+            .korean: "이 아티클을 불러올 수 없습니다.",
+            .simplifiedChinese: "无法加载这篇文章。",
+            .traditionalChinese: "無法載入這篇文章。"
+        ],
+        "article_embedded_post": [
+            .english: "View the embedded post",
+            .japanese: "埋め込まれたポストを見る",
+            .korean: "삽입된 게시물 보기",
+            .simplifiedChinese: "查看内嵌的帖子",
+            .traditionalChinese: "查看內嵌的貼文"
+        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",

@@ -453,6 +453,11 @@ struct TweetDetailView: View {
                     .textSelection(.enabled)
             }
             
+            // An X Article attached to the post: opens the reader
+            if viewModel.focalTweet.linksToArticle {
+                TweetArticleCard(tweet: viewModel.focalTweet)
+            }
+            
             // Media Grid (Images / Video)
             if !viewModel.focalTweet.media.isEmpty {
                 ImageGridView(mediaList: viewModel.focalTweet.media, tweet: viewModel.focalTweet)

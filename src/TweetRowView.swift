@@ -113,6 +113,12 @@ struct TweetRowView: View {
                                 .padding(.top, 2)
                         }
                         
+                        // An X Article: shown as a card that opens the reader
+                        if tweet.linksToArticle {
+                            TweetArticleCard(tweet: tweet)
+                                .padding(.top, 4)
+                        }
+                        
                         // Embedded Quoted Tweet (if any)
                         if let quoted = tweet.quoted {
                             QuotedTweetCard(tweet: quoted)

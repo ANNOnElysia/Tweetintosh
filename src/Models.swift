@@ -143,6 +143,14 @@ final class QuotedTweetBox: Codable, Hashable {
     }
 }
 
+// The preview of an X Article attached to a post (the full text is fetched when it is opened)
+struct TweetArticle: Codable, Hashable {
+    var id: String
+    var title: String
+    var previewText: String
+    var coverUrl: String?
+}
+
 struct Tweet: Codable, Hashable, Identifiable {
     var id: String
     var text: String
@@ -167,9 +175,15 @@ struct Tweet: Codable, Hashable, Identifiable {
     var inReplyToStatusId: String? = nil
     var isPromoted: Bool = false
     var links: [TweetLink] = []
+    var article: TweetArticle? = nil
     
     var quoted: Tweet? {
         quotedTweet?.tweet
+    }
+    
+    // The post links to an X Article (whether or not X sent the article's preview along with it)
+    var linksToArticle: Bool {
+        article != nil || links.contains { $0.expandedUrl.contains("/i/article/") }
     }
     
     // Cached precomputed strings for zero-cost 120Hz scrolling
@@ -212,6 +226,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         case inReplyToScreenName, inReplyToStatusId
         case isPromoted
         case links
+        case article
     }
     
     init(
@@ -234,7 +249,8 @@ struct Tweet: Codable, Hashable, Identifiable {
         inReplyToScreenName: String? = nil,
         inReplyToStatusId: String? = nil,
         isPromoted: Bool = false,
-        links: [TweetLink] = []
+        links: [TweetLink] = [],
+        article: TweetArticle? = nil
     ) {
         self.id = id
         self.text = text
@@ -256,6 +272,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         self.inReplyToStatusId = inReplyToStatusId
         self.isPromoted = isPromoted
         self.links = links
+        self.article = article
         computeParsedTexts()
     }
     
@@ -281,6 +298,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         inReplyToStatusId = try container.decodeIfPresent(String.self, forKey: .inReplyToStatusId)
         isPromoted = try container.decodeIfPresent(Bool.self, forKey: .isPromoted) ?? false
         links = try container.decodeIfPresent([TweetLink].self, forKey: .links) ?? []
+        article = try container.decodeIfPresent(TweetArticle.self, forKey: .article)
         computeParsedTexts()
     }
     
@@ -295,9 +313,11 @@ struct Tweet: Codable, Hashable, Identifiable {
         
         // 1. Strip trailing media or quote t.co URLs when media or quote is present
         //    (real link entities stay: they're shown and previewable)
-        if !media.isEmpty || quotedTweet != nil {
+        if !media.isEmpty || quotedTweet != nil || linksToArticle {
             if let tcoRegex = Self.trailingTCoRegex {
-                let linkUrls = Set(links.map { $0.url })
+                // The link to an attached article is dropped like a media link: the article is shown as a card
+                let articleLinks = !linksToArticle ? [] : links.filter { $0.expandedUrl.contains("/i/article/") }.map { $0.url }
+                let linkUrls = Set(links.map { $0.url }).subtracting(articleLinks)
                 while true {
                     let nsRaw = raw as NSString
                     let match = tcoRegex.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length))

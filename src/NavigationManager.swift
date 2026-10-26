@@ -37,6 +37,8 @@ enum OverlayPage {
     case search(String)
     // The people who liked or reposted a post
     case users(TweetUsersKind, tweetId: String)
+    // An X Article, read on its own page (the post carries its title and cover)
+    case article(Tweet)
 }
 
 struct OverlayEntry: Identifiable {
@@ -122,6 +124,11 @@ final class NavigationManager: ObservableObject {
         guard !trimmed.isEmpty else { return }
         SearchRecents.shared.add(trimmed)
         push(.search(trimmed))
+    }
+    
+    func openArticle(for tweet: Tweet) {
+        guard tweet.linksToArticle, !PeekCoordinator.shared.suppressesActivation else { return }
+        push(.article(tweet))
     }
     
     func openUserList(_ kind: TweetUsersKind, tweetId: String) {

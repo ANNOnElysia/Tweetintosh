@@ -206,6 +206,10 @@ struct AppRootView: View {
                         SearchView(query: query) {
                             nav.dismissTweetDetail()
                         }
+                    case .article(let tweet):
+                        ArticleReaderView(tweet: tweet) {
+                            nav.dismissTweetDetail()
+                        }
                     case .users(let kind, let tweetId):
                         UserListView(kind: kind, tweetId: tweetId) {
                             nav.dismissTweetDetail()
