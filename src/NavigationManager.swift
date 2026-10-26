@@ -158,6 +158,9 @@ final class NavigationManager: ObservableObject {
     // Shortcut badges visibility (revealed when holding Command for > 1.5s without any keystroke)
     @Published var showShortcutBadges: Bool = false
     private var cmdHoldTimer: Timer?
+    // When Return was last pressed with the keyboard free, for the double-press that opens the composer
+    private var lastReturnPress: CFTimeInterval = 0
+    private static let doubleReturnInterval: CFTimeInterval = 0.4
     private var isCmdDown: Bool = false
     
     private var eventMonitor: Any?
@@ -288,10 +291,21 @@ final class NavigationManager: ObservableObject {
                     }
                 }
 
-                // Command + N (keyCode 45) -> Global New Tweet Compose
-                if hasCmd && !hasOption && !hasCtrl && keyCode == 45 {
-                    self.openComposer()
-                    return nil
+                // Return pressed twice in quick succession (keyCodes 36 / 76) -> Global New Post Compose.
+                // Only when nothing is being typed and no page, sheet or lightbox has taken the keyboard, so Return
+                // keeps its usual job in text fields and dialogs.
+                if (keyCode == 36 || keyCode == 76) && !hasCmd && !hasOption && !hasCtrl && !event.isARepeat {
+                    let canCompose = !self.isShowingCompose && self.replyTargetTweet == nil
+                        && !VideoLightboxManager.shared.isPresented
+                        && event.window === NSApp.mainWindow && event.window?.attachedSheet == nil
+                        && !self.isTextInputActive()
+                    let now = CACurrentMediaTime()
+                    if canCompose && now - self.lastReturnPress < Self.doubleReturnInterval {
+                        self.lastReturnPress = 0
+                        self.openComposer()
+                        return nil
+                    }
+                    self.lastReturnPress = canCompose ? now : 0
                 }
                 
                 // Command + [ (keyCode 33) -> Back from Tweet Detail

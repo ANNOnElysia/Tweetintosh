@@ -723,7 +723,7 @@ private struct LiquidGlassSidebar: View {
                     Spacer()
                     
                     if nav.showShortcutBadges {
-                        Text("⌘N")
+                        Text("↩↩")
                             .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                             .foregroundColor(.white.opacity(0.85))
                             .padding(.horizontal, 4)
