@@ -158,15 +158,8 @@ struct ReplyComposerSheet: View {
     
     private var composerInputRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(ThemeManager.accent.opacity(0.15))
-                    .frame(width: 34, height: 34)
-                Image(systemName: "person.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(ThemeManager.accent)
-            }
-            .padding(.top, 2)
+            CurrentUserAvatar(size: 34)
+                .padding(.top, 2)
             
             TextField(
                 loc.t("reply_placeholder"),

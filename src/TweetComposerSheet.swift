@@ -134,15 +134,8 @@ struct TweetComposerSheet: View {
     
     private var composerInputRow: some View {
         HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(ThemeManager.accent.opacity(0.15))
-                    .frame(width: 36, height: 36)
-                Image(systemName: "person.fill")
-                    .font(.system(size: 15))
-                    .foregroundColor(ThemeManager.accent)
-            }
-            .padding(.top, 2)
+            CurrentUserAvatar(size: 36)
+                .padding(.top, 2)
             
             TextField(
                 quotedTweet != nil ? loc.t("quote_placeholder") : loc.t("post_placeholder"),

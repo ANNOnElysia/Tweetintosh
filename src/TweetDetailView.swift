@@ -861,18 +861,8 @@ struct TweetDetailView: View {
     // Mode A: Native Liquid Glass Capsule Reply Dock (macOS 26+ Glass API, specular border, floating capsule)
     private var liquidGlassReplyDock: some View {
         HStack(spacing: 10) {
-            // User Avatar Placeholder
-            Circle()
-                .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
-                .frame(width: 30, height: 30)
-                .overlay(
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 13))
-                        .foregroundColor(ThemeManager.secondaryText)
-                )
-                .overlay(
-                    Circle().stroke(theme.isLight ? Color(hex: "#DED9CB").opacity(0.8) : Color.white.opacity(0.15), lineWidth: 0.5)
-                )
+            // The signed-in account's own picture
+            CurrentUserAvatar(size: 30)
             
             // Text Input Field Container (inset liquid glass track)
             HStack(spacing: 6) {
@@ -965,15 +955,8 @@ struct TweetDetailView: View {
     // Mode B: Classic Frosted Glass Reply Dock (Gaussian Blur when Liquid Glass is off)
     private var frostedGlassReplyDock: some View {
         HStack(spacing: 10) {
-            // User Avatar Placeholder
-            Circle()
-                .fill(ThemeManager.cardBackground)
-                .frame(width: 30, height: 30)
-                .overlay(
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(ThemeManager.secondaryText)
-                )
+            // The signed-in account's own picture
+            CurrentUserAvatar(size: 30)
             
             // Text Input Field
             TextField(loc.t("reply_placeholder"), text: $viewModel.quickReplyText)
