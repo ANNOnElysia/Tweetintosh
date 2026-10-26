@@ -564,7 +564,7 @@ struct ProfileView: View {
             Button(action: vm.toggleFollow) {
                 Text(loc.t(vm.isFollowing ? "profile_following_button" : "profile_follow"))
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(vm.isFollowing ? ThemeManager.primaryText : .white)
+                    .foregroundColor(vm.isFollowing ? ThemeManager.primaryText : ThemeManager.onAccent)
                     .padding(.horizontal, 16)
                     .frame(height: 36)
                     .background {

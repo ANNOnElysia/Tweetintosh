@@ -991,7 +991,7 @@ struct TweetDetailView: View {
                             if #available(macOS 26.0, *) {
                                 Text(loc.t("post_reply"))
                                     .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(ThemeManager.onAccent)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
                                     .background(
@@ -1003,7 +1003,7 @@ struct TweetDetailView: View {
                             } else {
                                 Text(loc.t("post_reply"))
                                     .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(ThemeManager.onAccent)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
                                     .background(Capsule().fill(ThemeManager.accent))
@@ -1072,7 +1072,7 @@ struct TweetDetailView: View {
                     } else {
                         Text(loc.t("post_reply"))
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(ThemeManager.onAccent)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(

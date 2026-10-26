@@ -69,11 +69,10 @@ enum AppThemeColor: String, CaseIterable, Identifiable, Codable {
                 NSColor(hex: "#00f5a0")
             ]
         case .gray:
-            return [
-                NSColor(hex: "#ffffff"),
-                NSColor(hex: "#e2e8f0"),
-                NSColor(hex: "#94a3b8")
-            ]
+            // Near-white on a dark background and slate on a light one: the same shades are invisible on the other
+            return ThemeManager.shared.isLight
+                ? [NSColor(hex: "#374151"), NSColor(hex: "#4b5563"), NSColor(hex: "#6b7280")]
+                : [NSColor(hex: "#ffffff"), NSColor(hex: "#e2e8f0"), NSColor(hex: "#94a3b8")]
         case .orangeRed:
             return [
                 NSColor(hex: "#ff9a44"),
@@ -88,7 +87,9 @@ enum AppThemeColor: String, CaseIterable, Identifiable, Codable {
         case .blue: return Color(red: 0.11, green: 0.61, blue: 0.94)
         case .pink: return Color(red: 0.98, green: 0.48, blue: 0.67)
         case .green: return Color(red: 0.0, green: 0.96, blue: 0.63)
-        case .gray: return Color(red: 0.89, green: 0.91, blue: 0.94)
+        // Near-white on the dark background (it needs to stand out on black) and a dark slate on the light one,
+        // where near-white vanished into the cream
+        case .gray: return ThemeManager.shared.isLight ? Color(hex: "#4B5563") : Color(red: 0.89, green: 0.91, blue: 0.94)
         case .orangeRed: return Color(red: 1.0, green: 0.60, blue: 0.27)
         }
     }
@@ -277,6 +278,11 @@ final class ThemeManager: ObservableObject {
     // Dynamic Accent Color matching current Theme Colour
     static var accent: Color {
         shared.themeColor.accentColor
+    }
+    // The colour for text and icons sitting on a solid accent fill (a button or pill): white, except for the gray
+    // theme on the dark background, where the accent is near-white and needs dark text
+    static var onAccent: Color {
+        (shared.themeColor == .gray && !shared.isLight) ? Color(hex: "#111114") : .white
     }
     static let retweetGreen = Color(red: 0.0, green: 0.73, blue: 0.44)
     static let heartPink = Color(red: 0.95, green: 0.15, blue: 0.45)

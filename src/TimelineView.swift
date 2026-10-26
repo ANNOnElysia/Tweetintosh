@@ -242,7 +242,7 @@ struct NewPostsFloatingPill: View {
                 Text(loc.format("new_posts_available", ["count": "\(count)"]))
                     .font(.system(size: 12, weight: .semibold))
             }
-            .foregroundColor(.white)
+            .foregroundColor(ThemeManager.onAccent)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
             .background(
@@ -678,7 +678,7 @@ struct MainTimelineView: View {
             Button(action: onLoginRequest) {
                 Text(loc.t("sign_in_button"))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(ThemeManager.onAccent)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
                     .background(

@@ -81,13 +81,13 @@ struct ReplyComposerSheet: View {
                 HStack(spacing: 6) {
                     if state.isSending {
                         ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .progressViewStyle(CircularProgressViewStyle(tint: ThemeManager.onAccent))
                             .scaleEffect(0.65)
                             .frame(width: 14, height: 14)
                     }
                     Text(loc.t("post_reply"))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(ThemeManager.onAccent)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)

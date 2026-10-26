@@ -714,11 +714,11 @@ private struct LiquidGlassSidebar: View {
                 HStack(spacing: 10) {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(ThemeManager.onAccent)
                         .frame(width: 20)
                     Text(loc.t("new_post"))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(ThemeManager.onAccent)
                     
                     Spacer()
                     
