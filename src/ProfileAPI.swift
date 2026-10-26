@@ -89,6 +89,9 @@ final class GraphQLOperationIDs {
         "UserRepliesTimeline": [
             "RFZCQszlYjo2RQYM-4vrTQ"
         ],
+        // Who liked / reposted a post. No ids are known up front: they are read from X's web client on first use.
+        "Favoriters": ["mDc_nU8xGv0cLRWtTaIEug"],
+        "Retweeters": [],
         "UserMedia": [
             "eF8kYZ4r9zFLqcYno3I17A", "oMVVrI5kt3kOpyHHTTKf5Q","BGmkmGDG0kZPM-aoQtNTTw", "dexO_2tohK86JDudXXG3Yw",
             "MOLbHrtk8Ovu7DUNOLcXiA", "Le6KlbilFmSu-5VltFND-Q"
@@ -350,6 +353,48 @@ extension APIClient {
         attempt(GraphQLOperationIDs.shared.ids(for: operation), tried: [], discovered: false)
     }
 
+    // MARK: People who liked or reposted a post
+
+    func fetchTweetUsers(
+        kind: TweetUsersKind,
+        tweetId: String,
+        cursor: String? = nil,
+        completion: @escaping (Result<(users: [TweetUser], bottomCursor: String?), APIError>) -> Void
+    ) {
+        var variables: [String: Any] = ["tweetId": tweetId, "count": 40, "includePromotedContent": true]
+        if let cursor = cursor { variables["cursor"] = cursor }
+        graphQLGet(operation: kind.operation, variables: variables) { result in
+            switch result {
+            case .success(let json):
+                var users: [TweetUser] = []
+                var seen = Set<String>()
+                var bottomCursor: String?
+                // The users are the user_results found anywhere in the timeline's entries; the next page's cursor is
+                // the entry whose id starts with "cursor-bottom"
+                func walk(_ node: Any) {
+                    if let dict = node as? [String: Any] {
+                        if let results = dict["user_results"] as? [String: Any], let user = results["result"] as? [String: Any] {
+                            let parsed = Self.parseUser(user)
+                            if !parsed.id.isEmpty, seen.insert(parsed.id).inserted { users.append(parsed) }
+                            return
+                        }
+                        if let entryId = dict["entryId"] as? String, entryId.hasPrefix("cursor-bottom"),
+                           let value = (dict["content"] as? [String: Any])?["value"] as? String {
+                            bottomCursor = value
+                        }
+                        for value in dict.values { walk(value) }
+                    } else if let array = node as? [Any] {
+                        for value in array { walk(value) }
+                    }
+                }
+                walk(json["data"] as Any)
+                completion(.success((users, bottomCursor)))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: Profile
 
     func fetchUserProfile(screenName: String, completion: @escaping (Result<UserProfile, APIError>) -> Void) {
@@ -535,4 +580,11 @@ extension APIClient {
             completion((200...299).contains(status) ? .success(()) : .failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(status)")))
         }.resume()
     }
+}
+
+// Which list of people to show for a post
+enum TweetUsersKind: String {
+    case likes, reposts
+
+    var operation: String { self == .likes ? "Favoriters" : "Retweeters" }
 }

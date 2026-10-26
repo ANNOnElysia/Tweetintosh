@@ -247,6 +247,38 @@ private struct NotificationRowView: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     
+    // "9 others" in a like or repost summary opens the list of people; the phrase differs by language
+    private static let othersPatterns = [#"\d+ others"#, #"他\d+人"#, #"외 \d+명"#, #"\d+ 人"#]
+    
+    private var summaryText: AttributedString {
+        let summary = item.localizedActionSummary
+        var text = AttributedString(summary)
+        guard (item.type == .like || item.type == .retweet), let tweetId = item.targetTweetId else { return text }
+        let kind = item.type == .like ? "likes" : "reposts"
+        for pattern in Self.othersPatterns {
+            if let range = summary.range(of: pattern, options: .regularExpression),
+               let attrRange = Range(range, in: text),
+               let url = URL(string: "tweetintosh://users/\(kind)/\(tweetId)") {
+                text[attrRange].link = url
+                text[attrRange].foregroundColor = ThemeManager.accent
+                return text
+            }
+        }
+        return text
+    }
+    
+    // Clicking a notification opens the post it is about
+    private func openTargetPost() {
+        guard let tweetId = item.targetTweetId else { return }
+        let account = AccountManager.shared.active
+        let me = TweetUser(id: account?.id ?? "", name: account?.name ?? "", screenName: account?.screenName ?? "",
+                           avatarUrl: account?.avatarUrl, isVerified: false)
+        // Only what the notification knows; the page fetches the rest
+        let stub = Tweet(id: tweetId, text: item.targetTweetSnippet ?? "", createdAt: item.createdAt, author: me, media: [],
+                         replyCount: 0, retweetCount: 0, favoriteCount: 0, isRetweet: false, retweetedBy: nil)
+        NavigationManager.shared.openTweetDetail(stub)
+    }
+    
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             // Left: Type Icon Badge (Heart, Retweet, Reply, Mention, or Recent Post)
@@ -287,7 +319,8 @@ private struct NotificationRowView: View {
                     }
                     
                     // Summary text
-                    Text(item.localizedActionSummary)
+                    Text(summaryText)
+                        .handlesTweetLinks()
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineLimit(2)
@@ -331,5 +364,6 @@ private struct NotificationRowView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .contentShape(Rectangle())
+        .onTapGesture { openTargetPost() }
     }
 }

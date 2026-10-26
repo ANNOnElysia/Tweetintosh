@@ -76,6 +76,8 @@ struct NotificationItem: Identifiable, Hashable, Codable {
     var actors: [TweetUser]
     var actionSummary: String
     var targetTweetSnippet: String?
+    // The post the notification is about, so the row can open it and list who liked or reposted it
+    var targetTweetId: String? = nil
     var replyBody: String?
     var createdAt: Date
     var iconId: String? = nil

@@ -321,6 +321,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "正在上传媒体 {current}/{total}…",
             .traditionalChinese: "正在上傳媒體 {current}/{total}…"
         ],
+        "liked_by": [
+            .english: "Liked by",
+            .japanese: "いいねした人",
+            .korean: "마음에 들어 한 사람",
+            .simplifiedChinese: "点赞的人",
+            .traditionalChinese: "按讚的人"
+        ],
+        "reposted_by": [
+            .english: "Reposted by",
+            .japanese: "リポストした人",
+            .korean: "재게시한 사람",
+            .simplifiedChinese: "转发的人",
+            .traditionalChinese: "轉發的人"
+        ],
+        "users_load_failed": [
+            .english: "Couldn't load this list. X only shows who liked or reposted your own posts.",
+            .japanese: "このリストを読み込めませんでした。いいねやリポストしたユーザーは自分の投稿でのみ表示されます。",
+            .korean: "이 목록을 불러올 수 없습니다. 마음에 들어 하거나 재게시한 사용자는 내 게시물에서만 표시됩니다.",
+            .simplifiedChinese: "无法加载此列表。X 仅显示你自己帖子的点赞和转发用户。",
+            .traditionalChinese: "無法載入此清單。X 僅顯示你自己貼文的按讚和轉發使用者。"
+        ],
+        "users_empty": [
+            .english: "Nobody to show yet.",
+            .japanese: "表示するユーザーはまだいません。",
+            .korean: "아직 표시할 사용자가 없습니다.",
+            .simplifiedChinese: "暂时没有可显示的用户。",
+            .traditionalChinese: "暫時沒有可顯示的使用者。"
+        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",

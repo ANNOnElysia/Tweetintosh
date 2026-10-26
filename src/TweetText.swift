@@ -55,6 +55,12 @@ enum TweetText {
     static func open(_ url: URL) -> OpenURLAction.Result {
         // A deep press that previewed something must not also activate it when released
         if PeekCoordinator.shared.suppressesActivation { return .handled }
+        // tweetintosh://users/<likes|reposts>/<post id>: the people who liked or reposted a post
+        if url.scheme == profileScheme, url.host == "users", url.pathComponents.count >= 3,
+           let kind = TweetUsersKind(rawValue: url.pathComponents[1]) {
+            NavigationManager.shared.openUserList(kind, tweetId: url.pathComponents[2])
+            return .handled
+        }
         if url.scheme == profileScheme, url.host == "profile" {
             let name = url.lastPathComponent
             NavigationManager.shared.openProfile(TweetUser(id: "", name: name, screenName: name, avatarUrl: nil, isVerified: false))

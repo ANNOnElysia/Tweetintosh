@@ -35,6 +35,8 @@ enum OverlayPage {
     case tweet(Tweet)
     case profile(TweetUser)
     case search(String)
+    // The people who liked or reposted a post
+    case users(TweetUsersKind, tweetId: String)
 }
 
 struct OverlayEntry: Identifiable {
@@ -120,6 +122,11 @@ final class NavigationManager: ObservableObject {
         guard !trimmed.isEmpty else { return }
         SearchRecents.shared.add(trimmed)
         push(.search(trimmed))
+    }
+    
+    func openUserList(_ kind: TweetUsersKind, tweetId: String) {
+        guard !PeekCoordinator.shared.suppressesActivation else { return }
+        push(.users(kind, tweetId: tweetId))
     }
     
     func openProfile(_ user: TweetUser) {

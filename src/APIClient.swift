@@ -832,12 +832,14 @@ final class APIClient {
         
         // Target Tweet Snippet
         var targetTweetSnippet: String?
+        var targetTweetId: String?
         if let targetObjects = actions?["targetObjects"] as? [[String: Any]] {
             for to in targetObjects {
                 if let tweetObj = to["tweet"] as? [String: Any],
                    let tid = tweetObj["id"] as? String,
                    let tweet = tweetsDict[tid] {
                     targetTweetSnippet = tweet["full_text"] as? String
+                    targetTweetId = tid
                     break
                 }
             }
@@ -849,6 +851,7 @@ final class APIClient {
             actors: actors,
             actionSummary: actionSummary,
             targetTweetSnippet: targetTweetSnippet,
+            targetTweetId: targetTweetId,
             replyBody: nil,
             createdAt: createdAt,
             iconId: iconId.isEmpty ? nil : iconId
