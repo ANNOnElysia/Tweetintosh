@@ -63,6 +63,9 @@ final class ImageLoader: ObservableObject {
     @Published var loadedImage: CGImage?
     @Published var isLoading = false
     private var currentUrl: String?
+    // The address the picture on screen belongs to, and the one being fetched (a view can be given a new address)
+    private var shownUrl: String?
+    private var inFlightUrl: String?
     // Display box in device pixels; nil decodes at full resolution
     private let targetPixelSize: CGSize?
 
@@ -78,6 +81,7 @@ final class ImageLoader: ObservableObject {
             // Immediate frame-0 hit if already decoded in memory
             if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
                 self.loadedImage = Self.cgImage(of: mem)
+                self.shownUrl = urlStr
             }
         }
     }
@@ -89,13 +93,15 @@ final class ImageLoader: ObservableObject {
 
         // 1. Memory cache hit -> synchronous frame-0 return without flicker
         if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
-            if self.loadedImage == nil {
+            if self.loadedImage == nil || self.shownUrl != urlStr {
                 self.loadedImage = Self.cgImage(of: mem)
+                self.shownUrl = urlStr
             }
             return
         }
         
-        guard !isLoading else { return }
+        guard inFlightUrl != urlStr else { return }
+        inFlightUrl = urlStr
         isLoading = true
         
         // 2. Offload disk lookup and network I/O to background queue to guarantee 120Hz smooth scrolling
@@ -107,7 +113,9 @@ final class ImageLoader: ObservableObject {
                 DispatchQueue.main.async {
                     if self.currentUrl == urlStr {
                         self.loadedImage = diskImg
+                        self.shownUrl = urlStr
                     }
+                    if self.inFlightUrl == urlStr { self.inFlightUrl = nil }
                     self.isLoading = false
                 }
                 return
@@ -115,7 +123,7 @@ final class ImageLoader: ObservableObject {
             
             // 3. Network fetch
             guard let url = URL(string: urlStr) else {
-                DispatchQueue.main.async { self.isLoading = false }
+                DispatchQueue.main.async { if self.inFlightUrl == urlStr { self.inFlightUrl = nil }; self.isLoading = false }
                 return
             }
             
@@ -128,11 +136,14 @@ final class ImageLoader: ObservableObject {
                     DispatchQueue.main.async {
                         if self.currentUrl == urlStr {
                             self.loadedImage = img
+                            self.shownUrl = urlStr
                         }
+                        if self.inFlightUrl == urlStr { self.inFlightUrl = nil }
                         self.isLoading = false
                     }
                 } else {
                     DispatchQueue.main.async {
+                        if self.inFlightUrl == urlStr { self.inFlightUrl = nil }
                         self.isLoading = false
                     }
                 }
