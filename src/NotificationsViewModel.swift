@@ -304,7 +304,7 @@ final class NotificationsViewModel: ObservableObject {
         }
         
         let startTime = Date()
-        APIClient.shared.fetchNotifications { [weak self] result in
+        APIClient.shared.fetchNotificationsWithReplies { [weak self] result in
             let elapsed = Date().timeIntervalSince(startTime)
             let remainingDelay = max(0.0, 2.4 - elapsed)
             
