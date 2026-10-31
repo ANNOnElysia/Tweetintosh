@@ -516,36 +516,6 @@ struct SettingsView: View {
             .padding(12)
             .background(cardBackground)
             
-            // 4b. Glass transparency
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(loc.t("glass_transparency"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(ThemeManager.secondaryText)
-                    Spacer()
-                    Text("\(Int((theme.glassTransparency * 100).rounded()))%")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(ThemeManager.tertiaryText)
-                }
-                HStack(spacing: 10) {
-                    Image(systemName: "circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeManager.tertiaryText)
-                    Slider(value: $theme.glassTransparency, in: 0...1)
-                        .tint(ThemeManager.accent)
-                    Image(systemName: "circle.dashed")
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeManager.tertiaryText)
-                }
-                Text(loc.t("glass_transparency_desc"))
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeManager.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 2)
-            }
-            .padding(12)
-            .background(cardBackground)
-            
             // 5. Data & Account Management
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -632,7 +602,7 @@ struct SettingsView: View {
         .padding(.top, 16)
         .padding(.bottom, 14)
         }
-        .frame(width: 480, height: 940)
+        .frame(width: 480, height: 860)
         .background(ThemeManager.background)
     }
     

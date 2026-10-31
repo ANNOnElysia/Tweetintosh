@@ -161,18 +161,6 @@ final class ThemeManager: ObservableObject {
         }
     }
     
-    // How see-through the glass surfaces are (menus, panels, the top bar, the sidebar): 0 keeps the solid backing the
-    // glass is drawn over, higher values let what is behind show through more
-    @Published var glassTransparency: Double {
-        didSet {
-            UserDefaults.standard.set(glassTransparency, forKey: "Tweetintosh_GlassTransparency")
-        }
-    }
-    // The factor the backing fills of glass surfaces are multiplied by
-    // Below this the glass is switched off and surfaces are solid
-    static let solidBelow = 0.12
-    static var glassBackingScale: Double { 1.0 - 0.6 * shared.glassTransparency }
-    
     @Published var showPromotedPosts: Bool {
         didSet {
             UserDefaults.standard.set(showPromotedPosts, forKey: "Tweetintosh_ShowPromotedPosts")
@@ -241,12 +229,6 @@ final class ThemeManager: ObservableObject {
             self.themeColor = tc
         } else {
             self.themeColor = .blue
-        }
-        
-        if let saved = UserDefaults.standard.object(forKey: "Tweetintosh_GlassTransparency") as? Double {
-            self.glassTransparency = min(1, max(0, saved))
-        } else {
-            self.glassTransparency = 0.5
         }
         
         if UserDefaults.standard.object(forKey: "Tweetintosh_ShowPromotedPosts") != nil {

@@ -377,20 +377,6 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "查看内嵌的帖子",
             .traditionalChinese: "查看內嵌的貼文"
         ],
-        "glass_transparency": [
-            .english: "Glass transparency",
-            .japanese: "ガラスの透明度",
-            .korean: "유리 투명도",
-            .simplifiedChinese: "玻璃透明度",
-            .traditionalChinese: "玻璃透明度"
-        ],
-        "glass_transparency_desc": [
-            .english: "How much of what is behind menus, panels and bars shows through. At the far left glass is switched off (solid); past halfway it uses Apple's clearer Clear style.",
-            .japanese: "メニュー、パネル、バーの背後がどれだけ透けて見えるかを調整します。左端ではガラスをオフ（不透明）にし、半分を超えるとより透明なクリアスタイルになります。",
-            .korean: "메뉴, 패널, 바 뒤의 내용이 얼마나 비쳐 보일지 조절합니다. 맨 왼쪽에서는 유리가 꺼지고(불투명), 절반을 넘으면 더 투명한 클리어 스타일로 바뀝니다.",
-            .simplifiedChinese: "调整菜单、面板和栏后方内容的透出程度。最左端会关闭玻璃（实心），超过一半后切换为更通透的“清透”样式。",
-            .traditionalChinese: "調整選單、面板和列後方內容的透出程度。最左端會關閉玻璃（實心），超過一半後切換為更通透的「清透」樣式。"
-        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",

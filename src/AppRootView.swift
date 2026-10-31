@@ -34,37 +34,16 @@ struct VisualEffectBackground: NSViewRepresentable {
 }
 
 // MARK: - Adaptive Glass Modifier (Liquid Glass Mode vs Frosted Glass Off Mode)
-// Liquid Glass with the app-wide transparency setting applied. Apple's glass has no continuous clarity control: it comes
-// as Regular or Clear (plus an optional tint). So the setting steps through what exists: at the left end there is no
-// glass at all (a solid surface), then Regular glass, and from halfway the Clear variant. In between, the backing fills
-// of the glass surfaces thin out (see glassBackingScale). The glass itself is never faded, because it would just vanish.
+// Every Liquid Glass surface goes through here. It is Apple's glass as the HIG describes it, with no clarity control of
+// the app's own: how clear or tinted the glass looks, and Reduce Transparency, are the user's choices in System Settings,
+// which the system glass already follows.
 @available(macOS 26.0, *)
 private struct TweetGlassModifier<S: Shape>: ViewModifier {
     var glass: Glass
     var shape: S
-    @ObservedObject private var theme = ThemeManager.shared
 
     func body(content: Content) -> some View {
-        if theme.glassTransparency < ThemeManager.solidBelow {
-            // Solid: no glass, an opaque surface with the same edge
-            content
-                .background(shape.fill(theme.isLight ? Color(hex: "#FBFAF6") : Color(white: 0.13)))
-                .overlay(
-                    shape.stroke(theme.isLight ? Color(hex: "#DED9CB").opacity(0.9) : Color.white.opacity(0.14), lineWidth: 0.75)
-                        .allowsHitTesting(false)
-                )
-        } else {
-            content.glassEffect(effective, in: shape)
-        }
-    }
-
-    private var effective: Glass {
-        guard theme.glassTransparency >= 0.5 else { return glass }
-        // Clear glass, keeping the app's tint when it is on
-        let clear: Glass = .clear
-        return theme.useLiquidGlassTint
-            ? clear.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
-            : clear.interactive()
+        content.glassEffect(glass, in: shape)
     }
 }
 
@@ -90,10 +69,9 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 let glassStyle: Glass = theme.useLiquidGlassTint
                     ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
                     : base.interactive()
-                let scale = theme.glassTransparency < ThemeManager.solidBelow ? 1.4 : ThemeManager.glassBackingScale
                 let backingFill: Color = isClear
-                    ? (theme.isLight ? Color.white.opacity(0.22 * scale) : Color.black.opacity(0.10 * scale))
-                    : (theme.isLight ? Color.white.opacity(0.68 * scale) : Color.black.opacity(0.20 * scale))
+                    ? (theme.isLight ? Color.white.opacity(0.22) : Color.black.opacity(0.10))
+                    : (theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.20))
 
                 content
                     .background(
@@ -131,7 +109,7 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                         material: theme.isLight ? .headerView : .sidebar,
                         blendingMode: .withinWindow
                     )
-                    (theme.isLight ? Color.white.opacity(0.72 * ThemeManager.glassBackingScale) : Color(white: 0.08).opacity(0.42 * ThemeManager.glassBackingScale))
+                    (theme.isLight ? Color.white.opacity(0.72) : Color(white: 0.08).opacity(0.42))
                 }
                 .clipShape(shape)
             )

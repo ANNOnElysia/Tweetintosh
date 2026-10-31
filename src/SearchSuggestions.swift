@@ -213,11 +213,6 @@ struct SearchSuggestionsPanel: View {
             }
             .padding(8)
             .frame(maxWidth: 440)
-            // Extra backing so rows stay readable over busy posts behind the panel
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(theme.isLight ? Color.white.opacity(0.62 * ThemeManager.glassBackingScale) : Color.black.opacity(0.58 * ThemeManager.glassBackingScale))
-            )
             .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: RoundedRectangle(cornerRadius: 20, style: .continuous)))
             .padding(.horizontal, 16)
         }
