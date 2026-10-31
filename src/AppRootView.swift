@@ -831,9 +831,9 @@ private struct LiquidGlassSidebar: View {
                 let tabGlass: Glass = theme.useLiquidGlassTint
                     ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.22))
                     : .regular
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                Capsule(style: .continuous)
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
-                    .glassEffect(tabGlass, in: .rect(cornerRadius: 10))
+                    .glassEffect(tabGlass, in: Capsule(style: .continuous))
                     .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)
             } else {
                 defaultSidebarActiveTabBackground
@@ -844,10 +844,10 @@ private struct LiquidGlassSidebar: View {
     }
     
     private var defaultSidebarActiveTabBackground: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
+        Capsule(style: .continuous)
             .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.22))
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                Capsule(style: .continuous)
                     .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.18), lineWidth: 0.6)
                     .allowsHitTesting(false)
             )
@@ -931,10 +931,10 @@ private struct SidebarHomeFeedSection: View {
     
     // The rounded track behind each row of feed buttons
     private var feedRowBackground: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        Capsule(style: .continuous)
             .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                Capsule(style: .continuous)
                     .stroke(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08), lineWidth: 0.6)
             )
     }
@@ -948,9 +948,10 @@ private struct SidebarHomeFeedSection: View {
                 timelineVM.selectFeed(type)
             }
         } label: {
-            HStack(spacing: 3) {
+            HStack(spacing: 6) {
                 Image(systemName: type.iconName)
-                    .font(.system(size: 9.5, weight: isSelected ? .bold : .medium))
+                    .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                    .frame(width: 20)
                 
                 Text(loc.t(type.titleKey))
                     .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
@@ -970,78 +971,89 @@ private struct SidebarHomeFeedSection: View {
                 }
             }
             .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
-            .frame(maxWidth: .infinity)
-            .frame(height: 24)
+            .padding(.leading, 8.5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 28)
             .background {
                 if isSelected {
                     feedActiveBackground
                 }
             }
-            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(PlainButtonStyle())
     }
     
-    // List feed button with dropdown menu
+    // List feed button with dropdown menu: a plain row that pops up a native menu (a SwiftUI Menu draws its own label
+    // and would not line its icon up with the other rows)
     private var listFeedButton: some View {
         let isSelected = (selection == .home && timelineVM.selectedFeed == .list)
-        return Menu {
-            Section(loc.t("select_list")) {
-                ForEach(timelineVM.userLists) { list in
-                    Button {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                            selection = .home
-                            timelineVM.selectList(list)
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: list.iconName)
-                            Text(list.name + (list.memberCount > 0 ? " · \(list.memberCount)" : ""))
-                            if timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            }
-            Divider()
-            Button {
-                timelineVM.fetchUserLists()
-            } label: {
-                Label(loc.t("refresh_lists"), systemImage: "arrow.clockwise")
-            }
-            Button {
-                if let url = URL(string: "https://x.com/i/lists") {
-                    NSWorkspace.shared.open(url)
-                }
-            } label: {
-                Label(loc.t("manage_lists_on_x"), systemImage: "arrow.up.forward.square")
-            }
-        } label: {
-            HStack(spacing: 2.5) {
-                Image(systemName: HomeFeedType.list.iconName)
-                    .font(.system(size: 9.5, weight: isSelected ? .bold : .medium))
-                
-                Text(loc.t("feed_list"))
-                    .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .bold))
-                    .opacity(0.7)
-            }
-            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
-            .frame(maxWidth: .infinity)
-            .frame(height: 24)
-            .background {
-                if isSelected {
-                    feedActiveBackground
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 6))
+        return Button(action: showListMenu) {
+            listRowVisual(isSelected: isSelected)
+                .contentShape(Capsule(style: .continuous))
         }
-        .menuStyle(BorderlessButtonMenuStyle())
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private func showListMenu() {
+        let menu = NSMenu()
+        let header = NSMenuItem(title: loc.t("select_list"), action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        for list in timelineVM.userLists {
+            let title = list.name + (list.memberCount > 0 ? " · \(list.memberCount)" : "")
+            menu.addItem(ClosureMenuItem(
+                title: title, symbol: list.iconName,
+                isChecked: timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id
+            ) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                    selection = .home
+                    timelineVM.selectList(list)
+                }
+            })
+        }
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(ClosureMenuItem(title: loc.t("refresh_lists"), symbol: "arrow.clockwise") {
+            timelineVM.fetchUserLists()
+        })
+        menu.addItem(ClosureMenuItem(title: loc.t("manage_lists_on_x"), symbol: "arrow.up.forward.square") {
+            if let url = URL(string: "https://x.com/i/lists") { NSWorkspace.shared.open(url) }
+        })
+        if let event = NSApp.currentEvent, let window = event.window,
+           event.type == .leftMouseUp || event.type == .leftMouseDown {
+            menu.popUp(positioning: nil, at: window.convertPoint(toScreen: event.locationInWindow), in: nil)
+        } else {
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        }
+    }
+    
+    private func listRowVisual(isSelected: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: HomeFeedType.list.iconName)
+                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                .frame(width: 20)
+            
+            Text(loc.t("feed_list"))
+                .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            
+            Spacer(minLength: 0)
+            
+            Image(systemName: "chevron.down")
+                .font(.system(size: 7, weight: .bold))
+                .opacity(0.7)
+                .padding(.trailing, 10)
+        }
+        .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
+        .padding(.leading, 8.5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 28)
+        .background {
+            if isSelected {
+                feedActiveBackground
+            }
+        }
     }
     
     // Quick switcher menu inside the active list banner
@@ -1095,9 +1107,9 @@ private struct SidebarHomeFeedSection: View {
                 let tabGlass: Glass = theme.useLiquidGlassTint
                     ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.22))
                     : .regular
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                Capsule(style: .continuous)
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
-                    .glassEffect(tabGlass, in: .rect(cornerRadius: 6))
+                    .glassEffect(tabGlass, in: Capsule(style: .continuous))
                     .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
             } else {
                 defaultFeedActiveBackground
@@ -1108,10 +1120,10 @@ private struct SidebarHomeFeedSection: View {
     }
     
     private var defaultFeedActiveBackground: some View {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
+        Capsule(style: .continuous)
             .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.24))
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                Capsule(style: .continuous)
                     .stroke(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 0.6)
             )
             .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
