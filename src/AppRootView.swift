@@ -34,6 +34,35 @@ struct VisualEffectBackground: NSViewRepresentable {
 }
 
 // MARK: - Adaptive Glass Modifier (Liquid Glass Mode vs Frosted Glass Off Mode)
+// Liquid Glass with the app-wide transparency setting applied: every glass surface (bars, buttons, highlights, badges,
+// switches) goes through this instead of calling glassEffect directly. At 0% it is the plain glass; as the setting
+// rises the glass layer itself fades, so what is behind shows through more.
+@available(macOS 26.0, *)
+private struct TweetGlassModifier<S: Shape>: ViewModifier {
+    var glass: Glass
+    var shape: S
+    @ObservedObject private var theme = ThemeManager.shared
+
+    func body(content: Content) -> some View {
+        if theme.glassTransparency < 0.02 {
+            content.glassEffect(glass, in: shape)
+        } else {
+            content.background {
+                Color.clear
+                    .glassEffect(glass, in: shape)
+                    .opacity(max(0.18, 1.0 - theme.glassTransparency))
+            }
+        }
+    }
+}
+
+extension View {
+    @available(macOS 26.0, *)
+    func tweetGlass<S: Shape>(_ glass: Glass = .regular, in shape: S) -> some View {
+        modifier(TweetGlassModifier(glass: glass, shape: shape))
+    }
+}
+
 struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     var isLiquid: Bool
     var shape: S
@@ -58,7 +87,7 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     .background(
                         shape.fill(backingFill)
                     )
-                    .glassEffect(glassStyle, in: shape)
+                    .tweetGlass(glassStyle, in: shape)
                     .overlay(
                         shape.stroke(
                             theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.20),
@@ -510,7 +539,7 @@ private struct LiquidGlassCapsule: View {
                             ? ThemeManager.accent.opacity(theme.isLight ? 0.10 : 0.12)
                             : (theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
                     )
-                    .glassEffect(glassStyle, in: Capsule())
+                    .tweetGlass(glassStyle, in: Capsule())
                     .overlay(
                         Capsule()
                             .strokeBorder(
@@ -557,7 +586,7 @@ private struct LiquidGlassCapsule: View {
                     : .regular
                 Capsule()
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.24) : (theme.isLight ? 0.08 : 0.16)))
-                    .glassEffect(tabGlass, in: Capsule())
+                    .tweetGlass(tabGlass, in: Capsule())
                     .matchedGeometryEffect(id: "capsule-active-tab", in: capsuleTabNamespace)
             } else {
                 defaultActiveTabBackground
@@ -842,7 +871,7 @@ private struct LiquidGlassSidebar: View {
                     : .regular
                 Capsule(style: .continuous)
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
-                    .glassEffect(tabGlass, in: Capsule(style: .continuous))
+                    .tweetGlass(tabGlass, in: Capsule(style: .continuous))
                     .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)
             } else {
                 defaultSidebarActiveTabBackground
@@ -1175,7 +1204,7 @@ private struct SidebarHomeFeedSection: View {
                     : .regular
                 Capsule(style: .continuous)
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
-                    .glassEffect(tabGlass, in: Capsule(style: .continuous))
+                    .tweetGlass(tabGlass, in: Capsule(style: .continuous))
                     .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
             } else {
                 defaultFeedActiveBackground

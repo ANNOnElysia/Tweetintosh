@@ -747,7 +747,7 @@ struct VideoLightboxOverlay: View {
                         ? ThemeManager.accent.opacity(effectiveAccent * 0.70)
                         : Color.black.opacity(0.35)
                 )
-                .glassEffect(glass, in: shape)
+                .tweetGlass(glass, in: shape)
         } else {
             // High-grade Gaussian Frosted Blur (Active when Liquid Glass is off)
             ZStack {

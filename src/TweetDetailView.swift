@@ -267,7 +267,7 @@ struct TweetDetailView: View {
                                     : .regular.interactive()
                                 Circle()
                                     .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
-                                    .glassEffect(glassStyle, in: Circle())
+                                    .tweetGlass(glassStyle, in: Circle())
                             } else {
                                 Circle()
                                     .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.45))
@@ -308,7 +308,7 @@ struct TweetDetailView: View {
                                     : .regular.interactive()
                                 Circle()
                                     .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
-                                    .glassEffect(glassStyle, in: Circle())
+                                    .tweetGlass(glassStyle, in: Circle())
                             } else {
                                 Circle()
                                     .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.45))
@@ -1002,7 +1002,7 @@ struct TweetDetailView: View {
                                     .background(
                                         Capsule()
                                             .fill(ThemeManager.accent.opacity(0.85))
-                                            .glassEffect(.regular.tint(ThemeManager.accent.opacity(0.25)).interactive(), in: Capsule())
+                                            .tweetGlass(.regular.tint(ThemeManager.accent.opacity(0.25)).interactive(), in: Capsule())
                                             .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 0.5))
                                     )
                             } else {
@@ -1030,7 +1030,7 @@ struct TweetDetailView: View {
                         : .regular.interactive()
                     Capsule()
                         .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
-                        .glassEffect(glassStyle, in: Capsule())
+                        .tweetGlass(glassStyle, in: Capsule())
                 } else {
                     Capsule()
                         .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.5))

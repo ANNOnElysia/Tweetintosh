@@ -53,7 +53,7 @@ struct GlassSegmentedAppearancePicker: View {
                         if #available(macOS 26.0, *) {
                             RoundedRectangle(cornerRadius: 7)
                                 .fill(theme.useLiquidGlassTint ? ThemeManager.accent.opacity(theme.isLight ? 0.16 : 0.24) : (theme.isLight ? Color.white : Color.white.opacity(0.18)))
-                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 7))
+                                .tweetGlass(.regular, in: RoundedRectangle(cornerRadius: 7))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 7)
                                         .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.25), lineWidth: 0.8)
@@ -133,7 +133,7 @@ struct GlassSegmentedFontPicker: View {
                         if #available(macOS 26.0, *) {
                             RoundedRectangle(cornerRadius: 7)
                                 .fill(theme.useLiquidGlassTint ? ThemeManager.accent.opacity(theme.isLight ? 0.16 : 0.24) : (theme.isLight ? Color.white : Color.white.opacity(0.18)))
-                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 7))
+                                .tweetGlass(.regular, in: RoundedRectangle(cornerRadius: 7))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 7)
                                         .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.25), lineWidth: 0.8)
@@ -183,7 +183,7 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
                             : .regular
                         Capsule()
                             .fill(configuration.isOn ? (theme.useLiquidGlassTint ? tintColor.opacity(0.70) : tintColor.opacity(0.48)) : (theme.isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.10)))
-                            .glassEffect(glassStyle, in: Capsule())
+                            .tweetGlass(glassStyle, in: Capsule())
                             .frame(width: 44, height: 24)
                             .overlay(
                                 Capsule()
@@ -280,7 +280,7 @@ struct GlassDropdownPicker<T: Hashable>: View {
                     if #available(macOS 26.0, *) {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                            .tweetGlass(.regular, in: RoundedRectangle(cornerRadius: 8))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.18), lineWidth: 0.8)
@@ -528,12 +528,12 @@ struct SettingsView: View {
                         .foregroundColor(ThemeManager.tertiaryText)
                 }
                 HStack(spacing: 10) {
-                    Image(systemName: "square.fill")
+                    Image(systemName: "circle.fill")
                         .font(.system(size: 11))
                         .foregroundColor(ThemeManager.tertiaryText)
                     Slider(value: $theme.glassTransparency, in: 0...1)
                         .tint(ThemeManager.accent)
-                    Image(systemName: "square.dashed")
+                    Image(systemName: "circle.dashed")
                         .font(.system(size: 11))
                         .foregroundColor(ThemeManager.tertiaryText)
                 }
@@ -564,7 +564,7 @@ struct SettingsView: View {
                                 if #available(macOS 26.0, *) {
                                     Capsule()
                                         .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
-                                        .glassEffect(.regular, in: Capsule())
+                                        .tweetGlass(.regular, in: Capsule())
                                         .overlay(
                                             Capsule()
                                                 .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.20), lineWidth: 0.8)
@@ -597,7 +597,7 @@ struct SettingsView: View {
                                 if #available(macOS 26.0, *) {
                                     Capsule()
                                         .fill(Color.red.opacity(0.35))
-                                        .glassEffect(.regular.tint(Color.red.opacity(0.3)), in: Capsule())
+                                        .tweetGlass(.regular.tint(Color.red.opacity(0.3)), in: Capsule())
                                         .overlay(
                                             Capsule()
                                                 .stroke(Color.red.opacity(0.55), lineWidth: 0.8)
@@ -660,7 +660,7 @@ struct SettingsView: View {
             if #available(macOS 26.0, *) {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(theme.isLight ? Color.white.opacity(0.60) : Color.white.opacity(0.04))
-                    .glassEffect(theme.useLiquidGlassTint ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.08 : 0.12)) : .regular, in: RoundedRectangle(cornerRadius: 12))
+                    .tweetGlass(theme.useLiquidGlassTint ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.08 : 0.12)) : .regular, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(theme.isLight ? Color(hex: "#DED9CB") : Color.white.opacity(0.14), lineWidth: 0.8)

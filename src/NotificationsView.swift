@@ -222,7 +222,7 @@ private struct NotificationFilterCapsuleBar: View {
                     : .regular
                 Capsule()
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.22) : (theme.isLight ? 0.08 : 0.14)))
-                    .glassEffect(tabGlass, in: Capsule())
+                    .tweetGlass(tabGlass, in: Capsule())
                     .matchedGeometryEffect(id: "notif-active-filter", in: filterTabNamespace)
             } else {
                 defaultActiveBackground

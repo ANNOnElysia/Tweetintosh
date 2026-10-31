@@ -176,7 +176,6 @@ struct Tweet: Codable, Hashable, Identifiable {
     var isPromoted: Bool = false
     var links: [TweetLink] = []
     var article: TweetArticle? = nil
-    
     var quoted: Tweet? {
         quotedTweet?.tweet
     }

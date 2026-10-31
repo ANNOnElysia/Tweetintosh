@@ -25,7 +25,7 @@ struct AdBadgeView: View {
                 if #available(macOS 26.0, *) {
                     Capsule()
                         .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
-                        .glassEffect(.regular, in: Capsule())
+                        .tweetGlass(.regular, in: Capsule())
                         .overlay(
                             Capsule().stroke(theme.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.18), lineWidth: 0.8)
                         )
