@@ -49,9 +49,10 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 let glassStyle: Glass = theme.useLiquidGlassTint
                     ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
                     : base.interactive()
+                let scale = ThemeManager.glassBackingScale
                 let backingFill: Color = isClear
-                    ? (theme.isLight ? Color.white.opacity(0.22) : Color.black.opacity(0.10))
-                    : (theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.20))
+                    ? (theme.isLight ? Color.white.opacity(0.22 * scale) : Color.black.opacity(0.10 * scale))
+                    : (theme.isLight ? Color.white.opacity(0.68 * scale) : Color.black.opacity(0.20 * scale))
 
                 content
                     .background(
@@ -89,7 +90,7 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                         material: theme.isLight ? .headerView : .sidebar,
                         blendingMode: .withinWindow
                     )
-                    (theme.isLight ? Color.white.opacity(0.72) : Color(white: 0.08).opacity(0.42))
+                    (theme.isLight ? Color.white.opacity(0.72 * ThemeManager.glassBackingScale) : Color(white: 0.08).opacity(0.42 * ThemeManager.glassBackingScale))
                 }
                 .clipShape(shape)
             )

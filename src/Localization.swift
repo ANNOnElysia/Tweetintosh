@@ -377,6 +377,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "查看内嵌的帖子",
             .traditionalChinese: "查看內嵌的貼文"
         ],
+        "glass_transparency": [
+            .english: "Glass transparency",
+            .japanese: "ガラスの透明度",
+            .korean: "유리 투명도",
+            .simplifiedChinese: "玻璃透明度",
+            .traditionalChinese: "玻璃透明度"
+        ],
+        "glass_transparency_desc": [
+            .english: "How much of what is behind menus, panels and bars shows through.",
+            .japanese: "メニュー、パネル、バーの背後がどれだけ透けて見えるかを調整します。",
+            .korean: "메뉴, 패널, 바 뒤의 내용이 얼마나 비쳐 보일지 조절합니다.",
+            .simplifiedChinese: "调整菜单、面板和栏后方内容的透出程度。",
+            .traditionalChinese: "調整選單、面板和列後方內容的透出程度。"
+        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",
