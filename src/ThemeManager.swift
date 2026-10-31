@@ -169,7 +169,7 @@ final class ThemeManager: ObservableObject {
         }
     }
     // The factor the backing fills of glass surfaces are multiplied by
-    static var glassBackingScale: Double { 1.0 - 0.8 * shared.glassTransparency }
+    static var glassBackingScale: Double { 1.0 - 0.6 * shared.glassTransparency }
     
     @Published var showPromotedPosts: Bool {
         didSet {

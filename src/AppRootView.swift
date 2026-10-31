@@ -34,9 +34,10 @@ struct VisualEffectBackground: NSViewRepresentable {
 }
 
 // MARK: - Adaptive Glass Modifier (Liquid Glass Mode vs Frosted Glass Off Mode)
-// Liquid Glass with the app-wide transparency setting applied: every glass surface (bars, buttons, highlights, badges,
-// switches) goes through this instead of calling glassEffect directly. At 0% it is the plain glass; as the setting
-// rises the glass layer itself fades, so what is behind shows through more.
+// Liquid Glass with the app-wide transparency setting applied. Apple's glass has no continuous clarity control: it comes
+// as Regular or Clear (plus an optional tint). So the setting works with those: the glass itself is never faded (it
+// would simply disappear), the surfaces' backing fills thin out as the slider rises (see glassBackingScale), and in the
+// upper half the Clear variant replaces Regular, which is Apple's own "more see-through" glass.
 @available(macOS 26.0, *)
 private struct TweetGlassModifier<S: Shape>: ViewModifier {
     var glass: Glass
@@ -44,15 +45,16 @@ private struct TweetGlassModifier<S: Shape>: ViewModifier {
     @ObservedObject private var theme = ThemeManager.shared
 
     func body(content: Content) -> some View {
-        if theme.glassTransparency < 0.02 {
-            content.glassEffect(glass, in: shape)
-        } else {
-            content.background {
-                Color.clear
-                    .glassEffect(glass, in: shape)
-                    .opacity(max(0.18, 1.0 - theme.glassTransparency))
-            }
-        }
+        content.glassEffect(effective, in: shape)
+    }
+
+    private var effective: Glass {
+        guard theme.glassTransparency >= 0.5 else { return glass }
+        // Clear glass, keeping the app's tint when it is on
+        let clear: Glass = .clear
+        return theme.useLiquidGlassTint
+            ? clear.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
+            : clear.interactive()
     }
 }
 
