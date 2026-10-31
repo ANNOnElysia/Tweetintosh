@@ -704,6 +704,14 @@ private struct LiquidGlassSidebar: View {
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, 8)
                 
+                // Filters under Notifications (All / Likes & Reposts / Comments / Mentions)
+                if tab == .notifications {
+                    SidebarNotificationFilterSection()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 2)
+                        .padding(.bottom, 4)
+                }
+                
                 // Parallel Feed Selector under Home (推荐 / 关注中 / 列表)
                 if tab == .home {
                     SidebarHomeFeedSection(selection: $selection)
@@ -852,6 +860,63 @@ private struct LiquidGlassSidebar: View {
                     .allowsHitTesting(false)
             )
             .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)
+    }
+}
+
+// MARK: - Sidebar Notification Filters (the same filters as the floating bar, shown under Notifications)
+private struct SidebarNotificationFilterSection: View {
+    @ObservedObject var viewModel = NotificationsViewModel.shared
+    @ObservedObject var nav = NavigationManager.shared
+    @ObservedObject var loc = LocalizationManager.shared
+    @ObservedObject var theme = ThemeManager.shared
+    @Namespace private var filterNamespace
+    
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(NotificationFilter.allCases) { filter in
+                let isSelected = viewModel.selectedFilter == filter
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                        if nav.currentTab != .notifications { nav.currentTab = .notifications }
+                        viewModel.selectFilter(filter)
+                    }
+                } label: {
+                    VStack(spacing: 1) {
+                        Image(systemName: filter.iconName)
+                            .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                        if nav.showShortcutBadges {
+                            Text(filter.shortcutKey)
+                                .font(.system(size: 8, weight: .semibold, design: .rounded))
+                                .opacity(0.8)
+                        }
+                    }
+                    .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: nav.showShortcutBadges ? 34 : 28)
+                    .background {
+                        if isSelected {
+                            Capsule(style: .continuous)
+                                .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.24))
+                                .overlay(Capsule(style: .continuous).stroke(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 0.6))
+                                .matchedGeometryEffect(id: "sidebar-notif-filter", in: filterNamespace)
+                        }
+                    }
+                    .contentShape(Capsule(style: .continuous))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help(loc.t(filter.titleKey))
+            }
+        }
+        .padding(2.5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08), lineWidth: 0.6)
+                )
+        )
+        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
     }
 }
 

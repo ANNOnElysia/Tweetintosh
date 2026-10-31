@@ -15,7 +15,7 @@ private struct NotificationsPullRefreshIndicatorOverlay: View {
     
     var body: some View {
         if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
-            let baseTop: CGFloat = nav.sidebarExpanded ? 72 : 118
+            let baseTop: CGFloat = nav.sidebarExpanded ? 36 : 118
             let pullDist = viewModel.isRefreshing ? 40.0 : scrollState.pullDistance
             let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / TrackpadPullCoordinator.refreshThreshold))
             let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(pullDist - 2.0) / 8.0))
@@ -55,9 +55,12 @@ struct NotificationsView: View {
             
             // Secondary Floating Capsule: Filter Bar (All / Likes & Reposts / Comments / Mentions)
             // Dual-Mode (Liquid Glass vs Frosted Glass)
-            NotificationFilterCapsuleBar()
-                .padding(.top, nav.sidebarExpanded ? 16 : 62)
-                .zIndex(50)
+            // With the sidebar open the same filters sit under Notifications in the sidebar instead
+            if !nav.sidebarExpanded {
+                NotificationFilterCapsuleBar()
+                    .padding(.top, 62)
+                    .zIndex(50)
+            }
         }
         .onAppear {
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
@@ -95,7 +98,7 @@ struct NotificationsView: View {
             // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule)
             // During refreshing, expands by 40pt so items stay pushed down for the 40pt animation area!
             ScrollContainer(
-                topSpacer: (nav.sidebarExpanded ? 72 : 118) + (viewModel.isRefreshing ? 40 : 0),
+                topSpacer: (nav.sidebarExpanded ? 36 : 118) + (viewModel.isRefreshing ? 40 : 0),
                 onScrollView: { sv in
                     TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")
                 },
