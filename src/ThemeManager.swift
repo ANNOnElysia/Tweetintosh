@@ -169,6 +169,8 @@ final class ThemeManager: ObservableObject {
         }
     }
     // The factor the backing fills of glass surfaces are multiplied by
+    // Below this the glass is switched off and surfaces are solid
+    static let solidBelow = 0.12
     static var glassBackingScale: Double { 1.0 - 0.6 * shared.glassTransparency }
     
     @Published var showPromotedPosts: Bool {
