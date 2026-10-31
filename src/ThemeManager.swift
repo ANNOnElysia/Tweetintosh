@@ -155,6 +155,23 @@ final class ThemeManager: ObservableObject {
         }
     }
     
+    // Optional custom glass clarity. Off (the default), the glass is Apple's as the HIG describes, and the system's
+    // Clear / Tinted and Reduce Transparency settings decide how it looks. On, the slider below takes over.
+    @Published var customGlassClarity: Bool {
+        didSet { UserDefaults.standard.set(customGlassClarity, forKey: "Tweetintosh_CustomGlassClarity") }
+    }
+    // 0 = solid (no glass), then Regular glass with a thinning backing, then from halfway Apple's Clear glass
+    @Published var glassClarity: Double {
+        didSet { UserDefaults.standard.set(glassClarity, forKey: "Tweetintosh_GlassClarity") }
+    }
+    // Below this the glass is switched off and surfaces are solid (custom clarity only)
+    static let solidBelow = 0.12
+    // The factor the backing fills of glass surfaces are multiplied by
+    static var glassBackingScale: Double {
+        guard shared.customGlassClarity else { return 1 }
+        return shared.glassClarity < solidBelow ? 1.4 : 1.0 - 0.6 * shared.glassClarity
+    }
+    
     @Published var themeColor: AppThemeColor {
         didSet {
             UserDefaults.standard.set(themeColor.rawValue, forKey: "Tweetintosh_ThemeColor")
@@ -230,6 +247,9 @@ final class ThemeManager: ObservableObject {
         } else {
             self.themeColor = .blue
         }
+        
+        self.customGlassClarity = UserDefaults.standard.bool(forKey: "Tweetintosh_CustomGlassClarity")
+        self.glassClarity = (UserDefaults.standard.object(forKey: "Tweetintosh_GlassClarity") as? Double).map { min(1, max(0, $0)) } ?? 0.5
         
         if UserDefaults.standard.object(forKey: "Tweetintosh_ShowPromotedPosts") != nil {
             self.showPromotedPosts = UserDefaults.standard.bool(forKey: "Tweetintosh_ShowPromotedPosts")

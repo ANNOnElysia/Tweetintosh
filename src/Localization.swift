@@ -377,6 +377,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "查看内嵌的帖子",
             .traditionalChinese: "查看內嵌的貼文"
         ],
+        "custom_glass_clarity": [
+            .english: "Custom Clarity",
+            .japanese: "透明度をカスタマイズ",
+            .korean: "투명도 직접 설정",
+            .simplifiedChinese: "自定义通透度",
+            .traditionalChinese: "自訂通透度"
+        ],
+        "custom_glass_clarity_desc": [
+            .english: "Left: solid, no glass. Middle: regular glass. Past halfway: Apple's Clear glass. Off: glass follows System Settings.",
+            .japanese: "左端：ガラスなし（不透明）。中央：標準のガラス。半分以上：Apple のクリアガラス。オフにするとシステム設定に従います。",
+            .korean: "왼쪽: 유리 없음(불투명). 가운데: 기본 유리. 절반 이상: Apple의 클리어 유리. 끄면 시스템 설정을 따릅니다.",
+            .simplifiedChinese: "最左：无玻璃（实心）。中间：常规玻璃。超过一半：Apple 的清透玻璃。关闭时跟随系统设置。",
+            .traditionalChinese: "最左：無玻璃（實心）。中間：一般玻璃。超過一半：Apple 的清透玻璃。關閉時跟隨系統設定。"
+        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",

@@ -451,6 +451,38 @@ struct SettingsView: View {
                         .foregroundColor(ThemeManager.primaryText)
                         .padding(.leading, 12)
                         .transition(.opacity.combined(with: .move(edge: .top)))
+                    
+                    Toggle(loc.t("custom_glass_clarity"), isOn: $theme.customGlassClarity.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                        .toggleStyle(GlassCapsuleToggleStyle())
+                        .foregroundColor(ThemeManager.primaryText)
+                        .padding(.leading, 12)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    
+                    if theme.customGlassClarity {
+                        HStack(spacing: 10) {
+                            Image(systemName: "circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeManager.tertiaryText)
+                            Slider(value: $theme.glassClarity, in: 0...1)
+                                .tint(ThemeManager.accent)
+                            Image(systemName: "circle.dashed")
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeManager.tertiaryText)
+                            Text("\(Int((theme.glassClarity * 100).rounded()))%")
+                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                .foregroundColor(ThemeManager.tertiaryText)
+                                .frame(width: 38, alignment: .trailing)
+                        }
+                        .padding(.leading, 24)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        
+                        Text(loc.t("custom_glass_clarity_desc"))
+                            .font(.system(size: 11))
+                            .foregroundColor(ThemeManager.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 26)
+                            .transition(.opacity)
+                    }
                 } else {
                     Toggle(loc.t("use_liquid_glass"), isOn: $theme.useLiquidGlass.animation(.spring(response: 0.35, dampingFraction: 0.8)))
                         .toggleStyle(.switch)
@@ -602,7 +634,7 @@ struct SettingsView: View {
         .padding(.top, 16)
         .padding(.bottom, 14)
         }
-        .frame(width: 480, height: 860)
+        .frame(width: 480, height: 920)
         .background(ThemeManager.background)
     }
     
