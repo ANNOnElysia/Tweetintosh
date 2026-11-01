@@ -1273,6 +1273,64 @@ final class LocalizationManager: ObservableObject {
             .korean: "광고",
             .simplifiedChinese: "广告",
             .traditionalChinese: "廣告"
+        ],
+        // X's refusals, explained. The wording says what would actually help, because "344" on its own reads like
+        // a bug in this app rather than a limit on the account.
+        "error_rate_limited": [
+            .english: "X has reached its limit for this action for now, so nothing was posted. The limit lifts by itself after a while; adding a phone number to the account raises it.",
+            .japanese: "X 側でこの操作の上限に達したため、投稿されませんでした。しばらくすると自動的に解除されます。電話番号を登録すると上限が上がります。",
+            .korean: "X에서 이 작업의 한도에 도달해 게시되지 않았습니다. 잠시 후 자동으로 풀리며, 전화번호를 등록하면 한도가 올라갑니다.",
+            .simplifiedChinese: "X 说这个动作暂时到达上限了，所以没有发出去。过一段时间会自动解除；给账号绑定手机号可以抬高上限。",
+            .traditionalChinese: "X 說這個動作暫時到達上限了，所以沒有發出去。過一段時間會自動解除；給帳號綁定手機號可以抬高上限。"
+        ],
+        "error_daily_limit": [
+            .english: "The account has posted as much as it can today. Posts work again tomorrow.",
+            .japanese: "本日の投稿上限に達しました。明日になればまた投稿できます。",
+            .korean: "오늘 올릴 수 있는 만큼 게시했습니다. 내일 다시 게시할 수 있습니다.",
+            .simplifiedChinese: "这个账号今天的发帖数已经到顶了，明天恢复。",
+            .traditionalChinese: "這個帳號今天的發文數已經到頂了，明天恢復。"
+        ],
+        "error_automated": [
+            .english: "X treated this as automated activity and refused it. Wait a few minutes before trying again, and avoid posting the same text or link repeatedly.",
+            .japanese: "X に自動化された操作と判定され、送信できませんでした。数分待ってから送り直してください。同じ文面やリンクを続けて投稿するのは避けてください。",
+            .korean: "X가 자동화된 활동으로 판단해 거부했습니다. 몇 분 뒤에 다시 시도하고, 같은 문구나 링크를 반복해서 올리는 것은 피하세요.",
+            .simplifiedChinese: "X 把这次操作判定成自动化行为，拒绝了。等几分钟再发，并且别反复发同样的文字或链接。",
+            .traditionalChinese: "X 把這次操作判定成自動化行為，拒絕了。等幾分鐘再發，並且別反覆發同樣的文字或連結。"
+        ],
+        "error_duplicate": [
+            .english: "X already has this exact post, so it was not sent again. Change the text and try again.",
+            .japanese: "同じ内容の投稿が既にあるため、送信されませんでした。文面を変えてください。",
+            .korean: "같은 내용의 게시물이 이미 있어 보내지 않았습니다. 내용을 바꿔 다시 시도하세요.",
+            .simplifiedChinese: "X 上已经有完全一样的内容了，所以没有再发。改一下文字再试。",
+            .traditionalChinese: "X 上已經有完全一樣的內容了，所以沒有再發。改一下文字再試。"
+        ],
+        "error_too_long": [
+            .english: "This is longer than a post can be. Shorten it and try again.",
+            .japanese: "投稿できる長さを超えています。短くしてもう一度お試しください。",
+            .korean: "게시할 수 있는 길이를 넘었습니다. 줄여서 다시 시도하세요.",
+            .simplifiedChinese: "超过一条帖子的长度了，缩短一点再发。",
+            .traditionalChinese: "超過一條貼文的長度了，縮短一點再發。"
+        ],
+        "error_session_expired": [
+            .english: "The sign-in for this account has expired. Add the account again in Settings.",
+            .japanese: "このアカウントのログインが切れています。設定からもう一度追加してください。",
+            .korean: "이 계정의 로그인이 만료되었습니다. 설정에서 계정을 다시 추가하세요.",
+            .simplifiedChinese: "这个账号的登录失效了，去设置里重新添加一次。",
+            .traditionalChinese: "這個帳號的登入失效了，去設定裡重新加入一次。"
+        ],
+        "error_account_suspended": [
+            .english: "X has suspended this account, so it cannot post.",
+            .japanese: "このアカウントは X から凍結されているため投稿できません。",
+            .korean: "이 계정은 X에서 정지되어 게시할 수 없습니다.",
+            .simplifiedChinese: "这个账号被 X 封禁了，发不了。",
+            .traditionalChinese: "這個帳號被 X 封鎖了，發不了。"
+        ],
+        "error_post_bounced": [
+            .english: "X is holding this post back, so only you can see it. That usually clears after using the account normally for a while.",
+            .japanese: "この投稿は X によって表示が制限されており、本人にしか見えません。通常どおりの利用を続けると解除されることが多いです。",
+            .korean: "이 게시물은 X가 노출을 제한해 작성자만 볼 수 있습니다. 평소처럼 계정을 사용하다 보면 풀리는 경우가 많습니다.",
+            .simplifiedChinese: "这条内容被 X 限流了，只有你自己能看到。正常用一段时间账号通常会恢复。",
+            .traditionalChinese: "這則內容被 X 限流了，只有你自己看得到。正常用一段時間帳號通常會恢復。"
         ]
     ]
         
@@ -1281,6 +1339,12 @@ final class LocalizationManager: ObservableObject {
             return text
         }
         return Self.table[key]?[.english] ?? key
+    }
+    
+    /// The same lookup for a named language, for text that is built away from the main thread and must not race
+    /// with a language chosen in Settings.
+    func t(_ key: String, language: AppLanguage) -> String {
+        return Self.table[key]?[language] ?? Self.table[key]?[.english] ?? key
     }
     
     func format(_ key: String, _ replacements: [String: String]) -> String {

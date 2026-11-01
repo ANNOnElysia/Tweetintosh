@@ -12,6 +12,9 @@ enum APIError: LocalizedError {
     case networkError(Error)
     case parseError
     case serverError(String)
+    /// X understood the request and refused it: 344 is a per-action limit, 226 the automated-activity block. The
+    /// number is kept so it can be explained in the reader's language instead of being shown as a bare "344".
+    case refused(code: Int?, message: String?)
     
     var errorDescription: String? {
         switch self {
@@ -20,6 +23,7 @@ enum APIError: LocalizedError {
         case .networkError(let err): return err.localizedDescription
         case .parseError: return "Failed to parse timeline data."
         case .serverError(let msg): return msg
+        case .refused(let code, let message): return XFailure.describe(code: code, serverMessage: message)
         }
     }
 }
@@ -30,6 +34,55 @@ final class APIClient {
     let session: URLSession
     let bearerToken = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
     let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
+    
+    /// The identifier X's own web client keeps for a browser and sends with every request. A stable one per
+    /// install makes the app look like the same client from one launch to the next, instead of something new every
+    /// time. It is only an identifier, not a signature, so it is safe to hold on to.
+    static let clientUUID: String = {
+        let key = "Tweetintosh_ClientUUID"
+        if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty { return saved }
+        let made = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(made, forKey: key)
+        return made
+    }()
+    
+    // MARK: - Refusals
+    
+    /// X's reason for refusing a request, from {"errors":[{"code":344,"message":"..."}],"data":{}}. Returns nil when
+    /// the body is not one of those envelopes (a plain HTTP failure, for instance).
+    static func refusal(from data: Data?) -> (code: Int?, message: String?)? {
+        guard let data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let errors = json["errors"] as? [[String: Any]], !errors.isEmpty else { return nil }
+        let message = errors.compactMap { $0["message"] as? String }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        return (XFailure.code(in: errors), message.isEmpty ? nil : message)
+    }
+    
+    /// Writes what X actually answered, so a refusal nobody has seen before can be looked at afterwards.
+    static func logRefusal(_ refusal: (code: Int?, message: String?), endpoint: String) {
+        Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
+            .error("\(endpoint) refused: code=\(refusal.code.map(String.init) ?? "-", privacy: .public) message=\(refusal.message ?? "-", privacy: .public)")
+    }
+    
+    /// The headers X's own client sends with an authenticated request. Built here so the write paths cannot drift
+    /// apart: a post that looks different from a browser's is what gets it judged automated.
+    func applyIdentityHeaders(to request: inout URLRequest, creds: AuthCredentials, referer: String) {
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        // Session cookies are an OAuth2 session as far as X is concerned; its client says so on every request
+        request.setValue("OAuth2Session", forHTTPHeaderField: "x-twitter-auth-type")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(Self.clientUUID, forHTTPHeaderField: "x-client-uuid")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://x.com", forHTTPHeaderField: "origin")
+        request.setValue(referer, forHTTPHeaderField: "referer")
+    }
     
     var clientLanguageHeader: String {
         switch LocalizationManager.shared.currentLanguage {
@@ -1288,16 +1341,8 @@ final class APIClient {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
-        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
-        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
-        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
-        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
-        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        applyIdentityHeaders(to: &request, creds: creds, referer: referer)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(referer, forHTTPHeaderField: "referer")
         
         guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
             completion(.failure(.parseError))
@@ -1323,7 +1368,12 @@ final class APIClient {
                 return
             }
             guard (200...299).contains(httpResponse.statusCode), let data = data else {
-                completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
+                if let refusal = Self.refusal(from: data) {
+                    Self.logRefusal(refusal, endpoint: endpoint)
+                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
+                } else {
+                    completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
+                }
                 return
             }
             do {
@@ -1331,9 +1381,9 @@ final class APIClient {
                     completion(.failure(.parseError))
                     return
                 }
-                if let errors = json["errors"] as? [[String: Any]], !errors.isEmpty {
-                    let msg = errors.compactMap { $0["message"] as? String }.joined(separator: ", ")
-                    completion(.failure(.serverError(msg.isEmpty ? "Action rejected by server" : msg)))
+                if let refusal = Self.refusal(from: data) {
+                    Self.logRefusal(refusal, endpoint: endpoint)
+                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
                     return
                 }
                 guard let dataObj = json["data"] as? [String: Any], successCheck(dataObj) else {
@@ -1552,16 +1602,8 @@ final class APIClient {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
-        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
-        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
-        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
-        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
-        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        applyIdentityHeaders(to: &request, creds: creds, referer: "https://x.com/compose/post")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("https://x.com/compose/post", forHTTPHeaderField: "referer")
         
         let features: [String: Any] = [
             "premium_content_api_read_enabled": false,
@@ -1628,7 +1670,13 @@ final class APIClient {
                 return
             }
             guard (200...299).contains(httpResponse.statusCode), let data = data else {
-                completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
+                // A refusal arrives with an HTTP failure and an envelope saying why (344, 226, 187...)
+                if let refusal = Self.refusal(from: data) {
+                    Self.logRefusal(refusal, endpoint: "CreateTweet")
+                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
+                } else {
+                    completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
+                }
                 return
             }
             do {
@@ -1636,9 +1684,9 @@ final class APIClient {
                     completion(.failure(.parseError))
                     return
                 }
-                if let errors = json["errors"] as? [[String: Any]], !errors.isEmpty {
-                    let msg = errors.compactMap { $0["message"] as? String }.joined(separator: ", ")
-                    completion(.failure(.serverError(msg.isEmpty ? "Reply failed" : msg)))
+                if let refusal = Self.refusal(from: data) {
+                    Self.logRefusal(refusal, endpoint: "CreateTweet")
+                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
                     return
                 }
                 // The new post is normally at result.rest_id; X wraps some posts (limited-visibility ones) in

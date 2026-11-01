@@ -56,8 +56,11 @@ enum EngagementGuard {
         if reason.localizedCaseInsensitiveContains("blocked") {
             reason = LocalizationManager.shared.t("engagement_blocked_generic")
         }
+        // A limit reads as something to wait out, not as a rejection
+        var icon = "hand.raised.fill"
+        if case .refused(let code, _) = error { icon = XFailure.iconName(for: code) }
         DispatchQueue.main.async {
-            AppToastManager.shared.show(reason, icon: "hand.raised.fill", duration: 3.6)
+            AppToastManager.shared.show(reason, icon: icon, duration: icon == "hourglass" ? 6 : 3.6)
         }
     }
 }
