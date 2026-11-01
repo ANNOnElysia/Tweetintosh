@@ -184,6 +184,23 @@ final class ThemeManager: ObservableObject {
         }
     }
     
+    // macOS switching between light and dark by itself (the "System" choice): everything that reads isLight must
+    // redraw, and the windows' own background colours must be set again
+    private var systemAppearanceObservation: NSKeyValueObservation?
+    
+    private func watchSystemAppearance() {
+        DispatchQueue.main.async {
+            guard self.systemAppearanceObservation == nil, let app = NSApp else { return }
+            self.systemAppearanceObservation = app.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+                DispatchQueue.main.async {
+                    guard let self = self, self.appearance == .system else { return }
+                    self.objectWillChange.send()
+                    NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
+                }
+            }
+        }
+    }
+    
     func applyAppearance() {
         DispatchQueue.main.async {
             switch self.appearance {
@@ -238,6 +255,7 @@ final class ThemeManager: ObservableObject {
         }
         
         applyAppearance()
+        watchSystemAppearance()
     }
     
     // Dynamic Theme Colors: Dark (Obsidian / Pitch Black) vs Rice White (Warm Cream Paper)
