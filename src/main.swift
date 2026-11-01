@@ -158,6 +158,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Let AppKit build the Tab key order when it is needed. Otherwise SwiftUI rebuilds it eagerly whenever the
         // set of buttons changes, which in a List walks every table row each time a new row scrolls into view.
         window.autorecalculatesKeyViewLoop = true
+        DebugSupport.openBusyReplyPostAfterLaunch()
         self.mainWindow = window
         window.makeKeyAndOrderFront(nil)
     }

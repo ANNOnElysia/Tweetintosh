@@ -14,21 +14,7 @@ final class TweetDetailViewModel: ObservableObject {
     @Published var focalTweet: Tweet
     @Published var ancestors: [Tweet] = []
     @Published var replies: [Tweet] = [] {
-        didSet { debugDumpReplies() } // TEMP(reply-debug)
-    }
-    
-    // TEMP(reply-debug)
-    private func debugDumpReplies() {
-        guard ProcessInfo.processInfo.environment["MAX_DEBUG_DETAIL"] != nil else { return }
-        let log = Logger(subsystem: "com.anno.tweetintosh", category: "replydebug")
-        let authorId = focalTweet.author.id
-        log.notice("focal=\(self.focalTweet.id, privacy: .public) author=\(authorId, privacy: .public) replies=\(self.replies.count, privacy: .public)")
-        for (i, r) in replies.enumerated() {
-            log.notice("#\(i, privacy: .public) id=\(r.id, privacy: .public) parent=\(r.inReplyToStatusId ?? "-", privacy: .public) by=\(r.author.screenName, privacy: .public)\(r.author.id == authorId ? "(AUTHOR)" : "", privacy: .public) replyCount=\(r.replyCount, privacy: .public)")
-        }
-        for (t, thread) in replyThreads.enumerated() {
-            log.notice("thread \(t, privacy: .public): \(thread.map { $0.id.suffix(5) }.joined(separator: ","), privacy: .public)")
-        }
+        didSet { DebugSupport.repliesDidChange(focal: focalTweet, replies: replies, threads: replyThreads) }
     }
     
     // Replies grouped into conversations by who they answer, wherever X happens to list them: each reply to the

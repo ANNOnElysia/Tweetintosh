@@ -91,7 +91,8 @@ Conventional commits, lowercase, imperative, scoped by area: `feat(detail):`, `f
 
 ## Known state
 
-- `MAX_DEBUG_DETAIL` gated code in `main.swift` and `TweetDetailViewModel.swift` is temporary scaffolding for the
-  reply-threading work (`// TEMP(reply-debug)`). Remove it once that work settles.
+- `DebugSupport.swift` holds temporary scaffolding for the reply-threading work: set `MAX_DEBUG_DETAIL=1` in the
+  environment to have the app open a busy post on launch and log how X's replies were grouped. It is inert otherwise.
+  Delete the file and its two call sites once that work settles.
 - The Messages tab is a placeholder (`NewDestinationPlaceholderView`); X's DMs are not implemented.
 - There is no Bookmarks destination yet; bookmarking exists only as an action on posts.
