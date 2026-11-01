@@ -1,0 +1,20 @@
+# Normalise line endings so diffs stay readable whatever the checkout platform is
+* text=auto eol=lf
+
+*.swift   text
+*.js      text
+*.css     text
+*.md      text
+*.sh      text eol=lf
+*.plist   text
+
+# Binary assets, never diffed or converted
+*.icns binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.heic binary
+*.mp4  binary
+*.mov  binary
