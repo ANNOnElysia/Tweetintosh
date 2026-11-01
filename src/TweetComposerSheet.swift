@@ -67,6 +67,7 @@ struct TweetComposerSheet: View {
                 }
                 .padding(.top, 12)
             }
+            .onAppear { WebKitWriteChannel.shared.warmUp() }
             
             Divider()
                 .background(ThemeManager.divider)

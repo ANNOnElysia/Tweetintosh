@@ -51,6 +51,14 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         }
     }
     
+    /// Starts the page before anything is typed, so the first press of the post button does not wait for it.
+    func warmUp() {
+        DispatchQueue.main.async {
+            guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else { return }
+            self.prepare(for: creds)
+        }
+    }
+    
     // MARK: - The hidden page
     
     private func prepare(for creds: AuthCredentials) {

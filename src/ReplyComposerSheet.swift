@@ -33,6 +33,8 @@ struct ReplyComposerSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             headerBar
+                .onAppear { WebKitWriteChannel.shared.warmUp() }
+
             
             Divider()
                 .background(ThemeManager.divider)
