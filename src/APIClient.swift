@@ -60,6 +60,13 @@ final class APIClient {
         return (XFailure.code(in: errors), message.isEmpty ? nil : message)
     }
     
+    /// A short text form of an answer, for the log line that records a shape this app does not understand.
+    static func describe(_ json: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: json),
+              let text = String(data: data, encoding: .utf8) else { return "<unprintable>" }
+        return String(text.prefix(700))
+    }
+    
     /// Writes what X actually answered, so a refusal nobody has seen before can be looked at afterwards.
     static func logRefusal(_ refusal: (code: Int?, message: String?), endpoint: String) {
         Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
@@ -1322,80 +1329,30 @@ final class APIClient {
     
     // MARK: - Tweet Engagement Mutations
     
+    /// Runs a mutation through the browser channel, so X accepts it (see WebKitWriteChannel).
     private func performGraphQLMutation(
         endpoint: String,
         body: [String: Any],
-        referer: String = "https://x.com/home",
         successCheck: @escaping ([String: Any]) -> Bool,
-        retriesLeft: Int = 1,
         completion: @escaping (Result<Void, APIError>) -> Void
     ) {
         guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
             completion(.failure(.unauthenticated))
             return
         }
-        guard let url = URL(string: endpoint) else {
-            completion(.failure(.invalidResponse))
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        applyIdentityHeaders(to: &request, creds: creds, referer: referer)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
-            completion(.failure(.parseError))
-            return
-        }
-        request.httpBody = httpBody
-        
-        let task = session.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(.networkError(error)))
-                return
-            }
-            guard let httpResponse = response as? HTTPURLResponse else {
-                completion(.failure(.invalidResponse))
-                return
-            }
-            // X sometimes answers a valid request with a spurious 404 and accepts the identical one a moment later
-            if httpResponse.statusCode == 404 && retriesLeft > 0 {
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) {
-                    self.performGraphQLMutation(endpoint: endpoint, body: body, referer: referer,
-                                                successCheck: successCheck, retriesLeft: retriesLeft - 1, completion: completion)
-                }
-                return
-            }
-            guard (200...299).contains(httpResponse.statusCode), let data = data else {
-                if let refusal = Self.refusal(from: data) {
-                    Self.logRefusal(refusal, endpoint: endpoint)
-                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
-                } else {
-                    completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
-                }
-                return
-            }
-            do {
-                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    completion(.failure(.parseError))
-                    return
-                }
-                if let refusal = Self.refusal(from: data) {
-                    Self.logRefusal(refusal, endpoint: endpoint)
-                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
-                    return
-                }
-                guard let dataObj = json["data"] as? [String: Any], successCheck(dataObj) else {
+        let path = URL(string: endpoint)?.path ?? endpoint
+        WebKitWriteChannel.shared.perform(path: path, body: body) { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success(let json):
+                guard let data = json["data"] as? [String: Any], successCheck(data) else {
                     completion(.failure(.serverError("Unexpected server response")))
                     return
                 }
                 completion(.success(()))
-            } catch {
-                completion(.failure(.parseError))
             }
         }
-        task.resume()
     }
     
     /// Like a tweet
@@ -1581,7 +1538,10 @@ final class APIClient {
         return mediaId
     }
     
-    /// Create a new tweet (standalone post, reply, or quote post)
+    /// Create a new tweet (standalone post, reply, or quote post).
+    ///
+    /// This goes through WebKitWriteChannel rather than URLSession: X drops writes that do not arrive over a
+    /// browser's connection, answering 200 with an empty tweet_results and publishing nothing.
     func createTweet(
         text: String,
         replyToTweetId: String? = nil,
@@ -1589,21 +1549,8 @@ final class APIClient {
         mediaIds: [String] = [],
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
-        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
-            completion(.failure(.unauthenticated))
-            return
-        }
         let qid = "5CVj-J0FZWyGgJpcjeBJEA"
-        let endpoint = "https://x.com/i/api/graphql/\(qid)/CreateTweet"
-        guard let url = URL(string: endpoint) else {
-            completion(.failure(.invalidResponse))
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        applyIdentityHeaders(to: &request, creds: creds, referer: "https://x.com/compose/post")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let path = "/i/api/graphql/\(qid)/CreateTweet"
         
         let features: [String: Any] = [
             "premium_content_api_read_enabled": false,
@@ -1654,58 +1601,25 @@ final class APIClient {
             "queryId": qid
         ]
         
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
-            completion(.failure(.parseError))
-            return
-        }
-        request.httpBody = httpBody
-        
-        let task = session.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(.networkError(error)))
-                return
-            }
-            guard let httpResponse = response as? HTTPURLResponse else {
-                completion(.failure(.invalidResponse))
-                return
-            }
-            guard (200...299).contains(httpResponse.statusCode), let data = data else {
-                // A refusal arrives with an HTTP failure and an envelope saying why (344, 226, 187...)
-                if let refusal = Self.refusal(from: data) {
-                    Self.logRefusal(refusal, endpoint: "CreateTweet")
-                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
-                } else {
-                    completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)")))
-                }
-                return
-            }
-            do {
-                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    completion(.failure(.parseError))
-                    return
-                }
-                if let refusal = Self.refusal(from: data) {
-                    Self.logRefusal(refusal, endpoint: "CreateTweet")
-                    completion(.failure(.refused(code: refusal.code, message: refusal.message)))
-                    return
-                }
+        WebKitWriteChannel.shared.perform(path: path, body: body) { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success(let json):
                 // The new post is normally at result.rest_id; X wraps some posts (limited-visibility ones) in
                 // result.tweet instead
                 let result = (((json["data"] as? [String: Any])?["create_tweet"] as? [String: Any])?["tweet_results"] as? [String: Any])?["result"] as? [String: Any]
                 let post = (result?["tweet"] as? [String: Any]) ?? result
                 guard let restId = (post?["rest_id"] as? String) ?? (post?["legacy"] as? [String: Any])?["id_str"] as? String else {
                     // Keep what X actually said, so an answer in a shape not seen before can be recognised
-                    let body = String(data: data.prefix(700), encoding: .utf8) ?? "<not text>"
-                    Logger(subsystem: "com.anno.tweetintosh", category: "graphql").error("CreateTweet answered without a post: \(body, privacy: .public)")
-                    completion(.failure(.serverError("X accepted the post but didn't confirm it, so it may not have been published. Check your profile before trying again.")))
+                    Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
+                        .error("CreateTweet answered without a post: \(Self.describe(json), privacy: .public)")
+                    completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
                     return
                 }
                 completion(.success(restId))
-            } catch {
-                completion(.failure(.parseError))
             }
         }
-        task.resume()
     }
     
     // MARK: - Fetch Tweet Detail & Thread Conversation

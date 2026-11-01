@@ -61,6 +61,8 @@ Platform
 - `Localization.swift` — the translation table for English, 日本語, 한국어, 简体中文, 繁體中文.
 - `Accounts.swift`, `AuthCredentials.swift`, `LoginWindowController.swift` — multi-account storage and headless
   credential capture.
+- `WebKitWriteChannel.swift` — the hidden web view every request that changes something on X goes through.
+- `XFailures.swift` — what X's numeric refusal codes mean, and how to say it in the reader's language.
 - `Engagement.swift` — shared engagement rules: blocked authors, rejection reporting, keeping every on-screen copy of
   a post in sync after a like / repost / bookmark.
 
@@ -80,6 +82,10 @@ Platform
   for what that costs and the helpers that absorb it).
 - **Every on-screen copy of a post must stay in sync** after an engagement action: go through `Engagement` rather
   than mutating one view model.
+- **Reads use `URLSession`; writes go through `WebKitWriteChannel`.** X silently drops writes that do not arrive
+  over a browser's connection — the same CreateTweet from `URLSession` answers `200` with an empty `tweet_results`
+  and publishes nothing — so anything that changes state on X must be sent from inside the hidden web view. Do not
+  "simplify" a mutation back to `URLSession`.
 - Build after touching a shared type — `swift build -c release` — before claiming anything works. There is no test
   target, so verification is a compile plus a run.
 
