@@ -35,17 +35,6 @@ final class APIClient {
     let bearerToken = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
     let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
     
-    /// The identifier X's own web client keeps for a browser and sends with every request. A stable one per
-    /// install makes the app look like the same client from one launch to the next, instead of something new every
-    /// time. It is only an identifier, not a signature, so it is safe to hold on to.
-    static let clientUUID: String = {
-        let key = "Tweetintosh_ClientUUID"
-        if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty { return saved }
-        let made = UUID().uuidString.lowercased()
-        UserDefaults.standard.set(made, forKey: key)
-        return made
-    }()
-    
     // MARK: - Refusals
     
     /// X's reason for refusing a request, from {"errors":[{"code":344,"message":"..."}],"data":{}}. Returns nil when
@@ -71,24 +60,6 @@ final class APIClient {
     static func logRefusal(_ refusal: (code: Int?, message: String?), endpoint: String) {
         Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
             .error("\(endpoint) refused: code=\(refusal.code.map(String.init) ?? "-", privacy: .public) message=\(refusal.message ?? "-", privacy: .public)")
-    }
-    
-    /// The headers X's own client sends with an authenticated request. Built here so the write paths cannot drift
-    /// apart: a post that looks different from a browser's is what gets it judged automated.
-    func applyIdentityHeaders(to request: inout URLRequest, creds: AuthCredentials, referer: String) {
-        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
-        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
-        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
-        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
-        // Session cookies are an OAuth2 session as far as X is concerned; its client says so on every request
-        request.setValue("OAuth2Session", forHTTPHeaderField: "x-twitter-auth-type")
-        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
-        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
-        request.setValue(Self.clientUUID, forHTTPHeaderField: "x-client-uuid")
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("https://x.com", forHTTPHeaderField: "origin")
-        request.setValue(referer, forHTTPHeaderField: "referer")
     }
     
     var clientLanguageHeader: String {
