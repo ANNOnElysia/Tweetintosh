@@ -271,6 +271,48 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NavigationManager.shared.toggleSearch()
     }
 
+// MARK: - Custom Settings Window (Frameless with Esc Dismiss)
+final class SettingsWindow: NSWindow {
+    override func layoutIfNeeded() {
+        super.layoutIfNeeded()
+        hideTrafficLights()
+    }
+    
+    override func becomeKey() {
+        super.becomeKey()
+        hideTrafficLights()
+    }
+    
+    override func makeKeyAndOrderFront(_ sender: Any?) {
+        super.makeKeyAndOrderFront(sender)
+        hideTrafficLights()
+    }
+
+    func hideTrafficLights() {
+        standardWindowButton(.closeButton)?.isHidden = true
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        self.close()
+        NSApp.mainWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape
+            self.close()
+            NSApp.mainWindow?.makeKeyAndOrderFront(nil)
+            return
+        }
+        super.keyDown(with: event)
+    }
+    
+    override var canBecomeKey: Bool {
+        true
+    }
+}
+
     // MARK: - Settings Window (Cmd+,)
     @objc func showSettings() {
         if let win = settingsWindow {
@@ -280,13 +322,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         
         let settingsRect = NSRect(x: 0, y: 0, width: 480, height: 860)
-        let win = NSWindow(
+        let win = SettingsWindow(
             contentRect: settingsRect,
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         win.title = LocalizationManager.shared.t("settings")
+        win.titleVisibility = .hidden
+        win.titlebarAppearsTransparent = true
+        win.isMovableByWindowBackground = true
+        
+        // Ensure traffic lights remain completely hidden
+        win.hideTrafficLights()
+        
         // The title bar is AppKit, so it has to be told when the language changes. @Published announces the change
         // before the new value is stored, hence the hop to the next main-queue turn before reading the title.
         settingsTitleObserver = LocalizationManager.shared.$currentLanguage
@@ -313,6 +362,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 TimelineCacheManager.shared.clearCache()
                 NotificationCacheManager.shared.clearCache()
                 MediaCacheManager.shared.clearAllCache()
+            },
+            onClose: { [weak win, weak self] in
+                win?.close()
+                self?.mainWindow?.makeKeyAndOrderFront(nil)
             }
         )
         

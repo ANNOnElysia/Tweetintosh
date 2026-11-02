@@ -390,6 +390,66 @@ struct GlassDropdownPicker<T: Hashable>: View {
     }
 }
 
+// MARK: - Settings Close Button (Top-Right "小麻叉")
+struct SettingsCloseButtonStyle: ButtonStyle {
+    @ObservedObject var theme = ThemeManager.shared
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                if theme.useLiquidGlass {
+                    if #available(macOS 26.0, *) {
+                        Circle()
+                            .fill(configuration.isPressed ? Color.white.opacity(0.22) : Color.white.opacity(0.08))
+                            .tweetGlass(.regular, in: Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(configuration.isPressed ? Color.white.opacity(0.35) : Color.white.opacity(0.18), lineWidth: 0.8)
+                            )
+                    } else {
+                        defaultCircleBackground(isPressed: configuration.isPressed)
+                    }
+                } else {
+                    defaultCircleBackground(isPressed: configuration.isPressed)
+                }
+            }
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+    
+    private func defaultCircleBackground(isPressed: Bool) -> some View {
+        Circle()
+            .fill(
+                isPressed
+                    ? (theme.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.20))
+                    : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.10))
+            )
+            .overlay(
+                Circle()
+                    .stroke(
+                        theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14),
+                        lineWidth: 0.6
+                    )
+            )
+    }
+}
+
+struct SettingsCloseButton: View {
+    var action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(ThemeManager.secondaryText)
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(SettingsCloseButtonStyle())
+        .keyboardShortcut(.escape, modifiers: [])
+        .help("Esc")
+    }
+}
+
 // MARK: - SettingsView Main Interface
 struct SettingsView: View {
     @ObservedObject var loc = LocalizationManager.shared
@@ -402,6 +462,7 @@ struct SettingsView: View {
     var onSwitchAccount: (String) -> Void
     var onAddAccount: () -> Void
     var onClearCache: () -> Void
+    var onClose: () -> Void = {}
     
     // Accounts: tap one to switch to it, or add another
     private var accountsSection: some View {
@@ -470,10 +531,26 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        ScrollView(showsIndicators: false) {
-        VStack(alignment: .leading, spacing: 14) {
-            // 0. Accounts
-            accountsSection
+        VStack(spacing: 0) {
+            // Header Bar: Title on left, Close ("小麻叉") on right
+            HStack(alignment: .center) {
+                Text(loc.t("settings"))
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(ThemeManager.primaryText)
+                
+                Spacer()
+                
+                SettingsCloseButton(action: onClose)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            .background(ThemeManager.background)
+            
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 14) {
+                    // 0. Accounts
+                    accountsSection
             
             // 1. Language Section
             VStack(alignment: .leading, spacing: 8) {
@@ -682,8 +759,9 @@ struct SettingsView: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 16)
+        }
         }
         .frame(width: 480, height: 860)
         .background(ThemeManager.background)
