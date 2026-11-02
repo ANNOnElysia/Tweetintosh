@@ -290,7 +290,7 @@ struct AppRootView: View {
             }
         case .messages:
             NavigationStack {
-                NewDestinationPlaceholderView(title: "Messages", icon: "bubble.left.and.bubble.right.fill")
+                MessagesView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
             }
         }
     }

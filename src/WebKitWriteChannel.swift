@@ -319,6 +319,158 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         }
     }
     
+    // MARK: - X Chat / Juicebox E2EE Passcode Recovery
+    
+    /// Reconstructs the user's P-256 private key via X's Juicebox KMS protocol and WebAssembly.
+    /// Returns the raw 32-byte private key as a hex string on success.
+    func recoverXChatPrivateKey(passcode: String, userId: String, completion: @escaping (Result<String, APIError>) -> Void) {
+        DispatchQueue.main.async {
+            guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+                completion(.failure(.unauthenticated))
+                return
+            }
+            self.cancelIdleTeardown()
+            self.prepare(for: creds)
+            self.whenLoaded(
+                ready: {
+                    self.executeRecovery(passcode: passcode, userId: userId, creds: creds) { result in
+                        self.scheduleIdleTeardown()
+                        completion(result)
+                    }
+                },
+                failure: { error in
+                    self.scheduleIdleTeardown()
+                    completion(.failure(error))
+                }
+            )
+        }
+    }
+    
+    private func executeRecovery(passcode: String, userId: String, creds: AuthCredentials, completion: @escaping (Result<String, APIError>) -> Void) {
+        guard let webView = webView else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        
+        let script = """
+        async function runJuiceboxRecovery() {
+            try {
+                const queryId = "C-YphxeIcPLOGtFNGhkuOw";
+                const url = "/i/api/graphql/" + queryId + "/GetPublicKeysQuery?variables=" + encodeURIComponent(JSON.stringify({
+                    ids: [userId],
+                    include_juicebox_tokens: true
+                }));
+                
+                const csrf = (document.cookie.match(/ct0=([^;]+)/) || [])[1] || creds_csrf;
+                const headers = {
+                    "authorization": bearer,
+                    "x-csrf-token": csrf,
+                    "x-twitter-active-user": "yes"
+                };
+                
+                const resp = await fetch(url, { headers });
+                if (!resp.ok) {
+                    return { success: false, error: "HTTP " + resp.status };
+                }
+                const json = await resp.json();
+                const userRes = json.data?.user_results_by_rest_ids?.[0]?.result;
+                const pks = userRes?.get_public_keys?.public_keys_with_token_map || [];
+                if (pks.length === 0) {
+                    return { success: false, error: "No public keys found for user" };
+                }
+                
+                const jbModule = await import("https://abs.twimg.com/x-web/xchat/embed/assets/juicebox-sdk-Ra1ujYy4.js");
+                const jb = await jbModule.load();
+                
+                // Try from newest to oldest keypair
+                const orderedPks = [...pks].reverse();
+                let lastErr = null;
+                
+                for (const pkWithMap of orderedPks) {
+                    try {
+                        const tokenMapJson = pkWithMap.token_map?.key_store_token_map_json;
+                        const tokenEntries = pkWithMap.token_map?.token_map || [];
+                        if (!tokenMapJson) continue;
+                        
+                        const map = {};
+                        for (const e of tokenEntries) {
+                            map[e.key] = e.value.token;
+                            if (e.value.address) map[e.value.address] = e.value.token;
+                        }
+                        
+                        globalThis.JuiceboxGetAuthToken = (arg) => {
+                            let key = "";
+                            if (arg instanceof Uint8Array || ArrayBuffer.isView(arg)) {
+                                for (let i = 0; i < arg.length; i++) key += arg[i].toString(16).padStart(2, "0");
+                            } else {
+                                key = String(arg);
+                            }
+                            const tok = map[key] || Object.values(map)[0];
+                            return Promise.resolve(tok);
+                        };
+                        
+                        const config = new jb.Configuration(tokenMapJson);
+                        const client = new jb.Client(config, []);
+                        const pinBytes = new TextEncoder().encode(passcode);
+                        const privKeyBytes = await client.recover(pinBytes, new Uint8Array(0));
+                        
+                        let hex = "";
+                        const targetBytes = privKeyBytes.length >= 32 ? privKeyBytes.slice(0, 32) : privKeyBytes;
+                        for (let i = 0; i < targetBytes.length; i++) {
+                            hex += targetBytes[i].toString(16).padStart(2, "0");
+                        }
+                        return { success: true, hexKey: hex };
+                    } catch (err) {
+                        lastErr = err;
+                    }
+                }
+                
+                if (lastErr) {
+                    let desc = "Incorrect passcode";
+                    if (lastErr.guesses_remaining !== undefined) {
+                        desc += " (" + lastErr.guesses_remaining + " attempts left)";
+                    }
+                    return { success: false, error: desc };
+                }
+                return { success: false, error: "Recovery failed on all keys" };
+            } catch (err) {
+                return { success: false, error: err.stack || err.message || String(err) };
+            }
+        }
+        return await runJuiceboxRecovery();
+        """
+        
+        webView.callAsyncJavaScript(
+            script,
+            arguments: [
+                "passcode": passcode,
+                "userId": userId,
+                "creds_csrf": creds.ct0,
+                "bearer": APIClient.shared.bearerToken
+            ],
+            in: nil,
+            in: .page
+        ) { outcome in
+            switch outcome {
+            case .failure(let error):
+                writeLog.error("Juicebox recovery JS execution failed: \(error.localizedDescription)")
+                completion(.failure(.networkError(error)))
+            case .success(let val):
+                guard let res = val as? [String: Any],
+                      let success = res["success"] as? Bool else {
+                    completion(.failure(.parseError))
+                    return
+                }
+                if success, let hexKey = res["hexKey"] as? String, !hexKey.isEmpty {
+                    completion(.success(hexKey))
+                } else {
+                    let errStr = res["error"] as? String ?? "Recovery failed"
+                    completion(.failure(.serverError(errStr)))
+                }
+            }
+        }
+    }
+    
     // MARK: - CAPTCHA Support
     
     private func presentCaptchaWindow() {

@@ -90,6 +90,237 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "私信",
             .traditionalChinese: "私訊"
         ],
+        "messages_search": [
+            .english: "Search",
+            .japanese: "検索",
+            .korean: "검색",
+            .simplifiedChinese: "搜索",
+            .traditionalChinese: "搜尋"
+        ],
+        "messages_filter_all": [
+            .english: "All Messages",
+            .japanese: "すべてのメッセージ",
+            .korean: "모든 메시지",
+            .simplifiedChinese: "所有信息",
+            .traditionalChinese: "所有訊息"
+        ],
+        "messages_filter_unread": [
+            .english: "Unread",
+            .japanese: "未読",
+            .korean: "읽지 않음",
+            .simplifiedChinese: "未读信息",
+            .traditionalChinese: "未讀訊息"
+        ],
+        "messages_filter_known": [
+            .english: "Known Senders",
+            .japanese: "フォロー中",
+            .korean: "아는 사람",
+            .simplifiedChinese: "关注的人",
+            .traditionalChinese: "關注的人"
+        ],
+        "messages_filter_requests": [
+            .english: "Message Requests",
+            .japanese: "メッセージリクエスト",
+            .korean: "쪽지 요청",
+            .simplifiedChinese: "陌生人请求",
+            .traditionalChinese: "陌生人請求"
+        ],
+        "messages_edit": [
+            .english: "Edit",
+            .japanese: "編集",
+            .korean: "편집",
+            .simplifiedChinese: "编辑",
+            .traditionalChinese: "編輯"
+        ],
+        "messages_done": [
+            .english: "Done",
+            .japanese: "完了",
+            .korean: "완료",
+            .simplifiedChinese: "完成",
+            .traditionalChinese: "完成"
+        ],
+        "messages_pin": [
+            .english: "Pin",
+            .japanese: "ピン留め",
+            .korean: "고정",
+            .simplifiedChinese: "置顶",
+            .traditionalChinese: "置頂"
+        ],
+        "messages_unpin": [
+            .english: "Unpin",
+            .japanese: "ピン留め解除",
+            .korean: "고정 해제",
+            .simplifiedChinese: "取消置顶",
+            .traditionalChinese: "取消置頂"
+        ],
+        "messages_mark_read": [
+            .english: "Mark as Read",
+            .japanese: "既読にする",
+            .korean: "읽음으로 표시",
+            .simplifiedChinese: "标为已读",
+            .traditionalChinese: "標為已讀"
+        ],
+        "messages_delete": [
+            .english: "Delete",
+            .japanese: "削除",
+            .korean: "삭제",
+            .simplifiedChinese: "删除",
+            .traditionalChinese: "刪除"
+        ],
+        "messages_input_placeholder": [
+            .english: "Message",
+            .japanese: "メッセージ...",
+            .korean: "메시지...",
+            .simplifiedChinese: "发送私信...",
+            .traditionalChinese: "發送私訊..."
+        ],
+        "messages_empty": [
+            .english: "No Conversations",
+            .japanese: "会話はありません",
+            .korean: "대화가 없습니다",
+            .simplifiedChinese: "暂无私信会话",
+            .traditionalChinese: "暫無私訊對話"
+        ],
+        "messages_select_prompt": [
+            .english: "Select a conversation",
+            .japanese: "メッセージを選択",
+            .korean: "대화를 선택하세요",
+            .simplifiedChinese: "选择一个会话开始聊天",
+            .traditionalChinese: "選擇一個對話開始聊天"
+        ],
+        "messages_seen": [
+            .english: "Seen",
+            .japanese: "既読",
+            .korean: "읽음",
+            .simplifiedChinese: "已读",
+            .traditionalChinese: "已讀"
+        ],
+        "messages_pinned_section": [
+            .english: "Pinned",
+            .japanese: "ピン留め済み",
+            .korean: "고정됨",
+            .simplifiedChinese: "置顶会话",
+            .traditionalChinese: "置頂對話"
+        ],
+        "messages_passcode_title": [
+            .english: "Enter Passcode",
+            .japanese: "パスコードを入力",
+            .korean: "암호 입력",
+            .simplifiedChinese: "输入私信密码",
+            .traditionalChinese: "輸入私訊密碼"
+        ],
+        "messages_passcode_subtitle": [
+            .english: "Enter your 4-digit passcode to decrypt recent messages and unlock X Chat.",
+            .japanese: "最新のメッセージを復号し、X Chatのロックを解除するには4桁のパスコードを入力してください。",
+            .korean: "최근 메시지를 복호화하고 X Chat 잠금을 해제하려면 4자리 암호를 입력하세요.",
+            .simplifiedChinese: "输入你的 4 位数密码以解密最新私信并解锁 X Chat。",
+            .traditionalChinese: "輸入你的 4 位數密碼以解密最新私訊並解鎖 X Chat。"
+        ],
+        "messages_passcode_unlock": [
+            .english: "Unlock",
+            .japanese: "ロック解除",
+            .korean: "잠금 해제",
+            .simplifiedChinese: "解锁",
+            .traditionalChinese: "解鎖"
+        ],
+        "messages_passcode_cancel": [
+            .english: "Cancel",
+            .japanese: "キャンセル",
+            .korean: "취소",
+            .simplifiedChinese: "取消",
+            .traditionalChinese: "取消"
+        ],
+        "messages_passcode_banner": [
+            .english: "Enter 4-digit passcode to decrypt recent messages",
+            .japanese: "4桁のパスコードを入力して最新メッセージを復号",
+            .korean: "4자리 암호를 입력하여 최근 메시지 복호화",
+            .simplifiedChinese: "输入 4 位数密码以解密最新消息",
+            .traditionalChinese: "輸入 4 位數密碼以解密最新訊息"
+        ],
+        "messages_passcode_unlocked_toast": [
+            .english: "X Chat unlocked",
+            .japanese: "X Chatのロックを解除しました",
+            .korean: "X Chat 잠금 해제됨",
+            .simplifiedChinese: "私信已解密解锁",
+            .traditionalChinese: "私訊已解密解鎖"
+        ],
+        "messages_encrypted_notice": [
+            .english: "Encrypted Message",
+            .japanese: "暗号化されたメッセージ",
+            .korean: "암호화된 메시지",
+            .simplifiedChinese: "加密消息",
+            .traditionalChinese: "加密訊息"
+        ],
+        "messages_e2ee_badge": [
+            .english: "End-to-End Encrypted",
+            .japanese: "エンドツーエンド暗号化",
+            .korean: "종단간 암호화됨",
+            .simplifiedChinese: "端到端加密",
+            .traditionalChinese: "端對端加密"
+        ],
+        "messages_locked_header_btn": [
+            .english: "Locked · Tap to Unlock",
+            .japanese: "ロック中 · タップして解除",
+            .korean: "잠김 · 탭하여 잠금 해제",
+            .simplifiedChinese: "未解锁 · 点击输入密码",
+            .traditionalChinese: "未解鎖 · 點擊輸入密碼"
+        ],
+        "messages_locked_card_title": [
+            .english: "End-to-End Encrypted Conversation",
+            .japanese: "エンドツーエンド暗号化チャット",
+            .korean: "종단간 암호화된 대화",
+            .simplifiedChinese: "端到端加密对话",
+            .traditionalChinese: "端對端加密對話"
+        ],
+        "messages_locked_card_desc": [
+            .english: "Messages in this conversation are protected by X's end-to-end encryption. Enter your 4-digit passcode to unlock and decrypt messages on this device.",
+            .japanese: "この会話のメッセージはXのエンドツーエンド暗号化で保護されています。このデバイスで復号するには4桁のパスコードを入力してください。",
+            .korean: "이 대화의 메시지는 X의 종단간 암호화로 보호됩니다. 이 기기에서 메시지를 복호화하려면 4자리 암호를 입력하세요.",
+            .simplifiedChinese: "此对话受 X 端到端加密保护。输入你在 X 设置的 4 位密码以解锁并在本设备上解密历史消息。",
+            .traditionalChinese: "此對話受 X 端對端加密保護。輸入你在 X 設定的 4 位密碼以解鎖並在本設備上解密歷史訊息。"
+        ],
+        "messages_locked_card_action": [
+            .english: "Enter 4-Digit Passcode",
+            .japanese: "4桁のパスコードを入力",
+            .korean: "4자리 암호 입력",
+            .simplifiedChinese: "输入 4 位密码解锁",
+            .traditionalChinese: "輸入 4 位密碼解鎖"
+        ],
+        "messages_locked_bubble_hint": [
+            .english: "Tap to enter passcode and decrypt",
+            .japanese: "タップしてパスコードを入力し復号",
+            .korean: "탭하여 암호 입력 및 복호화",
+            .simplifiedChinese: "点击输入密码以解密",
+            .traditionalChinese: "點擊輸入密碼以解密"
+        ],
+        "messages_locked_sidebar_hint": [
+            .english: "Encrypted (Tap to Unlock)",
+            .japanese: "暗号化（タップして解除）",
+            .korean: "암호화됨 (탭하여 해제)",
+            .simplifiedChinese: "加密对话 (点击解锁)",
+            .traditionalChinese: "加密對話 (點擊解鎖)"
+        ],
+        "messages_verifying_passcode": [
+            .english: "Verifying passcode and decrypting messages...",
+            .japanese: "パスコードを検証してメッセージを復号中...",
+            .korean: "암호를 확인하고 메시지를 복호화하는 중...",
+            .simplifiedChinese: "正在验证密码并解密消息...",
+            .traditionalChinese: "正在驗證密碼並解密訊息..."
+        ],
+        "messages_passcode_incorrect": [
+            .english: "Incorrect passcode. Please try again.",
+            .japanese: "パスコードが正しくありません。もう一度お試しください。",
+            .korean: "암호가 올바르지 않습니다. 다시 시도해 주세요.",
+            .simplifiedChinese: "密码错误，请重新输入。",
+            .traditionalChinese: "密碼錯誤，請重新輸入。"
+        ],
+        "messages_passcode_error": [
+            .english: "Unable to unlock with passcode.",
+            .japanese: "パスコードによるロック解除に失敗しました。",
+            .korean: "암호로 잠금을 해제할 수 없습니다.",
+            .simplifiedChinese: "解锁失败，请重试。",
+            .traditionalChinese: "解鎖失敗，請重試。"
+        ],
         "tab_search": [
             .english: "Search",
             .japanese: "検索",
