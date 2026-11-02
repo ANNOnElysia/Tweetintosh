@@ -201,6 +201,8 @@ struct CachedAsyncImage: View {
 struct ImageGridView: View {
     let mediaList: [TweetMedia]
     var tweet: Tweet? = nil
+    var isInteractive: Bool = true
+    var isQuoted: Bool = false
     @ObservedObject var layout = TimelineLayoutState.shared
     @ObservedObject var theme = ThemeManager.shared
     
@@ -232,16 +234,18 @@ struct ImageGridView: View {
     // MARK: - 1. Single Image (Exact Proportions based on Apple Hardware Physical Profile)
     private func singleImageView(_ media: TweetMedia) -> some View {
         let dims = calculateSingleDimensions(media)
+        let corner: CGFloat = isQuoted ? 10 : 16
         
         return HStack {
             MediaTile(
                 media: media,
                 url: thumbUrl(media.mediaUrl),
                 size: CGSize(width: dims.width, height: dims.height),
-                shape: RoundedCorner(tl: 16, tr: 16, bl: 16, br: 16),
+                shape: RoundedCorner(tl: corner, tr: corner, bl: corner, br: corner),
                 lightboxItems: [media],
                 index: 0,
-                tweet: tweet
+                tweet: tweet,
+                isInteractive: isInteractive
             )
             Spacer(minLength: 0)
         }
@@ -251,8 +255,9 @@ struct ImageGridView: View {
     private func calculateSingleDimensions(_ media: TweetMedia) -> (width: CGFloat, height: CGFloat) {
         // 读取当前 Apple 设备物理渲染分辨率的长宽各 1/2（转换为 points）
         let ref = AppleDisplayManager.shared.halfPhysicalReferencePoints
-        let maxBoxW = min(layout.availableColumnWidth, ref.width)
-        let maxBoxH = ref.height
+        let maxBoxW = min(isQuoted ? max(180, layout.availableColumnWidth - 24) : layout.availableColumnWidth, ref.width)
+        // 引用帖严格限制最大高度小于主帖（主帖限制为 min(windowHeight/3.0, 260)），主帖单图默认保持物理分辨率参考高度
+        let maxBoxH = isQuoted ? min(layout.windowHeight / 3.5, 200) : ref.height
         
         let rawRatio = media.aspectRatio > 0 ? media.aspectRatio : 1.0
         // 超长（大于 1:3 的长或宽图，允许缩放裁切到 1:3 比例）
@@ -260,8 +265,8 @@ struct ImageGridView: View {
         let windowHeight = layout.windowHeight
         
         if clampedRatio < 1.0 {
-            // 竖图 (Height > Width): 限制单个图片高度不得超过整个显示窗口的 1/3 高度并等比缩放
-            let maxVerticalH = min(windowHeight / 3.0, maxBoxH)
+            // 竖图 (Height > Width): 限制单个图片高度不得超过整个显示窗口的 1/3 (引用帖为 1/3.5) 高度并等比缩放
+            let maxVerticalH = min(isQuoted ? windowHeight / 3.5 : windowHeight / 3.0, maxBoxH)
             let h = maxVerticalH
             let w = min(maxBoxW, h * clampedRatio)
             return (w, h)
@@ -284,30 +289,32 @@ struct ImageGridView: View {
     
     // MARK: - 2. Two Images (Side-by-side, Left & Right rounded, exact height)
     private func twoImagesView(_ items: [TweetMedia]) -> some View {
-        let availableWidth = layout.availableColumnWidth
+        let availableWidth = isQuoted ? max(180, layout.availableColumnWidth - 24) : layout.availableColumnWidth
         let spacing: CGFloat = 8
         let singleWidth = (availableWidth - spacing) / 2.0
-        let height: CGFloat = min(layout.windowHeight / 3.0, 260)
+        let height: CGFloat = isQuoted ? min(layout.windowHeight / 3.5, 180) : min(layout.windowHeight / 3.0, 260)
         let size = CGSize(width: singleWidth, height: height)
+        let corner: CGFloat = isQuoted ? 10 : 16
         
         return HStack(spacing: spacing) {
             MediaTile(media: items[0], url: thumbUrl(items[0].mediaUrl), size: size,
-                      shape: RoundedCorner(tl: 16, tr: 0, bl: 16, br: 0),
-                      lightboxItems: items, index: 0, tweet: tweet)
+                      shape: RoundedCorner(tl: corner, tr: 0, bl: corner, br: 0),
+                      lightboxItems: items, index: 0, tweet: tweet, isInteractive: isInteractive)
             MediaTile(media: items[1], url: thumbUrl(items[1].mediaUrl), size: size,
-                      shape: RoundedCorner(tl: 0, tr: 16, bl: 0, br: 16),
-                      lightboxItems: items, index: 1, tweet: tweet)
+                      shape: RoundedCorner(tl: 0, tr: corner, bl: 0, br: corner),
+                      lightboxItems: items, index: 1, tweet: tweet, isInteractive: isInteractive)
         }
         .frame(width: availableWidth, height: height)
     }
     
     // MARK: - 3. Modern Stream / Horizontal Card Stream
     private func carouselStreamView(_ items: [TweetMedia]) -> some View {
-        let height: CGFloat = min(layout.windowHeight / 3.0, 260)
-        let cardWidth: CGFloat = 220
+        let height: CGFloat = isQuoted ? min(layout.windowHeight / 3.5, 180) : min(layout.windowHeight / 3.0, 260)
+        let cardWidth: CGFloat = isQuoted ? 160 : 220
+        let corner: CGFloat = isQuoted ? 10 : 16
         
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: isQuoted ? 8 : 10) {
                 ForEach(0..<items.count, id: \.self) { idx in
                     let isFirst = idx == 0
                     let isLast = idx == items.count - 1
@@ -316,10 +323,11 @@ struct ImageGridView: View {
                         media: items[idx],
                         url: thumbUrl(items[idx].mediaUrl),
                         size: CGSize(width: cardWidth, height: height),
-                        shape: RoundedCorner(tl: isFirst ? 16 : 0, tr: isLast ? 16 : 0, bl: isFirst ? 16 : 0, br: isLast ? 16 : 0),
+                        shape: RoundedCorner(tl: isFirst ? corner : 0, tr: isLast ? corner : 0, bl: isFirst ? corner : 0, br: isLast ? corner : 0),
                         lightboxItems: items,
                         index: idx,
-                        tweet: tweet
+                        tweet: tweet,
+                        isInteractive: isInteractive
                     )
                 }
             }
@@ -444,6 +452,7 @@ private struct MediaTile: View {
     let lightboxItems: [TweetMedia]
     let index: Int
     let tweet: Tweet?
+    var isInteractive: Bool = true
     
     @StateObject private var frameBox = FrameBox()
     
@@ -476,12 +485,14 @@ private struct MediaTile: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(!isInteractive)
         )
         .mediaContextMenu(media: media, tweet: tweet)
         .peekable(media.isVideo ? .video(media) : .image(media))
     }
     
     private func open() {
+        guard isInteractive else { return }
         let rect = frameBox.liveRect
         if media.isVideo, let tweet = tweet {
             VideoLightboxManager.shared.present(tweet: tweet, media: media)
@@ -498,7 +509,7 @@ private struct MediaTile: View {
 }
 
 // MARK: - Video Overlay Badges (Play button + Duration pill)
-private struct VideoBadgeOverlay: View {
+struct VideoBadgeOverlay: View {
     let media: TweetMedia
     
     var body: some View {

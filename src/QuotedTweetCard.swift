@@ -72,9 +72,9 @@ struct QuotedTweetCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             
-            // 3. Media Preview (if available)
+            // 3. Media Preview (reusing ImageGridView with isQuoted scaling)
             if !tweet.media.isEmpty {
-                quotedMediaPreview
+                ImageGridView(mediaList: tweet.media, tweet: tweet, isInteractive: isInteractive, isQuoted: true)
             }
         }
         .padding(10)
@@ -98,17 +98,5 @@ struct QuotedTweetCard: View {
                 NavigationManager.shared.openTweetDetail(tweet)
             }
         }
-    }
-    
-    @ViewBuilder
-    private var quotedMediaPreview: some View {
-        let firstMedia = tweet.media[0]
-        CachedAsyncImage(urlString: firstMedia.previewUrl)
-            .aspectRatio(contentMode: .fill)
-            .frame(height: 140)
-            .frame(maxWidth: .infinity)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .mediaContextMenu(media: firstMedia, tweet: tweet)
     }
 }
