@@ -441,6 +441,10 @@ struct TweetDetailView: View {
                 if viewModel.focalTweet.isPromoted {
                     AdBadgeView()
                 }
+                
+                TweetOptionsMenuButton(tweet: viewModel.focalTweet, onToggleBookmark: {
+                    viewModel.toggleBookmark(for: viewModel.focalTweet)
+                })
             }
             
             // Reply Context Subheader (Consistent with official X logic)
@@ -601,19 +605,6 @@ struct TweetDetailView: View {
             
             Spacer()
             
-            // Bookmark Button
-            actionButton(
-                icon: "bookmark",
-                activeIcon: "bookmark.fill",
-                count: viewModel.focalTweet.bookmarkCount,
-                isActive: viewModel.focalTweet.isBookmarked,
-                activeColor: ThemeManager.accent
-            ) {
-                viewModel.toggleBookmark(for: viewModel.focalTweet)
-            }
-            
-            Spacer()
-            
             // Share Button
             Button(action: copyTweetLink) {
                 Image(systemName: "square.and.arrow.up")
@@ -674,6 +665,10 @@ struct TweetDetailView: View {
                     if tweet.isPromoted {
                         AdBadgeView()
                     }
+                    
+                    TweetOptionsMenuButton(tweet: tweet, onToggleBookmark: {
+                        viewModel.toggleBookmark(for: tweet)
+                    })
                 }
                 
                 if let replyContext = tweet.replyContextText {
@@ -816,6 +811,10 @@ struct TweetDetailView: View {
                         if tweet.isPromoted {
                             AdBadgeView()
                         }
+                        
+                        TweetOptionsMenuButton(tweet: tweet, onToggleBookmark: {
+                            viewModel.toggleBookmark(for: tweet)
+                        })
                     }
                     
                     // Reply Context Subheader (Consistent with official X logic)
@@ -850,36 +849,23 @@ struct TweetDetailView: View {
                     
                     // Reply Action Bar (Compact)
                     HStack(alignment: .center) {
-                        // Left group: Reply + Bookmark (书签放在左边)
-                        HStack(spacing: 20) {
-                            // Reply to this reply
-                            Button(action: {
-                                guard EngagementGuard.allows(tweet) else { return }
-                                state.modalReplyTargetTweet = tweet
-                                state.isReplyingModal = true
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "bubble.left")
-                                        .font(.system(size: 12))
-                                    if tweet.replyCount > 0 {
-                                        Text("\(tweet.replyCount)")
-                                            .font(theme.appFont(size: 11))
-                                    }
-                                }
-                                .foregroundColor(ThemeManager.secondaryText)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
-                            // Bookmark (左边)
-                            Button(action: {
-                                viewModel.toggleBookmark(for: tweet)
-                            }) {
-                                Image(systemName: tweet.isBookmarked ? "bookmark.fill" : "bookmark")
+                        // Left: Reply to this reply
+                        Button(action: {
+                            guard EngagementGuard.allows(tweet) else { return }
+                            state.modalReplyTargetTweet = tweet
+                            state.isReplyingModal = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "bubble.left")
                                     .font(.system(size: 12))
-                                    .foregroundColor(tweet.isBookmarked ? ThemeManager.accent : ThemeManager.secondaryText)
+                                if tweet.replyCount > 0 {
+                                    Text("\(tweet.replyCount)")
+                                        .font(theme.appFont(size: 11))
+                                }
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .foregroundColor(ThemeManager.secondaryText)
                         }
+                        .buttonStyle(PlainButtonStyle())
                         
                         Spacer()
                         

@@ -629,6 +629,22 @@ final class TimelineViewModel: ObservableObject {
         TweetMutationHub.shared.apply(id: id, transform: transform)
     }
     
+    /// Removes all tweets from a blocked or muted author across all timeline feeds
+    func removeTweets(byAuthorId authorId: String, screenName: String? = nil) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            let matches: (Tweet) -> Bool = { t in
+                (!authorId.isEmpty && t.author.id == authorId) ||
+                (screenName != nil && !screenName!.isEmpty && t.author.screenName.caseInsensitiveCompare(screenName!) == .orderedSame)
+            }
+            forYouTweets.removeAll(where: matches)
+            followingTweets.removeAll(where: matches)
+            for (listId, list) in listTweets {
+                listTweets[listId] = list.filter { !matches($0) }
+            }
+            tweets.removeAll(where: matches)
+        }
+    }
+    
     // MARK: - Optimistic Engagement Actions
     
     func toggleLike(for tweet: Tweet) {

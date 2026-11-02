@@ -545,6 +545,48 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "推文链接已复制到剪贴板",
             .traditionalChinese: "貼文連結已複製至剪貼簿"
         ],
+        "open_in_browser": [
+            .english: "Open in Browser",
+            .japanese: "ブラウザで開く",
+            .korean: "브라우저에서 열기",
+            .simplifiedChinese: "在浏览器中打开",
+            .traditionalChinese: "在瀏覽器中開啟"
+        ],
+        "post_menu_mute": [
+            .english: "Mute {handle}",
+            .japanese: "{handle} をミュート",
+            .korean: "{handle} 님 뮤트",
+            .simplifiedChinese: "静音 {handle}",
+            .traditionalChinese: "將 {handle} 設為靜音"
+        ],
+        "post_menu_block": [
+            .english: "Block {handle}",
+            .japanese: "{handle} をブロック",
+            .korean: "{handle} 님 차단",
+            .simplifiedChinese: "屏蔽 {handle}",
+            .traditionalChinese: "封鎖 {handle}"
+        ],
+        "post_muted_toast": [
+            .english: "Muted {handle}",
+            .japanese: "{handle} をミュートしました",
+            .korean: "{handle} 님을 뮤트했습니다",
+            .simplifiedChinese: "已静音 {handle}",
+            .traditionalChinese: "已將 {handle} 設為靜音"
+        ],
+        "post_blocked_toast": [
+            .english: "Blocked {handle}",
+            .japanese: "{handle} をブロックしました",
+            .korean: "{handle} 님을 차단했습니다",
+            .simplifiedChinese: "已屏蔽 {handle}",
+            .traditionalChinese: "已封鎖 {handle}"
+        ],
+        "more_actions": [
+            .english: "More",
+            .japanese: "詳細",
+            .korean: "더 보기",
+            .simplifiedChinese: "更多操作",
+            .traditionalChinese: "更多操作"
+        ],
         "views": [
             .english: "Views",
             .japanese: "件の表示",

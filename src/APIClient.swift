@@ -1428,6 +1428,89 @@ final class APIClient {
         createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, completion: completion)
     }
     
+    // MARK: - Mute & Block Actions
+    
+    private func performFormAction(
+        endpoint: String,
+        bodyParams: [String: String],
+        completion: @escaping (Result<Void, APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let bodyString = bodyParams.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        request.httpBody = bodyString.data(using: .utf8)
+        
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200...299).contains(status) {
+                completion(.success(()))
+            } else {
+                completion(.failure(.serverError("HTTP \(status)")))
+            }
+        }.resume()
+    }
+    
+    func muteUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/mutes/users/create.json", bodyParams: params, completion: completion)
+    }
+    
+    func unmuteUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/mutes/users/destroy.json", bodyParams: params, completion: completion)
+    }
+    
+    func blockUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/blocks/create.json", bodyParams: params, completion: completion)
+    }
+    
+    func unblockUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/blocks/destroy.json", bodyParams: params, completion: completion)
+    }
+    
     // MARK: - Media Upload
     
     /// Uploads one photo, GIF or video the way X's own apps do (INIT, then the file in chunks, then FINALIZE, then

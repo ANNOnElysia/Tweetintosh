@@ -83,6 +83,8 @@ struct TweetRowView: View {
                             if tweet.isPromoted {
                                 AdBadgeView()
                             }
+                            
+                            TweetOptionsMenuButton(tweet: tweet)
                         }
                         
                         // Reply Context Subheader (Consistent with official X logic)
@@ -326,28 +328,6 @@ private struct TweetActionBar: View {
                     .buttonStyle(.plain)
                 }
                 .help(tweet.isFavorited ? loc.t("unlike") : loc.t("like"))
-                
-                // 4. Bookmark
-                HoverReader { hovered in
-                    Button(action: {
-                        TimelineViewModel.shared.toggleBookmark(for: tweet)
-                    }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: tweet.isBookmarked ? "bookmark.fill" : "bookmark")
-                                .font(.system(size: 12))
-                            if tweet.bookmarkCount > 0 {
-                                Text(formatCount(tweet.bookmarkCount))
-                                    .font(.system(size: 12, weight: tweet.isBookmarked ? .semibold : .regular))
-                            }
-                        }
-                        .foregroundColor(
-                            tweet.isBookmarked || hovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText
-                        )
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .help(tweet.isBookmarked ? loc.t("remove_bookmark") : loc.t("bookmark"))
             }
             // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
             .opacity(tweet.author.hasBlockedYou ? 0.35 : 1)
