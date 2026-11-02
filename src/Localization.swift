@@ -1043,6 +1043,27 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "深色",
             .traditionalChinese: "深色"
         ],
+        "theme_light": [
+            .english: "Light",
+            .japanese: "ライト",
+            .korean: "라이트",
+            .simplifiedChinese: "浅色",
+            .traditionalChinese: "淺色"
+        ],
+        "theme_tone_mild": [
+            .english: "Mild",
+            .japanese: "マイルド",
+            .korean: "마일드",
+            .simplifiedChinese: "柔和",
+            .traditionalChinese: "柔和"
+        ],
+        "theme_tone_minimalism": [
+            .english: "Minimalism",
+            .japanese: "ミニマリズム",
+            .korean: "미니멀리즘",
+            .simplifiedChinese: "极简",
+            .traditionalChinese: "極簡"
+        ],
         "theme_rice_white": [
             .english: "Rice White",
             .japanese: "生成り色",

@@ -8,7 +8,7 @@ import AppKit
 
 enum AppThemeAppearance: String, CaseIterable, Identifiable, Codable {
     case dark = "dark"
-    case riceWhite = "riceWhite"
+    case light = "light"
     case system = "system"
     
     var id: String { rawValue }
@@ -16,8 +16,42 @@ enum AppThemeAppearance: String, CaseIterable, Identifiable, Codable {
     var displayNameKey: String {
         switch self {
         case .dark: return "theme_dark"
-        case .riceWhite: return "theme_rice_white"
+        case .light: return "theme_light"
         case .system: return "theme_system"
+        }
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let val = try container.decode(String.self)
+        if val == "riceWhite" {
+            self = .light
+        } else if let app = AppThemeAppearance(rawValue: val) {
+            self = app
+        } else {
+            self = .system
+        }
+    }
+    
+    init?(savedValue: String) {
+        if savedValue == "riceWhite" {
+            self = .light
+        } else {
+            self.init(rawValue: savedValue)
+        }
+    }
+}
+
+enum AppThemeTone: String, CaseIterable, Identifiable, Codable {
+    case mild = "mild"
+    case minimalism = "minimalism"
+    
+    var id: String { rawValue }
+    
+    var displayNameKey: String {
+        switch self {
+        case .mild: return "theme_tone_mild"
+        case .minimalism: return "theme_tone_minimalism"
         }
     }
 }
@@ -137,6 +171,17 @@ final class ThemeManager: ObservableObject {
         }
     }
     
+    @Published var themeTone: AppThemeTone {
+        didSet {
+            UserDefaults.standard.set(themeTone.rawValue, forKey: "Tweetintosh_ThemeTone")
+            applyAppearance()
+        }
+    }
+    
+    var isMild: Bool {
+        themeTone == .mild
+    }
+    
     @Published var fontType: AppFontType {
         didSet {
             UserDefaults.standard.set(fontType.rawValue, forKey: "Tweetintosh_FontType")
@@ -177,7 +222,7 @@ final class ThemeManager: ObservableObject {
         switch appearance {
         case .dark:
             return false
-        case .riceWhite:
+        case .light:
             return true
         case .system:
             return NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
@@ -206,21 +251,29 @@ final class ThemeManager: ObservableObject {
             switch self.appearance {
             case .dark:
                 NSApp?.appearance = NSAppearance(named: .darkAqua)
-            case .riceWhite:
+            case .light:
                 NSApp?.appearance = NSAppearance(named: .aqua)
             case .system:
                 NSApp?.appearance = nil
             }
+            self.objectWillChange.send()
             NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
         }
     }
     
     private init() {
         if let savedApp = UserDefaults.standard.string(forKey: "Tweetintosh_Appearance"),
-           let app = AppThemeAppearance(rawValue: savedApp) {
+           let app = AppThemeAppearance(savedValue: savedApp) {
             self.appearance = app
         } else {
             self.appearance = .dark
+        }
+        
+        if let savedTone = UserDefaults.standard.string(forKey: "Tweetintosh_ThemeTone"),
+           let tone = AppThemeTone(rawValue: savedTone) {
+            self.themeTone = tone
+        } else {
+            self.themeTone = .mild
         }
         
         if let savedFont = UserDefaults.standard.string(forKey: "Tweetintosh_FontType"),
@@ -258,39 +311,89 @@ final class ThemeManager: ObservableObject {
         watchSystemAppearance()
     }
     
-    // Dynamic Theme Colors: Dark (Obsidian / Pitch Black) vs Rice White (Warm Cream Paper)
+    // Dynamic Theme Colors:
+    // Mild: Rice White (#F6F4EE) for light, Dim (#15202B) for dark
+    // Minimalism: Pure White (#FFFFFF) for light, Pitch Black (#000000) for dark
     static var background: Color {
-        shared.isLight ? Color(hex: "#F6F4EE") : Color.black
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#F6F4EE") : Color.white
+        } else {
+            return shared.isMild ? Color(hex: "#15202B") : Color.black
+        }
     }
     static var windowBackgroundColor: NSColor {
-        shared.isLight ? NSColor(calibratedRed: 0.965, green: 0.957, blue: 0.933, alpha: 1.0) : NSColor.black
+        if shared.isLight {
+            return shared.isMild
+                ? NSColor(calibratedRed: 0.965, green: 0.957, blue: 0.933, alpha: 1.0)
+                : NSColor.white
+        } else {
+            return shared.isMild
+                ? NSColor(hex: "#15202B")
+                : NSColor.black
+        }
     }
     static var cardBackground: Color {
-        shared.isLight ? Color(hex: "#FAF9F5") : Color(red: 0.05, green: 0.05, blue: 0.06)
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#FAF9F5") : Color(hex: "#F8F9FA")
+        } else {
+            return shared.isMild ? Color(hex: "#1E2732") : Color(red: 0.05, green: 0.05, blue: 0.06)
+        }
     }
     static var border: Color {
-        shared.isLight ? Color(hex: "#E5E1D5") : Color(white: 0.14)
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#E5E1D5") : Color(hex: "#E5E7EB")
+        } else {
+            return shared.isMild ? Color(hex: "#2F3B47") : Color(white: 0.14)
+        }
     }
     static var divider: Color {
-        shared.isLight ? Color(hex: "#ECE8DC") : Color.white.opacity(0.08)
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#ECE8DC") : Color(hex: "#EEEEF0")
+        } else {
+            return shared.isMild ? Color(hex: "#273340") : Color.white.opacity(0.08)
+        }
     }
     static var primaryText: Color {
-        shared.isLight ? Color(hex: "#1A1A1C") : Color.white
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#1A1A1C") : Color.black
+        } else {
+            return shared.isMild ? Color(hex: "#F7F9F9") : Color.white
+        }
     }
     static var secondaryText: Color {
-        shared.isLight ? Color(hex: "#666461") : Color(white: 0.58)
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#666461") : Color(hex: "#555555")
+        } else {
+            return shared.isMild ? Color(hex: "#8B98A5") : Color(white: 0.58)
+        }
     }
     static var tertiaryText: Color {
-        shared.isLight ? Color(hex: "#9E9A93") : Color(white: 0.38)
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#9E9A93") : Color(hex: "#8E8E93")
+        } else {
+            return shared.isMild ? Color(hex: "#6E7B87") : Color(white: 0.38)
+        }
     }
     static var subtleIcon: Color {
-        shared.isLight ? Color(hex: "#504E4B") : Color.white.opacity(0.70)
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#504E4B") : Color(hex: "#48484A")
+        } else {
+            return shared.isMild ? Color(hex: "#8B98A5") : Color.white.opacity(0.70)
+        }
     }
     static var glassPillInactive: Color {
-        shared.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)
+        if shared.isLight {
+            return Color.black.opacity(0.05)
+        } else {
+            return shared.isMild ? Color.white.opacity(0.06) : Color.white.opacity(0.08)
+        }
     }
     static var glassBorder: Color {
-        shared.isLight ? Color(hex: "#DED9CB").opacity(0.8) : Color.white.opacity(0.18)
+        if shared.isLight {
+            return shared.isMild ? Color(hex: "#DED9CB").opacity(0.8) : Color.black.opacity(0.10)
+        } else {
+            return shared.isMild ? Color(hex: "#38444D").opacity(0.8) : Color.white.opacity(0.18)
+        }
     }
     
     // Dynamic Accent Color matching current Theme Colour

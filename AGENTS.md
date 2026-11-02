@@ -86,6 +86,7 @@ Platform
   over a browser's connection — the same CreateTweet from `URLSession` answers `200` with an empty `tweet_results`
   and publishes nothing — so anything that changes state on X must be sent from inside the hidden web view. Do not
   "simplify" a mutation back to `URLSession`.
+- **Strict Apple HIG compliance**: All UI, interactions, typography, layout, animations, and controls must strictly adhere to Apple's Human Interface Guidelines (HIG) for macOS. If there is any uncertainty or ambiguity, research official HIG guidelines or ask the user for clarification.
 - Build after touching a shared type — `swift build -c release` — before claiming anything works. There is no test
   target, so verification is a compile plus a run.
 
@@ -94,6 +95,8 @@ Platform
 Conventional commits, lowercase, imperative, scoped by area: `feat(detail):`, `fix(theme):`, `refactor(glass):`,
 `chore(repo):`. The subject says what changed; the body says why it was needed and what the user now sees, wrapped at
 120 columns. One logical change per commit, and keep it compiling.
+
+Whenever the user reviews and approves changes ("通过"), immediately commit them to git following this format.
 
 ## Known state
 
