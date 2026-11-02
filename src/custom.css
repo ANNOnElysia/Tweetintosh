@@ -33,7 +33,7 @@ header[role="banner"] button {
 
 /* 3. Typography: Japanese Mincho + System Serif Hybrid for high-class magazine layout */
 * {
-    font-family: "Hiragino Mincho ProN", "Yu Mincho", "Songti SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    font-family: "Songti SC", "Songti TC", "Hiragino Mincho ProN", "Yu Mincho", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
 /* Tweet text body formatting: enhanced line height and readability */

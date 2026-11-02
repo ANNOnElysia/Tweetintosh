@@ -409,12 +409,38 @@ final class ThemeManager: ObservableObject {
     static let heartPink = Color(red: 0.95, green: 0.15, blue: 0.45)
     
     // Dynamic Font Provider
+    
+    /// Resolves the authentic serif font name based on language context:
+    /// - Japanese: "Hiragino Mincho ProN" (authentic JIS Mincho & kana)
+    /// - Traditional Chinese: "Songti TC" (orthodox Traditional Chinese Ming/Songti)
+    /// - Simplified Chinese: "Songti SC" (GB18030 complete coverage with unified baseline)
+    /// - English / Korean / other: checks system preferred languages; defaults to "Songti SC" for complete CJK coverage
+    var activeSerifFontName: String {
+        switch LocalizationManager.shared.currentLanguage {
+        case .japanese:
+            return "Hiragino Mincho ProN"
+        case .traditionalChinese:
+            return "Songti TC"
+        case .simplifiedChinese:
+            return "Songti SC"
+        case .english, .korean:
+            let preferred = Locale.preferredLanguages.first ?? ""
+            if preferred.hasPrefix("ja") {
+                return "Hiragino Mincho ProN"
+            } else if preferred.hasPrefix("zh-Hant") || preferred.hasPrefix("zh-HK") || preferred.hasPrefix("zh-TW") {
+                return "Songti TC"
+            } else {
+                return "Songti SC"
+            }
+        }
+    }
+    
     func tweetFont(size: CGFloat = 15, weight: Font.Weight = .regular) -> Font {
         switch fontType {
         case .system:
             return .system(size: size, weight: weight)
         case .mincho:
-            return .custom("Hiragino Mincho ProN", size: size + 0.5)
+            return .custom(activeSerifFontName, size: size + 0.5)
         }
     }
     

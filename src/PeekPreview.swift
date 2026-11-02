@@ -129,7 +129,7 @@ enum PeekTextLinks {
 
         let theme = ThemeManager.shared
         let font: NSFont = theme.fontType == .mincho
-            ? (NSFont(name: "Hiragino Mincho ProN", size: 15) ?? .systemFont(ofSize: 14.5))
+            ? (NSFont(name: theme.activeSerifFontName, size: 15) ?? .systemFont(ofSize: 14.5))
             : .systemFont(ofSize: 14.5)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = theme.lineSpacing()

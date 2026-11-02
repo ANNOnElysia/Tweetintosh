@@ -231,11 +231,11 @@ final class LocalizationManager: ObservableObject {
             .traditionalChinese: "系統預設"
         ],
         "font_mincho": [
-            .english: "Hiragino Mincho",
-            .japanese: "ヒラギノ明朝",
-            .korean: "히라기노 명조",
-            .simplifiedChinese: "日文明朝体",
-            .traditionalChinese: "日文明朝體"
+            .english: "Songti / Mincho",
+            .japanese: "明朝体 / 宋体",
+            .korean: "송조체 / 명조체",
+            .simplifiedChinese: "宋体 / 明朝体",
+            .traditionalChinese: "宋體 / 明朝體"
         ],
         "clear_cache": [
             .english: "Clear Local Cache",

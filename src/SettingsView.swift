@@ -201,7 +201,7 @@ struct GlassSegmentedFontPicker: View {
                         .foregroundColor(theme.useLiquidGlass ? ThemeManager.accent : (theme.isLight ? ThemeManager.accent : .white))
                 }
                 Text(title)
-                    .font(type == .mincho ? .custom("Hiragino Mincho ProN", size: 12.5) : .system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                    .font(type == .mincho ? .custom(theme.activeSerifFontName, size: 12.5) : .system(size: 12.5, weight: isSelected ? .semibold : .medium))
                     .foregroundColor(isSelected ? (theme.isLight ? ThemeManager.primaryText : .white) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70)))
             }
             .frame(maxWidth: .infinity)
