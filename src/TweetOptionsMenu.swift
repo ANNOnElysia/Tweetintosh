@@ -2,9 +2,9 @@
 //  TweetOptionsMenu.swift
 //  Tweetintosh
 //
-//  Floating Liquid Glass action menu for posts complying with macOS Human Interface Guidelines (HIG).
-//  Features smooth spring animations, responsive hover highlights, smart edge avoidance,
-//  and automatic seamless dismissal on scroll allowing continuous timeline browsing.
+//  Floating Context Menu for posts strictly conforming to Apple Human Interface Guidelines (HIG).
+//  Implements official Apple-grade spring scale/fade animations, adaptive frosted glass / Liquid Glass,
+//  flattened menu hierarchy (no submenus), and seamless auto-dismiss on scroll.
 //
 
 import SwiftUI
@@ -29,7 +29,7 @@ final class TweetOptionsMenuManager: ObservableObject {
     private init() {}
     
     func present(tweet: Tweet, anchorRect: CGRect, onToggleBookmark: (() -> Void)?) {
-        withAnimation(.spring(response: 0.26, dampingFraction: 0.78)) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
             self.activeMenu = TweetMenuPayload(
                 tweet: tweet,
                 anchorRect: anchorRect,
@@ -41,7 +41,7 @@ final class TweetOptionsMenuManager: ObservableObject {
     
     func dismiss() {
         guard activeMenu != nil else { return }
-        withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+        withAnimation(.easeOut(duration: 0.15)) {
             self.activeMenu = nil
         }
         stopMonitoring()
@@ -64,7 +64,6 @@ final class TweetOptionsMenuManager: ObservableObject {
                 // Check if click occurred outside the floating menu card
                 if let window = event.window {
                     let locInWindow = event.locationInWindow
-                    // Convert card frame from AppWindow coordinate space
                     if !self.menuCardFrame.isEmpty && self.menuCardFrame.contains(CGPoint(x: locInWindow.x, y: window.frame.height - locInWindow.y)) {
                         // Click is inside the menu: let SwiftUI handle it
                         return event
@@ -124,33 +123,33 @@ struct TweetOptionsMenuButton: View {
                     menuManager.present(tweet: tweet, anchorRect: rect, onToggleBookmark: onToggleBookmark)
                 }
             }) {
+                // Static three dots adhering to official Apple HIG (no 90-degree rotation)
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(
                         isMenuOpen || hover.isHovered
                             ? (theme.isLight ? ThemeManager.primaryText : Color.white)
-                            : (theme.isLight ? ThemeManager.secondaryText.opacity(0.8) : Color.white.opacity(0.55))
+                            : (theme.isLight ? ThemeManager.secondaryText.opacity(0.80) : Color.white.opacity(0.55))
                     )
-                    .rotationEffect(.degrees(isMenuOpen ? 90 : 0))
-                    .scaleEffect(isMenuOpen ? 1.05 : (hover.isHovered ? 1.10 : 1.0))
+                    .scaleEffect(isMenuOpen ? 1.05 : (hover.isHovered ? 1.08 : 1.0))
                     .frame(width: 24, height: 24)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(
                                 isMenuOpen
-                                    ? (theme.isLight ? Color.black.opacity(0.09) : Color.white.opacity(0.18))
+                                    ? (theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.16))
                                     : (hover.isHovered
-                                        ? (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
+                                        ? (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.10))
                                         : Color.clear)
                             )
                     )
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .animation(.spring(response: 0.28, dampingFraction: 0.72), value: hover.isHovered)
-            .animation(.spring(response: 0.32, dampingFraction: 0.75), value: isMenuOpen)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: hover.isHovered)
+            .animation(.spring(response: 0.28, dampingFraction: 0.80), value: isMenuOpen)
             .onHover { isHovered in
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
                     hover.isHovered = isHovered
                 }
             }
@@ -168,7 +167,7 @@ struct TweetOptionsMenuOverlay: View {
     var body: some View {
         GeometryReader { windowGeo in
             if let payload = manager.activeMenu {
-                // Dimless backdrop to catch outside taps without darkening the screen
+                // Transparent backdrop to intercept outside clicks
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -183,12 +182,12 @@ struct TweetOptionsMenuOverlay: View {
     
     @ViewBuilder
     private func floatingCard(payload: TweetMenuPayload, containerSize: CGSize) -> some View {
-        let menuWidth: CGFloat = 200
-        let approxMenuHeight: CGFloat = 240
+        let menuWidth: CGFloat = 210
+        let approxMenuHeight: CGFloat = 220
         let anchor = payload.anchorRect
         
-        // Smart edge positioning: determine if menu should open downward or upward
-        let opensUpward = anchor.maxY + approxMenuHeight > containerSize.height - 16
+        // Smart edge positioning (flips vertically if near the bottom edge)
+        let opensUpward = anchor.maxY + approxMenuHeight > containerSize.height - 18
         let xPos = min(max(anchor.maxX - menuWidth, 12), containerSize.width - menuWidth - 12)
         let yPos = opensUpward ? max(anchor.minY - approxMenuHeight - 4, 12) : anchor.maxY + 4
         
@@ -206,7 +205,7 @@ struct TweetOptionsMenuOverlay: View {
         .position(x: xPos + menuWidth / 2.0, y: yPos + approxMenuHeight / 2.0)
         .transition(
             .asymmetric(
-                insertion: .scale(scale: 0.88, anchor: opensUpward ? .bottomTrailing : .topTrailing)
+                insertion: .scale(scale: 0.85, anchor: opensUpward ? .bottomTrailing : .topTrailing)
                     .combined(with: .opacity),
                 removal: .scale(scale: 0.94, anchor: opensUpward ? .bottomTrailing : .topTrailing)
                     .combined(with: .opacity)
@@ -215,7 +214,7 @@ struct TweetOptionsMenuOverlay: View {
     }
 }
 
-// MARK: - Floating Menu Content View
+// MARK: - Floating Menu Content View (HIG Context Menu Structure)
 private struct TweetMenuContentView: View {
     let tweet: Tweet
     var onToggleBookmark: (() -> Void)?
@@ -235,12 +234,15 @@ private struct TweetMenuContentView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
+            // Group 1: Post Actions
+            
             // 1. Bookmark
             menuRow(
                 title: loc.t(tweet.isBookmarked ? "remove_bookmark" : "bookmark"),
                 icon: tweet.isBookmarked ? "bookmark.fill" : "bookmark",
-                accentColor: ThemeManager.accent
+                iconColor: tweet.isBookmarked ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.85) : .white.opacity(0.90)),
+                isDestructive: false
             ) {
                 let willBookmark = !tweet.isBookmarked
                 onDismiss()
@@ -260,7 +262,8 @@ private struct TweetMenuContentView: View {
             menuRow(
                 title: loc.t("copy_link"),
                 icon: "link",
-                accentColor: theme.isLight ? ThemeManager.primaryText : .white
+                iconColor: theme.isLight ? ThemeManager.primaryText.opacity(0.85) : .white.opacity(0.90),
+                isDestructive: false
             ) {
                 onDismiss()
                 let url = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
@@ -274,7 +277,8 @@ private struct TweetMenuContentView: View {
             menuRow(
                 title: loc.t("share"),
                 icon: "square.and.arrow.up",
-                accentColor: ThemeManager.accent
+                iconColor: theme.isLight ? ThemeManager.primaryText.opacity(0.85) : .white.opacity(0.90),
+                isDestructive: false
             ) {
                 onDismiss()
                 let urlStr = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
@@ -291,7 +295,8 @@ private struct TweetMenuContentView: View {
             menuRow(
                 title: loc.t("open_in_browser"),
                 icon: "safari",
-                accentColor: Color(hex: "#00BA7C")
+                iconColor: theme.isLight ? ThemeManager.primaryText.opacity(0.85) : .white.opacity(0.90),
+                isDestructive: false
             ) {
                 onDismiss()
                 if let url = URL(string: "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)") {
@@ -299,17 +304,21 @@ private struct TweetMenuContentView: View {
                 }
             }
             
-            // Moderation actions if not self
+            // Group 2: Author Actions (Flattened directly into menu without awkward submenus)
             if !isSelf {
-                Divider()
-                    .background(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12))
+                // Subtle standard HIG hairline separator
+                Rectangle()
+                    .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12))
+                    .frame(height: 0.5)
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                 
                 // 5. Mute @handle
                 menuRow(
                     title: loc.format("post_menu_mute", ["handle": tweet.author.formattedHandle]),
                     icon: "speaker.slash",
-                    accentColor: Color(hex: "#FF8A00")
+                    iconColor: Color(hex: "#FF8A00"),
+                    isDestructive: false
                 ) {
                     onDismiss()
                     APIClient.shared.muteUser(userId: tweet.author.id, screenName: tweet.author.screenName) { result in
@@ -328,11 +337,12 @@ private struct TweetMenuContentView: View {
                     }
                 }
                 
-                // 6. Block @handle
+                // 6. Block @handle (Destructive action as per Apple HIG)
                 menuRow(
                     title: loc.format("post_menu_block", ["handle": tweet.author.formattedHandle]),
                     icon: "nosign",
-                    accentColor: Color(hex: "#F91880")
+                    iconColor: Color(hex: "#F91880"),
+                    isDestructive: true
                 ) {
                     onDismiss()
                     APIClient.shared.blockUser(userId: tweet.author.id, screenName: tweet.author.screenName) { result in
@@ -353,35 +363,61 @@ private struct TweetMenuContentView: View {
                 }
             }
         }
-        .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(
-                    theme.isLight
-                        ? Color(hex: "#FDFDFD").opacity(0.96)
-                        : Color(hex: "#1E2024").opacity(0.96)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .stroke(
-                            theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14),
-                            lineWidth: 0.7
-                        )
-                )
-                .shadow(
-                    color: Color.black.opacity(theme.isLight ? 0.14 : 0.40),
-                    radius: 18,
-                    x: 0,
-                    y: 8
-                )
-        )
+        .padding(5)
+        .background {
+            menuBackground
+        }
     }
     
-    private func menuRow(title: String, icon: String, accentColor: Color, action: @escaping () -> Void) -> some View {
-        MenuRowButton(title: title, icon: icon, accentColor: accentColor, action: action)
+    // Adaptive Material Background (Liquid Glass when enabled, or High-grade Frosted Glass fallback)
+    @ViewBuilder
+    private var menuBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        if theme.useLiquidGlass {
+            shape
+                .fill(Color.clear)
+                .modifier(AdaptiveGlassModifier(isLiquid: true, shape: shape))
+        } else {
+            // Mode B: Non-Liquid Glass HIG Material
+            shape
+                .fill(
+                    theme.isLight
+                        ? Color(hex: "#F8F8F6").opacity(0.96)
+                        : Color(hex: "#1C1D21").opacity(0.96)
+                )
+                .overlay(
+                    shape.stroke(
+                        theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14),
+                        lineWidth: 0.75
+                    )
+                )
+                .shadow(
+                    color: Color.black.opacity(theme.isLight ? 0.14 : 0.42),
+                    radius: 20,
+                    x: 0,
+                    y: 10
+                )
+        }
+    }
+    
+    private func menuRow(
+        title: String,
+        icon: String,
+        iconColor: Color,
+        isDestructive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        MenuRowButton(
+            title: title,
+            icon: icon,
+            iconColor: iconColor,
+            isDestructive: isDestructive,
+            action: action
+        )
     }
 }
 
+// MARK: - Menu Row Button (Apple HIG Selection & Metrics)
 private final class RowHoverState: ObservableObject {
     @Published var isHovered = false
 }
@@ -389,7 +425,8 @@ private final class RowHoverState: ObservableObject {
 private struct MenuRowButton: View {
     let title: String
     let icon: String
-    let accentColor: Color
+    let iconColor: Color
+    let isDestructive: Bool
     let action: () -> Void
     
     @ObservedObject var theme = ThemeManager.shared
@@ -397,35 +434,41 @@ private struct MenuRowButton: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 9) {
+            HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(accentColor)
-                    .frame(width: 18, alignment: .center)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(isDestructive ? Color(hex: "#F91880") : iconColor)
+                    .frame(width: 20, alignment: .center)
                 
                 Text(title)
-                    .font(theme.appFont(size: 12.5, weight: .medium))
-                    .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
+                    .font(theme.appFont(size: 13, weight: .regular))
+                    .foregroundColor(
+                        isDestructive
+                            ? Color(hex: "#F91880")
+                            : (theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
+                    )
                     .lineLimit(1)
                 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6.5)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(
                         hover.isHovered
-                            ? (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
+                            ? (isDestructive
+                                ? Color(hex: "#F91880").opacity(theme.isLight ? 0.10 : 0.15)
+                                : (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12)))
                             : Color.clear
                     )
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.spring(response: 0.20, dampingFraction: 0.80), value: hover.isHovered)
+        .animation(.spring(response: 0.18, dampingFraction: 0.82), value: hover.isHovered)
         .onHover { isHovered in
-            withAnimation(.spring(response: 0.20, dampingFraction: 0.80)) {
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.82)) {
                 hover.isHovered = isHovered
             }
         }
