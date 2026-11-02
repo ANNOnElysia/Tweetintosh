@@ -369,35 +369,50 @@ private struct TweetMenuContentView: View {
         }
     }
     
-    // Adaptive Material Background (Liquid Glass when enabled, or High-grade Frosted Glass fallback)
+    // Adaptive Translucent Frosted Glass / Liquid Glass Background
     @ViewBuilder
     private var menuBackground: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         if theme.useLiquidGlass {
-            shape
-                .fill(Color.clear)
-                .modifier(AdaptiveGlassModifier(isLiquid: true, shape: shape))
+            if #available(macOS 26.0, *) {
+                shape
+                    .fill(Color.clear)
+                    .modifier(AdaptiveGlassModifier(isLiquid: true, shape: shape, isClear: true))
+            } else {
+                frostedGlass(shape: shape)
+            }
         } else {
-            // Mode B: Non-Liquid Glass HIG Material
-            shape
-                .fill(
-                    theme.isLight
-                        ? Color(hex: "#F8F8F6").opacity(0.96)
-                        : Color(hex: "#1C1D21").opacity(0.96)
-                )
-                .overlay(
-                    shape.stroke(
-                        theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14),
-                        lineWidth: 0.75
-                    )
-                )
-                .shadow(
-                    color: Color.black.opacity(theme.isLight ? 0.14 : 0.42),
-                    radius: 20,
-                    x: 0,
-                    y: 10
-                )
+            frostedGlass(shape: shape)
         }
+    }
+    
+    private func frostedGlass(shape: RoundedRectangle) -> some View {
+        ZStack {
+            // Official Apple system backdrop material: applies real-time Gaussian blur and vibrancy to underlying content
+            shape.fill(.ultraThinMaterial)
+            
+            // Translucent tint allowing underlying timeline posts, text and media to bleed through
+            shape.fill(
+                theme.isLight
+                    ? Color.white.opacity(0.32)
+                    : Color(hex: "#18191E").opacity(0.38)
+            )
+        }
+        .clipShape(shape)
+        .overlay(
+            shape.stroke(
+                theme.isLight
+                    ? Color.white.opacity(0.75)
+                    : Color.white.opacity(0.18),
+                lineWidth: 0.75
+            )
+        )
+        .shadow(
+            color: Color.black.opacity(theme.isLight ? 0.12 : 0.40),
+            radius: 20,
+            x: 0,
+            y: 10
+        )
     }
     
     private func menuRow(
