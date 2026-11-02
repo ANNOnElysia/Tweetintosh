@@ -1520,9 +1520,6 @@ final class APIClient {
         mediaIds: [String] = [],
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
-        let qid = "5CVj-J0FZWyGgJpcjeBJEA"
-        let path = "/i/api/graphql/\(qid)/CreateTweet"
-        
         let features: [String: Any] = [
             "premium_content_api_read_enabled": false,
             "communities_web_enable_tweet_community_results_fetch": true,
@@ -1566,31 +1563,44 @@ final class APIClient {
             variables["attachment_url"] = attach
         }
         
-        let body: [String: Any] = [
-            "variables": variables,
-            "features": features,
-            "queryId": qid
-        ]
-        
-        WebKitWriteChannel.shared.perform(path: path, body: body) { result in
-            switch result {
-            case .failure(let error):
-                completion(.failure(error))
-            case .success(let json):
-                // The new post is normally at result.rest_id; X wraps some posts (limited-visibility ones) in
-                // result.tweet instead
-                let result = (((json["data"] as? [String: Any])?["create_tweet"] as? [String: Any])?["tweet_results"] as? [String: Any])?["result"] as? [String: Any]
-                let post = (result?["tweet"] as? [String: Any]) ?? result
-                guard let restId = (post?["rest_id"] as? String) ?? (post?["legacy"] as? [String: Any])?["id_str"] as? String else {
-                    // Keep what X actually said, so an answer in a shape not seen before can be recognised
-                    Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
-                        .error("CreateTweet answered without a post: \(Self.describe(json), privacy: .public)")
-                    completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
-                    return
+        func attempt(qids: [String]) {
+            guard let qid = qids.first else {
+                completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
+                return
+            }
+            let path = "/i/api/graphql/\(qid)/CreateTweet"
+            let body: [String: Any] = [
+                "variables": variables,
+                "features": features,
+                "queryId": qid
+            ]
+            
+            WebKitWriteChannel.shared.perform(path: path, body: body) { result in
+                switch result {
+                case .failure(let error):
+                    completion(.failure(error))
+                case .success(let json):
+                    let result = (((json["data"] as? [String: Any])?["create_tweet"] as? [String: Any])?["tweet_results"] as? [String: Any])?["result"] as? [String: Any]
+                    let post = (result?["tweet"] as? [String: Any]) ?? result
+                    guard let restId = (post?["rest_id"] as? String) ?? (post?["legacy"] as? [String: Any])?["id_str"] as? String else {
+                        Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
+                            .error("CreateTweet (\(qid)) answered without a post: \(Self.describe(json), privacy: .public)")
+                        let remaining = Array(qids.dropFirst())
+                        if !remaining.isEmpty {
+                            attempt(qids: remaining)
+                        } else {
+                            completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
+                        }
+                        return
+                    }
+                    GraphQLOperationIDs.shared.markWorking(qid, for: "CreateTweet")
+                    completion(.success(restId))
                 }
-                completion(.success(restId))
             }
         }
+        
+        let candidateQids = GraphQLOperationIDs.shared.ids(for: "CreateTweet")
+        attempt(qids: candidateQids.isEmpty ? ["5CVj-J0FZWyGgJpcjeBJEA"] : candidateQids)
     }
     
     // MARK: - Fetch Tweet Detail & Thread Conversation

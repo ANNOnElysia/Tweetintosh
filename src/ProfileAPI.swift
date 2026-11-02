@@ -95,6 +95,9 @@ final class GraphQLOperationIDs {
         "UserMedia": [
             "eF8kYZ4r9zFLqcYno3I17A", "oMVVrI5kt3kOpyHHTTKf5Q","BGmkmGDG0kZPM-aoQtNTTw", "dexO_2tohK86JDudXXG3Yw",
             "MOLbHrtk8Ovu7DUNOLcXiA", "Le6KlbilFmSu-5VltFND-Q"
+        ],
+        "CreateTweet": [
+            "5CVj-J0FZWyGgJpcjeBJEA", "jm93VcEnLxM7My_CL9C_EA", "znCVAd692dKBq9MgkEhKPQ", "TAJw1rBsjAtdNgTdlo2oeg"
         ]
     ]
 
