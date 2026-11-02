@@ -255,6 +255,10 @@ struct AppRootView: View {
             VideoLightboxOverlay()
                 .zIndex(1000)
             
+            // Post three-dots floating options menu
+            TweetOptionsMenuOverlay()
+                .zIndex(8500)
+            
             // Deep-press peek card (media, links, profiles)
             PeekOverlay()
                 .zIndex(9000)
