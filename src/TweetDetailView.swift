@@ -165,19 +165,24 @@ struct TweetDetailView: View {
                             .padding(.top, 8)
                         } else {
                             // Empty replies notice
-                            VStack(spacing: 8) {
-                                Image(systemName: "bubble.left.and.bubble.right")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(ThemeManager.secondaryText.opacity(0.6))
-                                    .padding(.top, 24)
-                                
-                                Text(loc.t("no_replies_yet"))
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(ThemeManager.secondaryText)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 24)
-                                    .padding(.bottom, 24)
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 8) {
+                                    Image(systemName: "bubble.left.and.bubble.right")
+                                        .font(.system(size: 28))
+                                        .foregroundColor(ThemeManager.secondaryText.opacity(0.6))
+                                        .padding(.top, 32)
+                                    
+                                    Text(loc.t("no_replies_yet"))
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(ThemeManager.secondaryText)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal, 24)
+                                        .padding(.bottom, 32)
+                                }
+                                Spacer()
                             }
+                            .frame(maxWidth: .infinity)
                         }
                     } else {
                         // Each conversation is one list row: its replies run straight down, joined by a line
