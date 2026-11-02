@@ -479,6 +479,7 @@ private final class PeekProfileLoader: ObservableObject {
 private struct PeekProfileCard: View {
     @StateObject private var loader: PeekProfileLoader
     @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
 
     init(user: TweetUser) {
         _loader = StateObject(wrappedValue: PeekProfileLoader(user: user))
@@ -513,7 +514,7 @@ private struct PeekProfileCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 4) {
                     Text(user.name)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(theme.appFont(size: 17, weight: .bold))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineLimit(1)
                     if user.isVerified {
@@ -523,12 +524,12 @@ private struct PeekProfileCard: View {
                     }
                 }
                 Text(user.formattedHandle)
-                    .font(.system(size: 13.5))
+                    .font(theme.appFont(size: 13.5))
                     .foregroundColor(ThemeManager.secondaryText)
 
                 if let bio = user.bio, !bio.isEmpty {
                     LinkedText.make(bio, links: user.bioLinks ?? [])
-                        .font(.system(size: 13.5))
+                        .font(theme.appFont(size: 13.5))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineLimit(6)
                         .fixedSize(horizontal: false, vertical: true)
@@ -536,7 +537,7 @@ private struct PeekProfileCard: View {
 
                 if let location = user.location, !location.isEmpty {
                     Label(location, systemImage: "mappin.and.ellipse")
-                        .font(.system(size: 12.5))
+                        .font(theme.appFont(size: 12.5))
                         .foregroundColor(ThemeManager.secondaryText)
                         .lineLimit(1)
                 }
@@ -557,10 +558,10 @@ private struct PeekProfileCard: View {
     private func countLabel(_ count: Int?, _ title: String) -> some View {
         HStack(spacing: 4) {
             Text(Self.format(count ?? 0))
-                .font(.system(size: 13, weight: .bold))
+                .font(theme.appFont(size: 13, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
             Text(title)
-                .font(.system(size: 13))
+                .font(theme.appFont(size: 13))
                 .foregroundColor(ThemeManager.secondaryText)
         }
     }

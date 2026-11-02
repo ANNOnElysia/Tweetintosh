@@ -25,7 +25,7 @@ struct TweetRowView: View {
                             .foregroundColor(ThemeManager.secondaryText)
                         
                         Text("\(rtBy) \(loc.t("retweet"))")
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(theme.appFont(size: 12.5, weight: .semibold))
                             .foregroundColor(ThemeManager.secondaryText)
                             .lineLimit(1)
                     }
@@ -51,7 +51,7 @@ struct TweetRowView: View {
                         // Header: Author Name, Verified Badge, Handle, Dot, Relative Time
                         HStack(alignment: .center, spacing: 4) {
                             Text(tweet.author.name)
-                                .font(.system(size: 14.5, weight: .bold))
+                                .font(theme.appFont(size: 14.5, weight: .bold))
                                 .foregroundColor(ThemeManager.primaryText)
                                 .lineLimit(1)
                                 .peekable(.profile(tweet.author))
@@ -64,18 +64,18 @@ struct TweetRowView: View {
                             }
                             
                             Text(tweet.author.formattedHandle)
-                                .font(.system(size: 13.5))
+                                .font(theme.appFont(size: 13.5))
                                 .foregroundColor(ThemeManager.secondaryText)
                                 .lineLimit(1)
                                 .peekable(.profile(tweet.author))
                                 .opensProfile(tweet.author)
                             
                             Text("·")
-                                .font(.system(size: 13.5))
+                                .font(theme.appFont(size: 13.5))
                                 .foregroundColor(ThemeManager.secondaryText)
                             
                             Text(tweet.relativeTime)
-                                .font(.system(size: 13.5))
+                                .font(theme.appFont(size: 13.5))
                                 .foregroundColor(ThemeManager.secondaryText)
                             
                             Spacer()
@@ -88,7 +88,7 @@ struct TweetRowView: View {
                         // Reply Context Subheader (Consistent with official X logic)
                         if let replyContext = tweet.replyContextText {
                             Text(replyContext)
-                                .font(.system(size: 12.5))
+                                .font(theme.appFont(size: 12.5))
                                 .foregroundColor(ThemeManager.secondaryText)
                                 .lineLimit(1)
                         }
@@ -237,6 +237,7 @@ private final class LikeAnimationState: ObservableObject {
 private struct TweetActionBar: View {
     let tweet: Tweet
     @ObservedObject var loc = LocalizationManager.shared
+    @ObservedObject var theme = ThemeManager.shared
     @StateObject private var like = LikeAnimationState()
     
     var body: some View {
@@ -246,7 +247,7 @@ private struct TweetActionBar: View {
                 Image(systemName: "chart.bar.xaxis")
                     .font(.system(size: 11.5))
                 Text(formatCount(tweet.viewCount ?? 0))
-                    .font(.system(size: 11.5))
+                    .font(theme.appFont(size: 11.5))
             }
             .foregroundColor(ThemeManager.secondaryText.opacity(0.85))
             .help(loc.t("views"))
@@ -263,7 +264,7 @@ private struct TweetActionBar: View {
                                 .font(.system(size: 12))
                             if tweet.replyCount > 0 {
                                 Text(formatCount(tweet.replyCount))
-                                    .font(.system(size: 12))
+                                    .font(theme.appFont(size: 12))
                             }
                         }
                         .foregroundColor(hovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
@@ -283,7 +284,7 @@ private struct TweetActionBar: View {
                                 .font(.system(size: 12, weight: tweet.isRetweeted ? .bold : .regular))
                             if tweet.retweetCount > 0 {
                                 Text(formatCount(tweet.retweetCount))
-                                    .font(.system(size: 12, weight: tweet.isRetweeted ? .semibold : .regular))
+                                    .font(theme.appFont(size: 12, weight: tweet.isRetweeted ? .semibold : .regular))
                             }
                         }
                         .foregroundColor(
@@ -314,7 +315,7 @@ private struct TweetActionBar: View {
                                 .scaleEffect(like.scale)
                             if tweet.favoriteCount > 0 {
                                 Text(formatCount(tweet.favoriteCount))
-                                    .font(.system(size: 12, weight: tweet.isFavorited ? .semibold : .regular))
+                                    .font(theme.appFont(size: 12, weight: tweet.isFavorited ? .semibold : .regular))
                             }
                         }
                         .foregroundColor(

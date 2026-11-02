@@ -309,6 +309,7 @@ private struct NotificationRowView: View {
                             .frame(width: 26, height: 26)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
+                            .peekable(.profile(firstActor))
                             .opensProfile(firstActor)
                     } else {
                         Circle()
@@ -324,7 +325,7 @@ private struct NotificationRowView: View {
                     // Summary text
                     Text(summaryText)
                         .handlesTweetLinks()
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineLimit(2)
                     
@@ -332,7 +333,7 @@ private struct NotificationRowView: View {
                     
                     // Relative Time
                     Text(item.relativeTime)
-                        .font(.system(size: 12))
+                        .font(theme.appFont(size: 12))
                         .foregroundColor(ThemeManager.tertiaryText)
                 }
                 

@@ -46,7 +46,7 @@ struct ArticleCardView: View {
                             .padding(.vertical, 2)
                     } else {
                         Text(article.title)
-                            .font(.system(size: 15, weight: .bold, design: .serif))
+                            .font(theme.appFont(size: 15, weight: .bold))
                             .foregroundColor(ThemeManager.primaryText)
                             .multilineTextAlignment(.leading)
                             .lineLimit(2)
@@ -54,7 +54,7 @@ struct ArticleCardView: View {
 
                     if !article.previewText.isEmpty {
                         Text(article.previewText)
-                            .font(.system(size: 12.5))
+                            .font(theme.appFont(size: 12.5))
                             .foregroundColor(ThemeManager.secondaryText)
                             .multilineTextAlignment(.leading)
                             .lineLimit(2)
@@ -266,7 +266,7 @@ struct ArticleReaderView: View {
         row {
             VStack(alignment: .leading, spacing: 18) {
                 Text(title)
-                    .font(.system(size: 34, weight: .bold, design: .serif))
+                    .font(theme.appFont(size: 34, weight: .bold))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
@@ -340,7 +340,7 @@ struct ArticleReaderView: View {
         case .heading(let level, let text):
             Text(text)
                 .handlesTweetLinks()
-                .font(.system(size: level == 1 ? 27 : (level == 2 ? 22 : 19), weight: .bold, design: .serif))
+                .font(theme.appFont(size: level == 1 ? 27 : (level == 2 ? 22 : 19), weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -458,7 +458,7 @@ struct MarkdownBlockView: View {
         case .heading(let level, let text):
             Text(text)
                 .handlesTweetLinks()
-                .font(.system(size: level == 1 ? 24 : (level == 2 ? 20 : 17.5), weight: .bold, design: .serif))
+                .font(theme.appFont(size: level == 1 ? 24 : (level == 2 ? 20 : 17.5), weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)

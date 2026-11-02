@@ -189,7 +189,7 @@ struct SearchView: View {
 
                 TextField(loc.t("search_placeholder"), text: $vm.draft)
                     .textFieldStyle(PlainTextFieldStyle())
-                    .font(.system(size: 13.5))
+                    .font(theme.appFont(size: 13.5))
                     .foregroundColor(ThemeManager.primaryText)
                     .focused($isFieldFocused)
                     .onSubmit {
@@ -228,7 +228,7 @@ struct SearchView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(loc.t("search_tab_\(tab.rawValue)"))
-                            .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                            .font(theme.appFont(size: 13, weight: selected ? .semibold : .regular))
                         
                         // Shortcut hint, revealed while ⌘ is held (as on the Notifications filters)
                         if nav.showShortcutBadges {
@@ -335,7 +335,7 @@ private struct SearchUserRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 4) {
                         Text(user.name)
-                            .font(.system(size: 14.5, weight: .bold))
+                            .font(theme.appFont(size: 14.5, weight: .bold))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineLimit(1)
                         if user.isVerified {
@@ -345,20 +345,20 @@ private struct SearchUserRow: View {
                         }
                     }
                     Text(user.formattedHandle)
-                        .font(.system(size: 13))
+                        .font(theme.appFont(size: 13))
                         .foregroundColor(ThemeManager.secondaryText)
                         .lineLimit(1)
 
                     if let bio = user.bio, !bio.isEmpty {
                         Text(bio)
-                            .font(.system(size: 13))
+                            .font(theme.appFont(size: 13))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineLimit(2)
                             .padding(.top, 2)
                     }
                     if let followers = user.followersCount {
                         Text("\(ProfileView.formatCount(followers)) \(loc.t("peek_followers"))")
-                            .font(.system(size: 12))
+                            .font(theme.appFont(size: 12))
                             .foregroundColor(ThemeManager.secondaryText)
                             .padding(.top, 2)
                     }

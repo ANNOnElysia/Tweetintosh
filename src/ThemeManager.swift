@@ -435,13 +435,21 @@ final class ThemeManager: ObservableObject {
         }
     }
     
-    func tweetFont(size: CGFloat = 15, weight: Font.Weight = .regular) -> Font {
+    func appFont(size: CGFloat = 13, weight: Font.Weight = .regular) -> Font {
         switch fontType {
         case .system:
             return .system(size: size, weight: weight)
         case .mincho:
-            return .custom(activeSerifFontName, size: size + 0.5)
+            return .custom(activeSerifFontName, size: size + 0.5).weight(weight)
         }
+    }
+    
+    func tweetFont(size: CGFloat = 15, weight: Font.Weight = .regular) -> Font {
+        appFont(size: size, weight: weight)
+    }
+    
+    static func font(size: CGFloat = 13, weight: Font.Weight = .regular) -> Font {
+        ThemeManager.shared.appFont(size: size, weight: weight)
     }
     
     func lineSpacing() -> CGFloat {
@@ -451,5 +459,11 @@ final class ThemeManager: ObservableObject {
         case .mincho:
             return 6.5
         }
+    }
+}
+
+extension View {
+    func appFont(size: CGFloat = 13, weight: Font.Weight = .regular) -> some View {
+        self.font(ThemeManager.shared.appFont(size: size, weight: weight))
     }
 }

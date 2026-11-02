@@ -41,7 +41,7 @@ struct GlassSegmentedAppearancePicker: View {
                     .font(.system(size: 11, weight: isSelected ? .bold : .medium))
                     .foregroundColor(isSelected ? (theme.useLiquidGlass ? ThemeManager.accent : (theme.isLight ? ThemeManager.accent : .white)) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60)))
                 Text(title)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    .font(theme.appFont(size: 12, weight: isSelected ? .semibold : .medium))
                     .foregroundColor(isSelected ? (theme.isLight ? ThemeManager.primaryText : .white) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70)))
                     .lineLimit(1)
             }
@@ -120,7 +120,7 @@ struct GlassSegmentedTonePicker: View {
                     .font(.system(size: 11, weight: isSelected ? .bold : .medium))
                     .foregroundColor(isSelected ? (theme.useLiquidGlass ? ThemeManager.accent : (theme.isLight ? ThemeManager.accent : .white)) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60)))
                 Text(title)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    .font(theme.appFont(size: 12, weight: isSelected ? .semibold : .medium))
                     .foregroundColor(isSelected ? (theme.isLight ? ThemeManager.primaryText : .white) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70)))
                     .lineLimit(1)
             }
@@ -343,7 +343,7 @@ struct GlassDropdownPicker<T: Hashable>: View {
                     icon
                 }
                 Text(currentTitle)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(theme.appFont(size: 13, weight: .medium))
                     .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
                 
                 Spacer()
@@ -468,7 +468,7 @@ struct SettingsView: View {
     private var accountsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(loc.t("accounts"))
-                .font(.system(size: 13, weight: .semibold))
+                .font(theme.appFont(size: 13, weight: .semibold))
                 .foregroundColor(ThemeManager.secondaryText)
             
             ForEach(accountManager.accounts) { account in
@@ -489,12 +489,12 @@ struct SettingsView: View {
                         
                         VStack(alignment: .leading, spacing: 1) {
                             Text(account.name.isEmpty ? loc.t("account_signed_in") : account.name)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(theme.appFont(size: 13, weight: .semibold))
                                 .foregroundColor(ThemeManager.primaryText)
                                 .lineLimit(1)
                             if !account.screenName.isEmpty {
                                 Text("@\(account.screenName)")
-                                    .font(.system(size: 11.5))
+                                    .font(theme.appFont(size: 11.5))
                                     .foregroundColor(ThemeManager.secondaryText)
                                     .lineLimit(1)
                             }
@@ -518,7 +518,7 @@ struct SettingsView: View {
                     Image(systemName: "plus.circle")
                         .font(.system(size: 13))
                     Text(loc.t("add_account"))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(theme.appFont(size: 13, weight: .medium))
                 }
                 .foregroundColor(ThemeManager.accent)
                 .padding(.vertical, 4)
@@ -535,7 +535,7 @@ struct SettingsView: View {
             // Header Bar: Title on left, Close ("小麻叉") on right
             HStack(alignment: .center) {
                 Text(loc.t("settings"))
-                    .font(.system(size: 16, weight: .bold))
+                    .font(theme.appFont(size: 16, weight: .bold))
                     .foregroundColor(ThemeManager.primaryText)
                 
                 Spacer()
@@ -555,7 +555,7 @@ struct SettingsView: View {
             // 1. Language Section
             VStack(alignment: .leading, spacing: 8) {
                 Text(loc.t("language"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.appFont(size: 13, weight: .semibold))
                     .foregroundColor(ThemeManager.secondaryText)
                 
                 if theme.useLiquidGlass {
@@ -579,7 +579,7 @@ struct SettingsView: View {
             // 2. Appearance Section (Merged Appearance & Typography)
             VStack(alignment: .leading, spacing: 12) {
                 Text(loc.t("theme_appearance"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.appFont(size: 13, weight: .semibold))
                     .foregroundColor(ThemeManager.secondaryText)
                 
                 // Dark / Light / System
@@ -594,7 +594,7 @@ struct SettingsView: View {
                 
                 // Typography & Font
                 Text(loc.t("typography"))
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.appFont(size: 12, weight: .medium))
                     .foregroundColor(ThemeManager.secondaryText)
                 
                 // High-contrast Font Selector (Fixes unreadable black Hiragino Mincho text)
@@ -620,7 +620,7 @@ struct SettingsView: View {
                 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(loc.t("theme_colour"))
-                        .font(.system(size: 12, weight: .medium))
+                        .font(theme.appFont(size: 12, weight: .medium))
                         .foregroundColor(ThemeManager.secondaryText)
                     
                     if theme.useLiquidGlass {
@@ -630,7 +630,7 @@ struct SettingsView: View {
                             iconProvider: { color in
                                 AnyView(
                                     Circle()
-                                        .fill(color.accentColor)
+                                         .fill(color.accentColor)
                                         .frame(width: 10, height: 10)
                                 )
                             }
@@ -653,7 +653,7 @@ struct SettingsView: View {
             // 4. Content & Display (内容与展示)
             VStack(alignment: .leading, spacing: 10) {
                 Text(loc.t("content_settings"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.appFont(size: 13, weight: .semibold))
                     .foregroundColor(ThemeManager.secondaryText)
                 
                 if theme.useLiquidGlass {
@@ -668,7 +668,7 @@ struct SettingsView: View {
                 }
                 
                 Text(loc.t("show_promoted_posts_desc"))
-                    .font(.system(size: 11))
+                    .font(theme.appFont(size: 11))
                     .foregroundColor(ThemeManager.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 2)
@@ -684,7 +684,7 @@ struct SettingsView: View {
                             Image(systemName: "trash")
                                 .font(.system(size: 11, weight: .semibold))
                             Text(mediaCache.formattedCacheSize == "0 B" ? loc.t("clear_cache") : "\(loc.t("clear_cache")) (\(mediaCache.formattedCacheSize))")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(theme.appFont(size: 13, weight: .medium))
                         }
                         .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
                         .padding(.horizontal, 14)
@@ -717,7 +717,7 @@ struct SettingsView: View {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
                                 .font(.system(size: 11, weight: .semibold))
                             Text(loc.t("sign_out"))
-                                .font(.system(size: 13, weight: .medium))
+                                .font(theme.appFont(size: 13, weight: .medium))
                         }
                         .foregroundColor(Color.white.opacity(0.95))
                         .padding(.horizontal, 14)
@@ -753,7 +753,7 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 Text("Tweetintosh v2.0 (Headless Native Swift)")
-                    .font(.system(size: 11))
+                    .font(theme.appFont(size: 11))
                     .foregroundColor(ThemeManager.tertiaryText)
                 Spacer()
             }

@@ -137,7 +137,7 @@ struct TweetDetailView: View {
                     
                     HStack {
                         Text(loc.t("thread_replies"))
-                            .font(.system(size: 15, weight: .bold))
+                            .font(theme.appFont(size: 15, weight: .bold))
                             .foregroundColor(ThemeManager.primaryText)
                         
                         Spacer()
@@ -174,7 +174,7 @@ struct TweetDetailView: View {
                                         .padding(.top, 32)
                                     
                                     Text(loc.t("no_replies_yet"))
-                                        .font(.system(size: 13, weight: .medium))
+                                        .font(theme.appFont(size: 13, weight: .medium))
                                         .foregroundColor(ThemeManager.secondaryText)
                                         .multilineTextAlignment(.center)
                                         .padding(.horizontal, 24)
@@ -368,7 +368,7 @@ struct TweetDetailView: View {
             Spacer()
             
             Text(loc.t("nav_post"))
-                .font(.system(size: 14, weight: .bold))
+                .font(theme.appFont(size: 14, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
             
             Spacer()
@@ -411,13 +411,15 @@ struct TweetDetailView: View {
             // Author info (Enlarged)
             HStack(spacing: 12) {
                 avatarView(url: viewModel.focalTweet.author.avatarUrl, size: 44)
+                    .peekable(.profile(viewModel.focalTweet.author))
                     .opensProfile(viewModel.focalTweet.author)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(viewModel.focalTweet.author.name)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(theme.appFont(size: 15, weight: .bold))
                             .foregroundColor(ThemeManager.primaryText)
+                            .peekable(.profile(viewModel.focalTweet.author))
                             .opensProfile(viewModel.focalTweet.author)
                         
                         if viewModel.focalTweet.author.isVerified {
@@ -428,8 +430,9 @@ struct TweetDetailView: View {
                     }
                     
                     Text(viewModel.focalTweet.author.formattedHandle)
-                        .font(.system(size: 13))
+                        .font(theme.appFont(size: 13))
                         .foregroundColor(ThemeManager.secondaryText)
+                        .peekable(.profile(viewModel.focalTweet.author))
                         .opensProfile(viewModel.focalTweet.author)
                 }
                 
@@ -443,7 +446,7 @@ struct TweetDetailView: View {
             // Reply Context Subheader (Consistent with official X logic)
             if let replyContext = viewModel.focalTweet.replyContextText {
                 Text(replyContext)
-                    .font(.system(size: 13))
+                    .font(theme.appFont(size: 13))
                     .foregroundColor(ThemeManager.secondaryText)
                     .lineLimit(1)
             }
@@ -478,7 +481,7 @@ struct TweetDetailView: View {
             // Formatted Date & Time
             HStack(spacing: 6) {
                 Text(formattedExactDate(viewModel.focalTweet.createdAt))
-                    .font(.system(size: 12))
+                    .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.secondaryText)
             }
             .padding(.top, 4)
@@ -492,40 +495,40 @@ struct TweetDetailView: View {
                     if let views = viewModel.focalTweet.viewCount, views > 0 {
                         HStack(spacing: 4) {
                             Text(formatCount(views))
-                                .font(.system(size: 13, weight: .bold))
+                                .font(theme.appFont(size: 13, weight: .bold))
                                 .foregroundColor(ThemeManager.primaryText)
                             Text(loc.t("views"))
-                                .font(.system(size: 13))
+                                .font(theme.appFont(size: 13))
                                 .foregroundColor(ThemeManager.secondaryText)
                         }
                     }
                     if viewModel.focalTweet.retweetCount > 0 {
                         HStack(spacing: 4) {
                             Text("\(viewModel.focalTweet.retweetCount)")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(theme.appFont(size: 13, weight: .bold))
                                 .foregroundColor(ThemeManager.primaryText)
                             Text(loc.t("retweet"))
-                                .font(.system(size: 13))
+                                .font(theme.appFont(size: 13))
                                 .foregroundColor(ThemeManager.secondaryText)
                         }
                     }
                     if viewModel.focalTweet.favoriteCount > 0 {
                         HStack(spacing: 4) {
                             Text("\(viewModel.focalTweet.favoriteCount)")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(theme.appFont(size: 13, weight: .bold))
                                 .foregroundColor(ThemeManager.primaryText)
                             Text(loc.t("like"))
-                                .font(.system(size: 13))
+                                .font(theme.appFont(size: 13))
                                 .foregroundColor(ThemeManager.secondaryText)
                         }
                     }
                     if viewModel.focalTweet.bookmarkCount > 0 {
                         HStack(spacing: 4) {
                             Text("\(viewModel.focalTweet.bookmarkCount)")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(theme.appFont(size: 13, weight: .bold))
                                 .foregroundColor(ThemeManager.primaryText)
                             Text(loc.t("bookmark"))
-                                .font(.system(size: 13))
+                                .font(theme.appFont(size: 13))
                                 .foregroundColor(ThemeManager.secondaryText)
                         }
                     }
@@ -634,6 +637,7 @@ struct TweetDetailView: View {
             // Left column: Avatar + Vertical Thread Line
             VStack(spacing: 0) {
                 avatarView(url: tweet.author.avatarUrl, size: 36)
+                    .peekable(.profile(tweet.author))
                     .opensProfile(tweet.author)
                 
                 // Connecting line
@@ -648,8 +652,9 @@ struct TweetDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 4) {
                     Text(tweet.author.name)
-                        .font(.system(size: 13.5, weight: .bold))
+                        .font(theme.appFont(size: 13.5, weight: .bold))
                         .foregroundColor(ThemeManager.primaryText)
+                        .peekable(.profile(tweet.author))
                         .opensProfile(tweet.author)
                     
                     if tweet.author.isVerified {
@@ -659,8 +664,10 @@ struct TweetDetailView: View {
                     }
                     
                     Text(tweet.author.formattedHandle)
-                        .font(.system(size: 12))
+                        .font(theme.appFont(size: 12))
                         .foregroundColor(ThemeManager.secondaryText)
+                        .peekable(.profile(tweet.author))
+                        .opensProfile(tweet.author)
                     
                     Spacer()
                     
@@ -671,7 +678,7 @@ struct TweetDetailView: View {
                 
                 if let replyContext = tweet.replyContextText {
                     Text(replyContext)
-                        .font(.system(size: 12))
+                        .font(theme.appFont(size: 12))
                         .foregroundColor(ThemeManager.secondaryText)
                         .lineLimit(1)
                 }
@@ -679,9 +686,9 @@ struct TweetDetailView: View {
                 if !tweet.displayBodyText.isEmpty {
                     Text(TweetText.attributed(tweet))
                         .handlesTweetLinks()
-                        .font(.system(size: 13.5))
+                        .font(theme.appFont(size: 13.5))
                         .foregroundColor(ThemeManager.primaryText)
-                        .lineSpacing(3)
+                        .lineSpacing(theme.lineSpacing() * 0.7)
                 }
                 
                 if !tweet.media.isEmpty {
@@ -759,7 +766,7 @@ struct TweetDetailView: View {
                 .padding(.leading, 16)
                 Button(action: action) {
                     Text(loc.t("show_replies"))
-                        .font(.system(size: 13.5))
+                        .font(theme.appFont(size: 13.5))
                         .foregroundColor(ThemeManager.accent)
                         .padding(.vertical, 10)
                         .padding(.leading, 10)
@@ -780,14 +787,16 @@ struct TweetDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 avatarView(url: tweet.author.avatarUrl, size: 36)
+                    .peekable(.profile(tweet.author))
                     .opensProfile(tweet.author)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     // Author Header
                     HStack(spacing: 4) {
                         Text(tweet.author.name)
-                            .font(.system(size: 13.5, weight: .bold))
+                            .font(theme.appFont(size: 13.5, weight: .bold))
                             .foregroundColor(ThemeManager.primaryText)
+                            .peekable(.profile(tweet.author))
                             .opensProfile(tweet.author)
                         
                         if tweet.author.isVerified {
@@ -797,8 +806,10 @@ struct TweetDetailView: View {
                         }
                         
                         Text(tweet.author.formattedHandle)
-                            .font(.system(size: 12))
+                            .font(theme.appFont(size: 12))
                             .foregroundColor(ThemeManager.secondaryText)
+                            .peekable(.profile(tweet.author))
+                            .opensProfile(tweet.author)
                         
                         Spacer()
                         
@@ -810,7 +821,7 @@ struct TweetDetailView: View {
                     // Reply Context Subheader (Consistent with official X logic)
                     if let replyContext = tweet.replyContextText {
                         Text(replyContext)
-                            .font(.system(size: 12))
+                            .font(theme.appFont(size: 12))
                             .foregroundColor(ThemeManager.secondaryText)
                             .lineLimit(1)
                     }
@@ -819,15 +830,15 @@ struct TweetDetailView: View {
                     if !tweet.displayBodyText.isEmpty {
                         Text(TweetText.attributed(tweet))
                             .handlesTweetLinks()
-                            .font(.system(size: 13.5))
+                            .font(theme.appFont(size: 13.5))
                             .foregroundColor(ThemeManager.primaryText)
-                            .lineSpacing(3)
+                            .lineSpacing(theme.lineSpacing() * 0.7)
                             .textSelection(.enabled)
                     }
                     
                     // Media
                     if !tweet.media.isEmpty {
-                        ImageGridView(mediaList: tweet.media, tweet: tweet)
+                        ImageGridView(mediaList: tweet.media, tweet: tweet, isQuoted: true)
                             .padding(.top, 4)
                     }
                     
@@ -838,78 +849,85 @@ struct TweetDetailView: View {
                     }
                     
                     // Reply Action Bar (Compact)
-                    HStack(spacing: 24) {
-                        // Reply to this reply
-                        Button(action: {
-                            guard EngagementGuard.allows(tweet) else { return }
-                            state.modalReplyTargetTweet = tweet
-                            state.isReplyingModal = true
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 12))
-                                if tweet.replyCount > 0 {
-                                    Text("\(tweet.replyCount)")
-                                        .font(.system(size: 11))
-                                }
-                            }
-                            .foregroundColor(ThemeManager.secondaryText)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        
-                        // Retweet & Quote Menu
-                        Menu {
+                    HStack(alignment: .center) {
+                        // Left group: Reply + Bookmark (书签放在左边)
+                        HStack(spacing: 20) {
+                            // Reply to this reply
                             Button(action: {
-                                viewModel.toggleRetweet(for: tweet)
+                                guard EngagementGuard.allows(tweet) else { return }
+                                state.modalReplyTargetTweet = tweet
+                                state.isReplyingModal = true
                             }) {
-                                Label(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
+                                HStack(spacing: 4) {
+                                    Image(systemName: "bubble.left")
+                                        .font(.system(size: 12))
+                                    if tweet.replyCount > 0 {
+                                        Text("\(tweet.replyCount)")
+                                            .font(theme.appFont(size: 11))
+                                    }
+                                }
+                                .foregroundColor(ThemeManager.secondaryText)
                             }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Bookmark (左边)
                             Button(action: {
-                                NavigationManager.shared.openComposer(quoting: tweet)
+                                viewModel.toggleBookmark(for: tweet)
                             }) {
-                                Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.2.squarepath")
+                                Image(systemName: tweet.isBookmarked ? "bookmark.fill" : "bookmark")
                                     .font(.system(size: 12))
-                                if tweet.retweetCount > 0 {
-                                    Text("\(tweet.retweetCount)")
-                                        .font(.system(size: 11))
-                                }
+                                    .foregroundColor(tweet.isBookmarked ? ThemeManager.accent : ThemeManager.secondaryText)
                             }
-                            .foregroundColor(tweet.isRetweeted ? Color(hex: "#00BA7C") : ThemeManager.secondaryText)
+                            .buttonStyle(PlainButtonStyle())
                         }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        
-                        // Like
-                        Button(action: {
-                            viewModel.toggleLike(for: tweet)
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: tweet.isFavorited ? "heart.fill" : "heart")
-                                    .font(.system(size: 12))
-                                if tweet.favoriteCount > 0 {
-                                    Text("\(tweet.favoriteCount)")
-                                        .font(.system(size: 11))
-                                }
-                            }
-                            .foregroundColor(tweet.isFavorited ? Color(hex: "#F91880") : ThemeManager.secondaryText)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        
-                        // Bookmark
-                        Button(action: {
-                            viewModel.toggleBookmark(for: tweet)
-                        }) {
-                            Image(systemName: tweet.isBookmarked ? "bookmark.fill" : "bookmark")
-                                .font(.system(size: 12))
-                                .foregroundColor(tweet.isBookmarked ? ThemeManager.accent : ThemeManager.secondaryText)
-                        }
-                        .buttonStyle(PlainButtonStyle())
                         
                         Spacer()
+                        
+                        // Right group: Like + Retweet (转帖塞在右边)
+                        HStack(spacing: 20) {
+                            // Like
+                            Button(action: {
+                                viewModel.toggleLike(for: tweet)
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: tweet.isFavorited ? "heart.fill" : "heart")
+                                        .font(.system(size: 12))
+                                    if tweet.favoriteCount > 0 {
+                                        Text("\(tweet.favoriteCount)")
+                                            .font(theme.appFont(size: 11))
+                                    }
+                                }
+                                .foregroundColor(tweet.isFavorited ? Color(hex: "#F91880") : ThemeManager.secondaryText)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Retweet & Quote Menu (右边)
+                            Menu {
+                                Button(action: {
+                                    viewModel.toggleRetweet(for: tweet)
+                                }) {
+                                    Label(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
+                                }
+                                Button(action: {
+                                    NavigationManager.shared.openComposer(quoting: tweet)
+                                }) {
+                                    Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.2.squarepath")
+                                        .font(.system(size: 12))
+                                    if tweet.retweetCount > 0 {
+                                        Text("\(tweet.retweetCount)")
+                                            .font(theme.appFont(size: 11))
+                                    }
+                                }
+                                .foregroundColor(tweet.isRetweeted ? Color(hex: "#00BA7C") : ThemeManager.secondaryText)
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .fixedSize()
+                        }
                     }
                     .padding(.top, 4)
                 }
@@ -970,7 +988,7 @@ struct TweetDetailView: View {
             HStack(spacing: 6) {
                 TextField(loc.t("reply_placeholder"), text: $viewModel.quickReplyText)
                     .textFieldStyle(PlainTextFieldStyle())
-                    .font(.system(size: 13))
+                    .font(theme.appFont(size: 13))
                     .foregroundColor(ThemeManager.primaryText)
                     .focused($isDockInputFocused)
                     .onSubmit {
@@ -1000,7 +1018,7 @@ struct TweetDetailView: View {
                         Group {
                             if #available(macOS 26.0, *) {
                                 Text(loc.t("post_reply"))
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(theme.appFont(size: 12, weight: .bold))
                                     .foregroundColor(ThemeManager.onAccent)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -1012,7 +1030,7 @@ struct TweetDetailView: View {
                                     )
                             } else {
                                 Text(loc.t("post_reply"))
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(theme.appFont(size: 12, weight: .bold))
                                     .foregroundColor(ThemeManager.onAccent)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -1063,7 +1081,7 @@ struct TweetDetailView: View {
             // Text Input Field
             TextField(loc.t("reply_placeholder"), text: $viewModel.quickReplyText)
                 .textFieldStyle(PlainTextFieldStyle())
-                .font(.system(size: 13))
+                .font(theme.appFont(size: 13))
                 .foregroundColor(ThemeManager.primaryText)
                 .focused($isDockInputFocused)
                 .onSubmit {
@@ -1081,7 +1099,7 @@ struct TweetDetailView: View {
                             .frame(width: 26, height: 26)
                     } else {
                         Text(loc.t("post_reply"))
-                            .font(.system(size: 12, weight: .bold))
+                            .font(theme.appFont(size: 12, weight: .bold))
                             .foregroundColor(ThemeManager.onAccent)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)

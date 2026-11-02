@@ -105,7 +105,7 @@ struct TweetComposerSheet: View {
                 dismiss()
             }) {
                 Text(loc.t("cancel"))
-                    .font(.system(size: 13, weight: .medium))
+                    .font(theme.appFont(size: 13, weight: .medium))
                     .foregroundColor(ThemeManager.secondaryText)
             }
             .buttonStyle(.plain)
@@ -114,7 +114,7 @@ struct TweetComposerSheet: View {
             Spacer()
             
             Text(quotedTweet != nil ? loc.t("quote_tweet") : loc.t("new_post"))
-                .font(.system(size: 14, weight: .bold))
+                .font(theme.appFont(size: 14, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
             
             Spacer()
@@ -128,7 +128,7 @@ struct TweetComposerSheet: View {
                             .frame(width: 14, height: 14)
                     }
                     Text(loc.t("post_action"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.onAccent)
                 }
                 .padding(.horizontal, 16)
@@ -156,7 +156,7 @@ struct TweetComposerSheet: View {
                 axis: .vertical
             )
             .textFieldStyle(.plain)
-            .font(.system(size: 14.5))
+            .font(theme.appFont(size: 14.5))
             .foregroundColor(ThemeManager.primaryText)
             .lineLimit(quotedTweet != nil ? 4...8 : 7...14)
             .frame(minHeight: quotedTweet != nil ? 90 : 160, alignment: .topLeading)

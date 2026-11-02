@@ -65,7 +65,7 @@ struct ReplyComposerSheet: View {
         HStack {
             Button(action: { dismiss() }) {
                 Text(loc.t("cancel"))
-                    .font(.system(size: 13, weight: .medium))
+                    .font(theme.appFont(size: 13, weight: .medium))
                     .foregroundColor(ThemeManager.secondaryText)
             }
             .buttonStyle(.plain)
@@ -74,7 +74,7 @@ struct ReplyComposerSheet: View {
             Spacer()
             
             Text(loc.t("reply"))
-                .font(.system(size: 14, weight: .bold))
+                .font(theme.appFont(size: 14, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
             
             Spacer()
@@ -88,7 +88,7 @@ struct ReplyComposerSheet: View {
                             .frame(width: 14, height: 14)
                     }
                     Text(loc.t("post_reply"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.onAccent)
                 }
                 .padding(.horizontal, 14)
@@ -122,34 +122,34 @@ struct ReplyComposerSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(tweet.author.name)
-                        .font(.system(size: 13.5, weight: .bold))
+                        .font(theme.appFont(size: 13.5, weight: .bold))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineLimit(1)
                     
                     Text(tweet.author.formattedHandle)
-                        .font(.system(size: 12.5))
+                        .font(theme.appFont(size: 12.5))
                         .foregroundColor(ThemeManager.secondaryText)
                         .lineLimit(1)
                     
                     Text("·")
-                        .font(.system(size: 12.5))
+                        .font(theme.appFont(size: 12.5))
                         .foregroundColor(ThemeManager.secondaryText)
                     
                     Text(tweet.relativeTime)
-                        .font(.system(size: 12.5))
+                        .font(theme.appFont(size: 12.5))
                         .foregroundColor(ThemeManager.secondaryText)
                 }
                 
                 if !tweet.cleanText.isEmpty {
                     Text(tweet.cleanText)
-                        .font(.system(size: 13))
+                        .font(theme.appFont(size: 13))
                         .foregroundColor(ThemeManager.primaryText.opacity(0.85))
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 
                 Text(loc.t("replying_to").replacingOccurrences(of: "{author}", with: tweet.author.formattedHandle))
-                    .font(.system(size: 12))
+                    .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.accent)
                     .padding(.top, 2)
             }

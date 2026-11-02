@@ -240,7 +240,7 @@ struct NewPostsFloatingPill: View {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 11, weight: .bold))
                 Text(loc.format("new_posts_available", ["count": "\(count)"]))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(theme.appFont(size: 12, weight: .semibold))
             }
             .foregroundColor(ThemeManager.onAccent)
             .padding(.horizontal, 14)

@@ -25,6 +25,7 @@ struct QuotedTweetCard: View {
                         .frame(width: 20, height: 20)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(ThemeManager.border.opacity(0.6), lineWidth: 0.5))
+                        .peekable(.profile(tweet.author))
                         .opensProfile(tweet.author)
                 } else {
                     Circle()
@@ -33,22 +34,25 @@ struct QuotedTweetCard: View {
                 }
                 
                 Text(tweet.author.name)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(theme.appFont(size: 13, weight: .bold))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineLimit(1)
+                    .peekable(.profile(tweet.author))
                     .opensProfile(tweet.author)
                 
                 Text(tweet.author.formattedHandle)
-                    .font(.system(size: 12))
+                    .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.secondaryText)
                     .lineLimit(1)
+                    .peekable(.profile(tweet.author))
+                    .opensProfile(tweet.author)
                 
                 Text("·")
-                    .font(.system(size: 12))
+                    .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.secondaryText)
                 
                 Text(tweet.relativeTime)
-                    .font(.system(size: 12))
+                    .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.secondaryText)
                 
                 Spacer()
@@ -57,7 +61,7 @@ struct QuotedTweetCard: View {
             // 2. Tweet Text Content
             if let replyContext = tweet.replyContextText {
                 Text(replyContext)
-                    .font(.system(size: 11.5))
+                    .font(theme.appFont(size: 11.5))
                     .foregroundColor(ThemeManager.secondaryText)
                     .lineLimit(1)
             }

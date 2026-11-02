@@ -359,7 +359,7 @@ private struct LiquidGlassCapsule: View {
                                     Image(systemName: tab.iconName)
                                         .font(.system(size: 12, weight: isSelected ? .bold : .medium))
                                     Text(tabTitle(tab))
-                                        .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
+                                        .font(theme.appFont(size: 12.5, weight: isSelected ? .bold : .medium))
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
                                         .layoutPriority(1)
@@ -403,7 +403,7 @@ private struct LiquidGlassCapsule: View {
                         
                         TextField(loc.t("search_placeholder"), text: $nav.searchQuery)
                             .textFieldStyle(PlainTextFieldStyle())
-                            .font(.system(size: 12.5))
+                            .font(theme.appFont(size: 12.5))
                             .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
                             .focused($isSearchFocused)
                             .onSubmit {
@@ -694,7 +694,7 @@ private struct LiquidGlassSidebar: View {
                             .frame(width: 20)
                         
                         Text(tabTitle(tab))
-                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .font(theme.appFont(size: 13, weight: isSelected ? .semibold : .regular))
                             .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.80) : Color.white.opacity(0.75)))
                         
                         Spacer()
@@ -753,7 +753,7 @@ private struct LiquidGlassSidebar: View {
                         .foregroundColor(ThemeManager.onAccent)
                         .frame(width: 20)
                     Text(loc.t("new_post"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.onAccent)
                     
                     Spacer()
@@ -790,7 +790,7 @@ private struct LiquidGlassSidebar: View {
                         .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60))
                         .frame(width: 20)
                     Text(loc.t("settings"))
-                        .font(.system(size: 12.5))
+                        .font(theme.appFont(size: 12.5))
                         .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.85) : Color.white.opacity(0.70))
                     
                     Spacer()
@@ -979,7 +979,7 @@ private struct SidebarHomeFeedSection: View {
                         .foregroundColor(ThemeManager.accent)
                     
                     Text(timelineVM.selectedList?.name ?? loc.t("feed_list"))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(theme.appFont(size: 11, weight: .medium))
                         .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.9) : Color.white.opacity(0.88))
                         .lineLimit(1)
                     
@@ -1039,7 +1039,7 @@ private struct SidebarHomeFeedSection: View {
                     .frame(width: 20)
                 
                 Text(loc.t(type.titleKey))
-                    .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                    .font(theme.appFont(size: 11, weight: isSelected ? .semibold : .medium))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                 
@@ -1119,7 +1119,7 @@ private struct SidebarHomeFeedSection: View {
                 .frame(width: 20)
             
             Text(loc.t("feed_list"))
-                .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                .font(theme.appFont(size: 11, weight: isSelected ? .semibold : .medium))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
             

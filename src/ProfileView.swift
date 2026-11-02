@@ -285,7 +285,7 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(vm.user.name)
-                        .font(.system(size: 21, weight: .bold))
+                        .font(theme.appFont(size: 21, weight: .bold))
                         .lineLimit(1)
                     if vm.user.isVerified {
                         Image(systemName: "checkmark.seal.fill")
@@ -298,7 +298,7 @@ struct ProfileView: View {
                     }
                 }
                 Text(vm.user.formattedHandle)
-                    .font(.system(size: 13.5))
+                    .font(theme.appFont(size: 13.5))
                     .opacity(0.82)
             }
             .foregroundColor(.white)
@@ -321,10 +321,10 @@ struct ProfileView: View {
     private func statPill(_ count: Int, _ label: String) -> some View {
         HStack(spacing: 4) {
             Text(Self.formatCount(count))
-                .font(.system(size: 13, weight: .bold))
+                .font(theme.appFont(size: 13, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
             Text(label)
-                .font(.system(size: 12.5))
+                .font(theme.appFont(size: 12.5))
                 .foregroundColor(ThemeManager.secondaryText)
         }
         .padding(.horizontal, 12)
@@ -391,7 +391,7 @@ struct ProfileView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(loc.t("profile_tab_\(tab.rawValue)"))
-                            .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                            .font(theme.appFont(size: 13, weight: selected ? .semibold : .regular))
                         
                         // Shortcut hint, revealed while ⌘ is held
                         if nav.showShortcutBadges {
@@ -517,12 +517,12 @@ struct ProfileView: View {
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 0) {
                         Text(vm.user.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(theme.appFont(size: 13, weight: .semibold))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineLimit(1)
                         if let followers = vm.user.followersCount {
                             Text("\(Self.formatCount(followers)) \(loc.t("peek_followers"))")
-                                .font(.system(size: 11))
+                                .font(theme.appFont(size: 11))
                                 .foregroundColor(ThemeManager.secondaryText)
                                 .lineLimit(1)
                         }
@@ -551,7 +551,7 @@ struct ProfileView: View {
                     Image(systemName: "hand.raised.fill")
                         .font(.system(size: 11))
                     Text(loc.t("profile_blocked"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.appFont(size: 13, weight: .semibold))
                 }
                 .foregroundColor(ThemeManager.secondaryText)
                 .padding(.horizontal, 14)
@@ -563,7 +563,7 @@ struct ProfileView: View {
         } else {
             Button(action: vm.toggleFollow) {
                 Text(loc.t(vm.isFollowing ? "profile_following_button" : "profile_follow"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.appFont(size: 13, weight: .semibold))
                     .foregroundColor(vm.isFollowing ? ThemeManager.primaryText : ThemeManager.onAccent)
                     .padding(.horizontal, 16)
                     .frame(height: 36)
