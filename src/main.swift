@@ -137,8 +137,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.minSize = NSSize(width: 500, height: 600)
         window.isReleasedWhenClosed = false
         window.delegate = self
+        // Reopen where the window was last left; centring unconditionally would undo the restored frame, so only a
+        // first launch, with nothing saved yet, is centred.
+        let restoredFrame = window.setFrameUsingName("TweetintoshMainWindow")
         window.setFrameAutosaveName("TweetintoshMainWindow")
-        window.center()
+        if !restoredFrame {
+            window.center()
+        }
         
         let rootView = AppRootView(
             onOpenSettings: { [weak self] in
