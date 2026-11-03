@@ -251,6 +251,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "回应",
             .traditionalChinese: "回應"
         ],
+        "messages_send_needs_passcode": [
+            .english: "Enter your passcode once more to send encrypted messages",
+            .japanese: "暗号化メッセージを送信するには、パスコードをもう一度入力してください",
+            .korean: "암호화된 메시지를 보내려면 암호를 한 번 더 입력하세요",
+            .simplifiedChinese: "请再输入一次密码，以便发送加密消息",
+            .traditionalChinese: "請再輸入一次密碼，以便傳送加密訊息"
+        ],
+        "messages_send_no_key": [
+            .english: "This chat has no encryption key yet, so it can't be sent to from here",
+            .japanese: "このチャットにはまだ暗号鍵がないため、ここから送信できません",
+            .korean: "이 채팅에는 아직 암호화 키가 없어 여기서 보낼 수 없습니다",
+            .simplifiedChinese: "此聊天尚无加密密钥，暂时无法从这里发送",
+            .traditionalChinese: "此聊天尚無加密金鑰，暫時無法從這裡傳送"
+        ],
+        "messages_send_attachments_unsupported": [
+            .english: "Attachments can't be sent in encrypted chats yet",
+            .japanese: "暗号化チャットではまだ添付ファイルを送信できません",
+            .korean: "암호화된 채팅에서는 아직 첨부 파일을 보낼 수 없습니다",
+            .simplifiedChinese: "加密聊天暂不支持发送附件",
+            .traditionalChinese: "加密聊天暫不支援傳送附件"
+        ],
+        "messages_send_failed": [
+            .english: "Message not sent: {reason}",
+            .japanese: "送信できませんでした: {reason}",
+            .korean: "메시지를 보내지 못했습니다: {reason}",
+            .simplifiedChinese: "消息未发送：{reason}",
+            .traditionalChinese: "訊息未傳送：{reason}"
+        ],
         "messages_reacted_snippet": [
             .english: "Reacted {emoji}",
             .japanese: "{emoji} でリアクションしました",

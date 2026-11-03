@@ -39,6 +39,10 @@ final class DMViewModel: ObservableObject {
     @Published var passcodeErrorMessage: String? = nil
     
     var privateKey: P256.KeyAgreement.PrivateKey?
+    // The second half of the recovered secret, and the version of the key pair it belongs to. Only secrets
+    // recovered since sending was added keep it; older ones have to be recovered again before sending.
+    var signingKey: P256.Signing.PrivateKey?
+    var signingKeyVersion: String?
     var decryptedMessageCache: [String: DMDecodedContent] = [:]
     var rawConversationKeyEvents: [String: Data] = [:]
     var conversationKeys: [String: Data] = [:]
@@ -51,16 +55,36 @@ final class DMViewModel: ObservableObject {
         return "com.anno.tweetintosh.dm.privkey.\(activeId)"
     }
     
+    private var keyVersionStorageKey: String {
+        let activeId = AccountManager.shared.activeId ?? "default"
+        return "com.anno.tweetintosh.dm.pkversion.\(activeId)"
+    }
+    
+    /// Loads a recovered X Chat secret: its first 32 bytes decrypt, and on current accounts the next 32 sign.
+    @discardableResult
+    private func applySecret(hex: String, keyVersion: String?) -> Bool {
+        guard let keyData = Data(hexString: hex),
+              let priv = try? P256.KeyAgreement.PrivateKey(rawRepresentation: keyData.prefix(32)) else { return false }
+        privateKey = priv
+        if keyData.count == 64, let keyVersion,
+           let signing = try? P256.Signing.PrivateKey(rawRepresentation: keyData.subdata(in: 32..<64)) {
+            signingKey = signing
+            signingKeyVersion = keyVersion
+        } else {
+            signingKey = nil
+            signingKeyVersion = nil
+        }
+        return true
+    }
+    
     private init() {
         if let saved = UserDefaults.standard.stringArray(forKey: pinnedStorageKey) {
             self.pinnedConversationIds = Set(saved)
         }
         
         // Restore verified private key from secure persistent storage if already unlocked
-        if let savedHex = UserDefaults.standard.string(forKey: "com.anno.tweetintosh.dm.privkey.\(AccountManager.shared.activeId ?? "default")"),
-           let keyData = Data(hexString: savedHex),
-           let priv = try? P256.KeyAgreement.PrivateKey(rawRepresentation: keyData.prefix(32)) {
-            self.privateKey = priv
+        if let savedHex = UserDefaults.standard.string(forKey: passcodeStorageKey),
+           applySecret(hex: savedHex, keyVersion: UserDefaults.standard.string(forKey: keyVersionStorageKey)) {
             self.isPasscodeUnlocked = true
         } else {
             self.isPasscodeUnlocked = false
@@ -141,9 +165,7 @@ final class DMViewModel: ObservableObject {
     func restoreUnlockedStateIfNeeded() {
         if !isPasscodeUnlocked || privateKey == nil {
             if let savedHex = UserDefaults.standard.string(forKey: passcodeStorageKey),
-               let keyData = Data(hexString: savedHex),
-               let priv = try? P256.KeyAgreement.PrivateKey(rawRepresentation: keyData.prefix(32)) {
-                self.privateKey = priv
+               applySecret(hex: savedHex, keyVersion: UserDefaults.standard.string(forKey: keyVersionStorageKey)) {
                 self.isPasscodeUnlocked = true
                 decryptAllLoadedMessages()
             }
@@ -271,21 +293,20 @@ final class DMViewModel: ObservableObject {
             self.isVerifyingPasscode = false
             
             switch result {
-            case .success(let hexKey):
-                guard let keyData = Data(hexString: hexKey),
-                      let privKey = try? P256.KeyAgreement.PrivateKey(rawRepresentation: keyData.prefix(32)) else {
+            case .success(let secret):
+                guard self.applySecret(hex: secret.hex, keyVersion: secret.publicKeyVersion) else {
                     self.passcodeErrorMessage = LocalizationManager.shared.t("messages_passcode_error")
                     completion?(false)
                     return
                 }
                 
-                self.privateKey = privKey
                 self.isPasscodeUnlocked = true
                 self.passcodeInput = clean
                 self.showPasscodeSheet = false
                 
                 // Persist verified private key so the user stays unlocked across launches
-                UserDefaults.standard.set(hexKey, forKey: self.passcodeStorageKey)
+                UserDefaults.standard.set(secret.hex, forKey: self.passcodeStorageKey)
+                UserDefaults.standard.set(secret.publicKeyVersion, forKey: self.keyVersionStorageKey)
                 
                 // Decrypt all existing loaded messages in memory
                 self.decryptAllLoadedMessages()
@@ -409,6 +430,13 @@ final class DMViewModel: ObservableObject {
         let attachmentsToSend = pendingAttachments
         guard (!textToSend.isEmpty || !attachmentsToSend.isEmpty), !isSending else { return }
         
+        // X Chat conversations only take encrypted, signed messages; the legacy endpoint answers them with
+        // success and delivers nothing.
+        if isXChatConversation(convId) {
+            sendXChatMessage(textToSend, attachments: attachmentsToSend, conversationId: convId)
+            return
+        }
+        
         inputText = ""
         pendingAttachments.removeAll()
         isSending = true
@@ -449,6 +477,106 @@ final class DMViewModel: ObservableObject {
             case .failure(let error):
                 self.errorMessage = error.localizedDescription
                 AppToastManager.shared.show(error.localizedDescription, icon: "exclamationmark.triangle.fill")
+            }
+        }
+    }
+    
+    // MARK: - X Chat Sending
+    
+    private func isXChatConversation(_ convId: String) -> Bool {
+        convId.contains(":") || (messagesByConv[convId] ?? []).contains { $0.keyVersion != nil }
+    }
+    
+    private func conversationKey(version: String) -> Data? {
+        if let key = conversationKeys[version] { return key }
+        guard let priv = privateKey, let raw = rawConversationKeyEvents[version],
+              let key = DMAPI.shared.decryptConversationKey(data: raw, privateKey: priv) else { return nil }
+        conversationKeys[version] = key
+        return key
+    }
+    
+    /// The signing key and the newest conversation key this account can open for `convId`.
+    func sendKeys(for convId: String) -> XChatSendKeys? {
+        guard let signingKey, let signingKeyVersion else { return nil }
+        var versions = XChatConversationState.shared.keyVersions(for: convId)
+        for m in messagesByConv[convId] ?? [] {
+            if let v = m.keyVersion { versions.insert(v) }
+        }
+        // Versions are creation times in milliseconds, so the largest is the newest.
+        for version in versions.sorted(by: { (Int64($0) ?? 0) > (Int64($1) ?? 0) }) {
+            if let key = conversationKey(version: version) {
+                return XChatSendKeys(
+                    conversationKey: key,
+                    conversationKeyVersion: version,
+                    signingKey: signingKey,
+                    signingKeyVersion: signingKeyVersion
+                )
+            }
+        }
+        return nil
+    }
+    
+    private func sendXChatMessage(_ text: String, attachments: [URL], conversationId convId: String) {
+        let loc = LocalizationManager.shared
+        guard attachments.isEmpty else {
+            AppToastManager.shared.show(loc.t("messages_send_attachments_unsupported"), icon: "paperclip")
+            return
+        }
+        guard let keys = sendKeys(for: convId) else {
+            // Without the signing key nothing can be sent; recovering the secret again brings it back.
+            if signingKey == nil {
+                AppToastManager.shared.show(loc.t("messages_send_needs_passcode"), icon: "lock.fill")
+                promptPasscode()
+            } else {
+                AppToastManager.shared.show(loc.t("messages_send_no_key"), icon: "exclamationmark.triangle.fill")
+            }
+            return
+        }
+        
+        inputText = ""
+        isSending = true
+        let activeUserId = AccountManager.shared.activeId ?? ""
+        let messageId = UUID().uuidString.lowercased()
+        let optimisticMsg = DMMessage(
+            id: messageId,
+            conversationId: convId,
+            senderId: activeUserId,
+            recipientId: selectedConversation?.otherParticipant?.id,
+            text: text,
+            createdAt: Date(),
+            isOutgoing: true,
+            keyVersion: keys.conversationKeyVersion
+        )
+        messagesByConv[convId, default: []].append(optimisticMsg)
+        if let idx = conversations.firstIndex(where: { $0.id == convId }) {
+            conversations[idx].lastMessage = optimisticMsg
+        }
+        
+        DMAPI.shared.sendXChatMessage(conversationId: convId, messageId: messageId, text: text, keys: keys) { [weak self] result in
+            guard let self else { return }
+            self.isSending = false
+            var current = self.messagesByConv[convId] ?? []
+            switch result {
+            case .success(let realMsg):
+                if let i = current.firstIndex(where: { $0.id == messageId }) {
+                    current[i] = realMsg
+                }
+                self.messagesByConv[convId] = current
+                if let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
+                    self.conversations[idx].lastMessage = realMsg
+                }
+            case .failure(let error):
+                // Take the message back out and give the text back, so nothing typed is lost.
+                current.removeAll { $0.id == messageId }
+                self.messagesByConv[convId] = current
+                if let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
+                    self.conversations[idx].lastMessage = current.last
+                }
+                if self.inputText.isEmpty { self.inputText = text }
+                AppToastManager.shared.show(
+                    loc.format("messages_send_failed", ["reason": error.localizedDescription]),
+                    icon: "exclamationmark.triangle.fill"
+                )
             }
         }
     }

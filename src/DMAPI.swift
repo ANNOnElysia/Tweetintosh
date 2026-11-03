@@ -119,6 +119,7 @@ struct ParsedXChatMessage {
     var reactionTargetId: String? = nil
     var reactionEmoji: String? = nil
     var isReadReceipt: Bool = false
+    var conversationToken: String? = nil
 }
 
 final class DMAPI {
@@ -803,6 +804,8 @@ final class DMAPI {
                 if fType == 11, let s = reader.readString() { msg.senderId = s } else { reader.skip(type: fType) }
             case 4:
                 if fType == 11, let s = reader.readString() { msg.conversationId = s } else { reader.skip(type: fType) }
+            case 5:
+                if fType == 11, let s = reader.readString() { msg.conversationToken = s } else { reader.skip(type: fType) }
             case 6:
                 if fType == 11, let s = reader.readString(), let t = Int64(s) { msg.timestampMs = t } else { reader.skip(type: fType) }
             case 7:
@@ -813,6 +816,16 @@ final class DMAPI {
                 }
             default:
                 reader.skip(type: fType)
+            }
+        }
+        
+        // Sending needs the conversation's token and the key versions in use; every event can carry them.
+        if !msg.conversationId.isEmpty {
+            if let token = msg.conversationToken, !token.isEmpty {
+                XChatConversationState.shared.recordToken(token, conversationId: msg.conversationId, sequenceId: msg.eventId)
+            }
+            if let version = msg.keyVersion {
+                XChatConversationState.shared.recordKeyVersion(version, conversationId: msg.conversationId)
             }
         }
         
@@ -951,10 +964,13 @@ final class DMAPI {
         var reader = ThriftBinaryReader(data: data)
         var keyVersion: String? = nil
         var encryptedPayload: Data? = nil
+        var conversationId: String? = nil
         
         while let fType = reader.readByte(), fType != 0 {
             guard let fId = reader.readInt16() else { break }
-            if fId == 7 && fType == 12 {
+            if fId == 4 && fType == 11 {
+                conversationId = reader.readString()
+            } else if fId == 7 && fType == 12 {
                 while let pType = reader.readByte(), pType != 0 {
                     guard let pId = reader.readInt16() else { break }
                     if pId == 3 && pType == 12 {
@@ -1007,6 +1023,9 @@ final class DMAPI {
             }
         }
         guard let ver = keyVersion, let payload = encryptedPayload else { return nil }
+        if let conversationId {
+            XChatConversationState.shared.recordKeyVersion(ver, conversationId: conversationId)
+        }
         return (ver, payload)
     }
     

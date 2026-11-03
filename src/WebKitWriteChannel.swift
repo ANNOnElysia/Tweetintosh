@@ -321,9 +321,15 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     
     // MARK: - X Chat / Juicebox E2EE Passcode Recovery
     
-    /// Reconstructs the user's P-256 private key via X's Juicebox KMS protocol and WebAssembly.
-    /// Returns the raw 32-byte private key as a hex string on success.
-    func recoverXChatPrivateKey(passcode: String, userId: String, completion: @escaping (Result<String, APIError>) -> Void) {
+    struct XChatRecoveredSecret {
+        let hex: String
+        let publicKeyVersion: String?
+    }
+    
+    /// Reconstructs the user's X Chat secret via X's Juicebox KMS protocol and WebAssembly. The secret is the
+    /// 32-byte identity (decryption) key, followed on current accounts by the 32-byte signing key that sending
+    /// needs; it comes back as hex together with the version of the key pair it belongs to.
+    func recoverXChatPrivateKey(passcode: String, userId: String, completion: @escaping (Result<XChatRecoveredSecret, APIError>) -> Void) {
         DispatchQueue.main.async {
             guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
                 completion(.failure(.unauthenticated))
@@ -346,7 +352,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         }
     }
     
-    private func executeRecovery(passcode: String, userId: String, creds: AuthCredentials, completion: @escaping (Result<String, APIError>) -> Void) {
+    private func executeRecovery(passcode: String, userId: String, creds: AuthCredentials, completion: @escaping (Result<XChatRecoveredSecret, APIError>) -> Void) {
         guard let webView = webView else {
             completion(.failure(.invalidResponse))
             return
@@ -412,14 +418,15 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                         const config = new jb.Configuration(tokenMapJson);
                         const client = new jb.Client(config, []);
                         const pinBytes = new TextEncoder().encode(passcode);
-                        const privKeyBytes = await client.recover(pinBytes, new Uint8Array(0));
+                        const secretBytes = await client.recover(pinBytes, new Uint8Array(0));
                         
                         let hex = "";
-                        const targetBytes = privKeyBytes.length >= 32 ? privKeyBytes.slice(0, 32) : privKeyBytes;
-                        for (let i = 0; i < targetBytes.length; i++) {
-                            hex += targetBytes[i].toString(16).padStart(2, "0");
+                        // Keep all of it: the second half is the signing key that sending needs.
+                        for (let i = 0; i < secretBytes.length; i++) {
+                            hex += secretBytes[i].toString(16).padStart(2, "0");
                         }
-                        return { success: true, hexKey: hex };
+                        const keyVersion = pkWithMap.public_key_with_metadata?.version || null;
+                        return { success: true, hexKey: hex, keyVersion: keyVersion };
                     } catch (err) {
                         lastErr = err;
                     }
@@ -462,7 +469,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                     return
                 }
                 if success, let hexKey = res["hexKey"] as? String, !hexKey.isEmpty {
-                    completion(.success(hexKey))
+                    completion(.success(XChatRecoveredSecret(hex: hexKey, publicKeyVersion: res["keyVersion"] as? String)))
                 } else {
                     let errStr = res["error"] as? String ?? "Recovery failed"
                     completion(.failure(.serverError(errStr)))
