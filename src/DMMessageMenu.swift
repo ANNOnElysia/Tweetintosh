@@ -22,11 +22,25 @@ struct DMMessageMenuPayload: Equatable {
     let anchorRect: CGRect
 }
 
+/// What the card shows: the action list, or what one of the actions opened in its place.
+enum DMMessageMenuMode {
+    case actions, info, forward, delete
+
+    var width: CGFloat {
+        switch self {
+        case .actions: return 236
+        case .info: return 270
+        case .forward: return 260
+        case .delete: return 220
+        }
+    }
+}
+
 final class DMMessageMenuManager: ObservableObject {
     static let shared = DMMessageMenuManager()
 
     @Published private(set) var active: DMMessageMenuPayload?
-    @Published var showsInfo = false
+    @Published var mode = DMMessageMenuMode.actions
     var cardFrame: CGRect = .zero
     // Measured, so the card can be placed above a bubble near the bottom without overlapping it
     @Published var cardSize = CGSize(width: 200, height: 80)
@@ -57,7 +71,7 @@ final class DMMessageMenuManager: ObservableObject {
     }
 
     func present(_ anchor: CGRect, message: DMMessage, reactions: [DMMessage]) {
-        showsInfo = false
+        mode = .actions
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             active = DMMessageMenuPayload(message: message, reactions: reactions, anchorRect: anchor)
         }
@@ -208,7 +222,7 @@ struct DMMessageMenuOverlay: View {
 
     @ViewBuilder
     private func card(_ payload: DMMessageMenuPayload, container: CGSize) -> some View {
-        let width: CGFloat = manager.showsInfo ? 270 : 200
+        let width = manager.mode.width
         let height = manager.cardSize.height
         let anchor = payload.anchorRect
         let gap: CGFloat = 8
@@ -223,7 +237,7 @@ struct DMMessageMenuOverlay: View {
         let unitX: CGFloat = payload.message.isOutgoing ? 1 : 0
         let growsFrom = UnitPoint(x: unitX, y: fitsBelow ? 0 : 1)
 
-        DMMessageMenuCard(payload: payload, showsInfo: manager.showsInfo)
+        DMMessageMenuCard(payload: payload, mode: manager.mode)
             .frame(width: width)
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGRect.self) { proxy in
@@ -239,7 +253,7 @@ struct DMMessageMenuOverlay: View {
                     removal: .scale(scale: 0.95, anchor: growsFrom).combined(with: .opacity)
                 )
             )
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: manager.showsInfo)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: manager.mode)
     }
 }
 
@@ -247,12 +261,17 @@ struct DMMessageMenuOverlay: View {
 
 private struct DMMessageMenuCard: View {
     let payload: DMMessageMenuPayload
-    let showsInfo: Bool
+    let mode: DMMessageMenuMode
 
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
+    @ObservedObject private var vm = DMViewModel.shared
+
+    /// The quick reactions X has always offered in DMs.
+    private static let quickReactions = ["😂", "😲", "😢", "❤️", "🔥", "👍", "👎"]
 
     private var message: DMMessage { payload.message }
+    private var menu: DMMessageMenuManager { DMMessageMenuManager.shared }
 
     private var copyableText: String? {
         guard !message.isEncrypted else { return nil }
@@ -261,35 +280,203 @@ private struct DMMessageMenuCard: View {
         return nil
     }
 
+    private var myReaction: String? {
+        let me = AccountManager.shared.activeId
+        return payload.reactions.first { $0.senderId == me }?.emoji
+    }
+
     private var iconColor: Color {
         theme.isLight ? ThemeManager.primaryText.opacity(0.85) : .white.opacity(0.90)
     }
 
     var body: some View {
         Group {
-            if showsInfo {
-                DMMessageInfoView(message: message, reactions: payload.reactions)
-                    .transition(.opacity)
-            } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    if let text = copyableText {
-                        MenuRowButton(title: loc.t("messages_menu_copy"), icon: "doc.on.doc", iconColor: iconColor, isDestructive: false) {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(text, forType: .string)
-                            DMMessageMenuManager.shared.dismiss()
-                            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
-                            AppToastManager.shared.show(loc.t("messages_copied"), icon: "checkmark.circle.fill")
-                        }
-                    }
-                    MenuRowButton(title: loc.t("messages_menu_info"), icon: "info.circle", iconColor: iconColor, isDestructive: false) {
-                        DMMessageMenuManager.shared.showsInfo = true
-                    }
-                }
-                .transition(.opacity)
+            switch mode {
+            case .actions: actions
+            case .info: DMMessageInfoView(message: message, reactions: payload.reactions)
+            case .forward: forwardList
+            case .delete: deleteChoices
             }
         }
+        .transition(.opacity)
         .padding(5)
         .background { FloatingMenuBackground() }
+    }
+
+    private var separator: some View {
+        Rectangle()
+            .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12))
+            .frame(height: 0.5)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+    }
+
+    // MARK: Actions
+
+    private var actions: some View {
+        let supported = vm.supportsActions(message)
+        return VStack(alignment: .leading, spacing: 2) {
+            if supported {
+                reactionRow
+                separator
+                MenuRowButton(title: loc.t("messages_menu_reply"), icon: "arrowshape.turn.up.left", iconColor: iconColor, isDestructive: false) {
+                    menu.dismiss()
+                    vm.startReply(to: message)
+                }
+            }
+            if let text = copyableText {
+                MenuRowButton(title: loc.t("messages_menu_copy"), icon: "doc.on.doc", iconColor: iconColor, isDestructive: false) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    menu.dismiss()
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+                    AppToastManager.shared.show(loc.t("messages_copied"), icon: "checkmark.circle.fill")
+                }
+            }
+            if supported && !message.text.isEmpty {
+                MenuRowButton(title: loc.t("messages_menu_forward"), icon: "arrowshape.turn.up.right", iconColor: iconColor, isDestructive: false) {
+                    menu.mode = .forward
+                }
+            }
+            MenuRowButton(title: loc.t("messages_menu_info"), icon: "info.circle", iconColor: iconColor, isDestructive: false) {
+                menu.mode = .info
+            }
+            if supported {
+                separator
+                MenuRowButton(title: loc.t("messages_menu_delete"), icon: "trash", iconColor: iconColor, isDestructive: true) {
+                    menu.mode = .delete
+                }
+            }
+        }
+    }
+
+    private var reactionRow: some View {
+        HStack(spacing: 2) {
+            ForEach(Self.quickReactions, id: \.self) { emoji in
+                DMQuickReactionButton(emoji: emoji, isChosen: myReaction == emoji) {
+                    menu.dismiss()
+                    vm.toggleReaction(emoji, on: message, current: myReaction)
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
+    }
+
+    // MARK: Forward
+
+    private var forwardList: some View {
+        let targets = vm.forwardTargets(excluding: message.conversationId)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(loc.t("messages_forward_title"))
+                .font(theme.appFont(size: 11, weight: .semibold))
+                .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
+                .padding(.horizontal, 10)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+            if targets.isEmpty {
+                Text(loc.t("messages_forward_empty"))
+                    .font(theme.appFont(size: 12.5, weight: .regular))
+                    .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
+                    .padding(10)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(targets) { conv in
+                            DMForwardTargetRow(conversation: conv) {
+                                menu.dismiss()
+                                vm.forward(message, to: conv.id)
+                            }
+                        }
+                    }
+                }
+                // A scroll view in a card that sizes itself to its content needs a height of its own.
+                .frame(height: min(CGFloat(targets.count) * 36, 280))
+            }
+        }
+    }
+
+    // MARK: Delete
+
+    private var deleteChoices: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            MenuRowButton(title: loc.t("messages_delete_for_me"), icon: "trash", iconColor: iconColor, isDestructive: true) {
+                menu.dismiss()
+                vm.delete(message, forEveryone: false)
+            }
+            // Only the author can take a message back from everyone.
+            if message.isOutgoing {
+                MenuRowButton(title: loc.t("messages_delete_for_everyone"), icon: "trash.slash", iconColor: iconColor, isDestructive: true) {
+                    menu.dismiss()
+                    vm.delete(message, forEveryone: true)
+                }
+            }
+            separator
+            MenuRowButton(title: loc.t("messages_cancel"), icon: "xmark", iconColor: iconColor, isDestructive: false) {
+                menu.mode = .actions
+            }
+        }
+    }
+}
+
+private final class DMHoverFlag: ObservableObject {
+    @Published var isHovered = false
+}
+
+/// One emoji in the reaction row; the one already chosen sits on an accent disc.
+private struct DMQuickReactionButton: View {
+    let emoji: String
+    let isChosen: Bool
+    let action: () -> Void
+
+    @StateObject private var hover = DMHoverFlag()
+
+    var body: some View {
+        Button(action: action) {
+            Text(emoji)
+                .font(.system(size: 19))
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle().fill(isChosen ? ThemeManager.accent.opacity(0.25) : Color.clear)
+                )
+                .scaleEffect(hover.isHovered ? 1.22 : 1.0)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.22, dampingFraction: 0.6), value: hover.isHovered)
+        .onHover { hover.isHovered = $0 }
+    }
+}
+
+/// A conversation in the forward list.
+private struct DMForwardTargetRow: View {
+    let conversation: DMConversation
+    let action: () -> Void
+
+    @ObservedObject private var theme = ThemeManager.shared
+    @StateObject private var hover = DMHoverFlag()
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                DMAvatarView(url: conversation.avatarUrl, size: 24)
+                Text(conversation.displayName)
+                    .font(theme.appFont(size: 13, weight: .regular))
+                    .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(hover.isHovered ? (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12)) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover.isHovered = $0 }
     }
 }
 

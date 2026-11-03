@@ -707,11 +707,14 @@ private struct DMBubbleScrollView: View {
     /// applied to the message they name; a message shows its author's latest edit.
     private var bubbles: [DMMessage] {
         var latestEdit: [String: DMMessage] = [:]
-        for edit in messages where edit.entryKind == .edit {
-            if let target = edit.targetSequenceId { latestEdit[target] = edit }
+        var deleted = Set<String>()
+        for entry in messages {
+            if entry.entryKind == .edit, let target = entry.targetSequenceId { latestEdit[target] = entry }
+            if entry.entryKind == .delete { deleted.formUnion(entry.deletedSequenceIds ?? []) }
         }
         return messages.compactMap { msg in
             guard msg.entryKind == .message else { return nil }
+            if let seq = msg.sequenceId, deleted.contains(seq) { return nil }
             if let seq = msg.sequenceId, let edit = latestEdit[seq], edit.senderId == msg.senderId {
                 return msg.edited(to: edit.text, at: edit.createdAt)
             }
@@ -871,6 +874,7 @@ private struct DMBubbleRow: View {
     // Outgoing bubble (follower of user's chosen Theme Accent Color, iMessage corner contour)
     private var outgoingBubble: some View {
         VStack(alignment: .trailing, spacing: 6) {
+            DMBubbleAttribution(message: message, onAccent: true)
             if let media = message.mediaUrl, !media.isEmpty {
                 CachedAsyncImage(
                     urlString: media,
@@ -899,6 +903,7 @@ private struct DMBubbleRow: View {
     // Incoming bubble (authentic Apple iMessage bubble: #262628 in dark mode)
     private var incomingBubble: some View {
         VStack(alignment: .leading, spacing: 6) {
+            DMBubbleAttribution(message: message, onAccent: false)
             if let media = message.mediaUrl, !media.isEmpty {
                 CachedAsyncImage(
                     urlString: media,
@@ -937,6 +942,60 @@ private struct DMBubbleRow: View {
             // Mode B: Non-Liquid Glass HIG neutral bubble (#262628 for dark, #E5E5EA for light)
             RoundedCorner(tl: 18, tr: 18, bl: 4, br: 18)
                 .fill(theme.isLight ? Color(hex: "#E5E5EA") : Color(hex: "#262628"))
+        }
+    }
+}
+
+// MARK: - Reply Quote & Forward Label
+
+/// What sits above a bubble's text: "Forwarded" for a forward, and the quoted message for a reply.
+private struct DMBubbleAttribution: View {
+    let message: DMMessage
+    let onAccent: Bool
+    
+    @ObservedObject private var theme = ThemeManager.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+    
+    private var secondary: Color {
+        onAccent ? Color.white.opacity(0.78) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
+    }
+    
+    var body: some View {
+        if message.isForwarded == true || message.replyPreview != nil {
+            VStack(alignment: .leading, spacing: 5) {
+                if message.isForwarded == true {
+                    Label(loc.t("messages_forwarded_label"), systemImage: "arrowshape.turn.up.right")
+                        .font(theme.appFont(size: 11, weight: .medium))
+                        .foregroundColor(secondary)
+                }
+                if let reply = message.replyPreview {
+                    HStack(spacing: 7) {
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(onAccent ? Color.white.opacity(0.7) : ThemeManager.accent)
+                            .frame(width: 3)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(reply.senderName)
+                                .font(theme.appFont(size: 11.5, weight: .semibold))
+                                .foregroundColor(onAccent ? .white : (theme.isLight ? ThemeManager.primaryText : .white))
+                                .lineLimit(1)
+                            Text(reply.text)
+                                .font(theme.appFont(size: 12, weight: .regular))
+                                .foregroundColor(secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(onAccent ? Color.white.opacity(0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)))
+                    )
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, -2)
         }
     }
 }
@@ -1021,6 +1080,35 @@ private struct DMInputDock: View {
     
     var body: some View {
         VStack(spacing: 6) {
+            if let reply = vm.replyingTo {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowshape.turn.up.left.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeManager.accent)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(loc.format("messages_replying_to", ["name": vm.displayName(of: reply.senderId, in: reply.conversationId)]))
+                            .font(theme.appFont(size: 11.5, weight: .semibold))
+                            .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
+                        Text(reply.text)
+                            .font(theme.appFont(size: 11.5, weight: .regular))
+                            .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    Button(action: { vm.replyingTo = nil }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(theme.isLight ? Color.black.opacity(0.30) : Color.white.opacity(0.35))
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .help(loc.t("messages_cancel"))
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            
             // Pending media attachments preview
             if !vm.pendingAttachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1085,6 +1173,10 @@ private struct DMInputDock: View {
                         .focused($isInputFocused)
                         .onSubmit {
                             vm.sendMessage()
+                        }
+                        // Choosing Reply puts the cursor where the reply is typed.
+                        .onChange(of: vm.replyingTo?.id) {
+                            if vm.replyingTo != nil { isInputFocused = true }
                         }
                 }
                 .padding(.horizontal, 14)

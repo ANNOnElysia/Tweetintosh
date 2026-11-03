@@ -117,6 +117,7 @@ struct ParsedXChatMessage {
     var keyVersion: String? = nil
     var mediaUrl: String? = nil
     var isReadReceipt: Bool = false
+    var isDelete: Bool = false
     var conversationToken: String? = nil
 }
 
@@ -840,7 +841,8 @@ final class DMAPI {
         
         // Only events carrying actual message payloads (pId == 1) should be presented as chat entries.
         // Read receipts (pId == 12), reactions, and typing signals must not create dummy message bubbles.
-        guard msg.hasMessagePayload else { return nil }
+        // Deletions (pId == 7) come back as entries too, so the chat can drop the messages they name.
+        guard msg.hasMessagePayload || msg.isDelete else { return nil }
         
         let date = msg.timestampMs > 0 ? Date(timeIntervalSince1970: Double(msg.timestampMs) / 1000.0) : Date()
         let isOutgoing = (msg.senderId == activeUserId)
@@ -885,7 +887,7 @@ final class DMAPI {
         
         let rawB64 = msg.rawCiphertext?.base64EncodedString()
         
-        return DMMessage(
+        var message = DMMessage(
             id: resolvedId,
             conversationId: msg.conversationId,
             senderId: msg.senderId,
@@ -903,6 +905,8 @@ final class DMAPI {
             emoji: content.emoji,
             readAt: content.readAt
         )
+        message.apply(content)
+        return message
     }
     
     // MARK: - End-to-End Encryption Decryption Pipeline (X Chat 2-Tier Hierarchy)
@@ -1033,6 +1037,21 @@ final class DMAPI {
                 // pId == 1 is the ONLY event payload that represents message create!
                 msg.hasMessagePayload = true
                 parseMessageCreatePayload(&reader, msg: &msg)
+            } else if pId == 7 && pType == 12 {
+                // MessageDeleteEvent { 1: list<string> sequence_ids, 2: delete_message_action }
+                msg.isDelete = true
+                var ids: [String] = []
+                while let dType = reader.readByte(), dType != 0 {
+                    guard let dId = reader.readInt16() else { break }
+                    if dId == 1 && dType == 15, let elem = reader.readByte(), let count = reader.readInt32() {
+                        for _ in 0..<max(0, Int(count)) {
+                            if elem == 11, let s = reader.readString() { ids.append(s) } else { reader.skip(type: elem) }
+                        }
+                    } else {
+                        reader.skip(type: dType)
+                    }
+                }
+                msg.decoded = DMDecodedContent(kind: .delete, deletedSequenceIds: ids)
             } else {
                 // Read receipts (pId == 12) only matter for who sent them and when, which the event header holds.
                 // Typing indicators and the rest are ignored.
@@ -1116,7 +1135,7 @@ final class DMAPI {
             }
             switch id {
             case 1:
-                content = DMDecodedContent(kind: .message, text: decodeMessageText(&reader))
+                content = decodeMessageContents(&reader)
             case 2, 3:
                 let f = readScalarFields(&reader)
                 content = DMDecodedContent(kind: id == 2 ? .reaction : .reactionRemove, targetSequenceId: f.strings[1], emoji: f.strings[2])
@@ -1134,18 +1153,35 @@ final class DMAPI {
         return content
     }
     
-    /// MessageContents { 1: message_text, … }.
-    private func decodeMessageText(_ reader: inout ThriftBinaryReader) -> String {
-        var text = ""
+    /// MessageContents { 1: message_text, 4: replying_to_preview, 6: forwarded_message, … }. A forward carries
+    /// the original's text in its own block and usually no text of its own.
+    private func decodeMessageContents(_ reader: inout ThriftBinaryReader) -> DMDecodedContent {
+        var content = DMDecodedContent(kind: .message)
+        var forwardedText = ""
         while let t = reader.readByte(), t != 0 {
             guard let id = reader.readInt16() else { break }
             if id == 1 && t == 11 {
-                text = reader.readString() ?? ""
+                content.text = reader.readString() ?? ""
+            } else if id == 4 && t == 12 {
+                // ReplyingToPreview { 1: sender_id (i64), 2: message_text, 5: sender_display_name,
+                // 6: replying_to_message_sequence_id, 7: replying_to_message_id, … }
+                let f = readScalarFields(&reader)
+                content.replyPreview = DMReplyPreview(
+                    senderId: f.strings[1] ?? "",
+                    senderName: f.strings[5] ?? "",
+                    text: f.strings[2] ?? "",
+                    sequenceId: f.strings[6],
+                    messageId: f.strings[7]
+                )
+            } else if id == 6 && t == 12 {
+                content.isForwarded = true
+                forwardedText = readScalarFields(&reader).strings[1] ?? ""
             } else {
                 reader.skip(type: t)
             }
         }
-        return text
+        if content.text.isEmpty { content.text = forwardedText }
+        return content
     }
     
     /// A struct's string and i64 fields; sequence ids are strings, but older clients may send them as i64.

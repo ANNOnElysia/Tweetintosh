@@ -293,6 +293,90 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "已编辑",
             .traditionalChinese: "已編輯"
         ],
+        "messages_menu_reply": [
+            .english: "Reply",
+            .japanese: "返信",
+            .korean: "답장",
+            .simplifiedChinese: "回复",
+            .traditionalChinese: "回覆"
+        ],
+        "messages_menu_forward": [
+            .english: "Forward",
+            .japanese: "転送",
+            .korean: "전달",
+            .simplifiedChinese: "转发",
+            .traditionalChinese: "轉寄"
+        ],
+        "messages_menu_delete": [
+            .english: "Delete",
+            .japanese: "削除",
+            .korean: "삭제",
+            .simplifiedChinese: "删除",
+            .traditionalChinese: "刪除"
+        ],
+        "messages_delete_for_me": [
+            .english: "Delete for Me",
+            .japanese: "自分から削除",
+            .korean: "나에게서 삭제",
+            .simplifiedChinese: "为我删除",
+            .traditionalChinese: "為我刪除"
+        ],
+        "messages_delete_for_everyone": [
+            .english: "Delete for Everyone",
+            .japanese: "全員から削除",
+            .korean: "모두에게서 삭제",
+            .simplifiedChinese: "为所有人删除",
+            .traditionalChinese: "為所有人刪除"
+        ],
+        "messages_delete_failed": [
+            .english: "Couldn't delete: {reason}",
+            .japanese: "削除できませんでした: {reason}",
+            .korean: "삭제하지 못했습니다: {reason}",
+            .simplifiedChinese: "无法删除：{reason}",
+            .traditionalChinese: "無法刪除：{reason}"
+        ],
+        "messages_replying_to": [
+            .english: "Replying to {name}",
+            .japanese: "{name} に返信",
+            .korean: "{name}님에게 답장",
+            .simplifiedChinese: "回复 {name}",
+            .traditionalChinese: "回覆 {name}"
+        ],
+        "messages_forwarded_label": [
+            .english: "Forwarded",
+            .japanese: "転送済み",
+            .korean: "전달됨",
+            .simplifiedChinese: "已转发",
+            .traditionalChinese: "已轉寄"
+        ],
+        "messages_forwarded_toast": [
+            .english: "Forwarded to {name}",
+            .japanese: "{name} に転送しました",
+            .korean: "{name}님에게 전달했습니다",
+            .simplifiedChinese: "已转发给 {name}",
+            .traditionalChinese: "已轉寄給 {name}"
+        ],
+        "messages_forward_title": [
+            .english: "Forward to…",
+            .japanese: "転送先…",
+            .korean: "전달할 대상…",
+            .simplifiedChinese: "转发给…",
+            .traditionalChinese: "轉寄給…"
+        ],
+        "messages_forward_empty": [
+            .english: "No other encrypted chats",
+            .japanese: "他に暗号化チャットがありません",
+            .korean: "다른 암호화된 채팅이 없습니다",
+            .simplifiedChinese: "没有其他加密聊天",
+            .traditionalChinese: "沒有其他加密聊天"
+        ],
+        "messages_cancel": [
+            .english: "Cancel",
+            .japanese: "キャンセル",
+            .korean: "취소",
+            .simplifiedChinese: "取消",
+            .traditionalChinese: "取消"
+        ],
         "messages_reacted_snippet": [
             .english: "Reacted {emoji}",
             .japanese: "{emoji} でリアクションしました",

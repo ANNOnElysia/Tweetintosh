@@ -28,6 +28,8 @@ final class DMViewModel: ObservableObject {
     @Published var isLoadingMessages: Bool = false
     @Published var isSending: Bool = false
     @Published var inputText: String = ""
+    /// The message the next one sent replies to, shown above the input.
+    @Published var replyingTo: DMMessage?
     @Published var pendingAttachments: [URL] = []
     @Published var errorMessage: String?
     
@@ -538,7 +540,7 @@ final class DMViewModel: ObservableObject {
     
     // MARK: - X Chat Sending
     
-    private func isXChatConversation(_ convId: String) -> Bool {
+    func isXChatConversation(_ convId: String) -> Bool {
         convId.contains(":") || (messagesByConv[convId] ?? []).contains { $0.keyVersion != nil }
     }
     
@@ -571,68 +573,192 @@ final class DMViewModel: ObservableObject {
         return nil
     }
     
-    private func sendXChatMessage(_ text: String, attachments: [URL], conversationId convId: String) {
+    private func reportMissingSendKeys() {
         let loc = LocalizationManager.shared
-        guard attachments.isEmpty else {
-            AppToastManager.shared.show(loc.t("messages_send_attachments_unsupported"), icon: "paperclip")
-            return
+        // Without the signing key nothing can be sent; recovering the secret again brings it back.
+        if signingKey == nil {
+            AppToastManager.shared.show(loc.t("messages_send_needs_passcode"), icon: "lock.fill")
+            promptPasscode()
+        } else {
+            AppToastManager.shared.show(loc.t("messages_send_no_key"), icon: "exclamationmark.triangle.fill")
         }
+    }
+    
+    /// Sends an entry, showing `placeholder` (built for the new message id) until X answers with what it stored.
+    /// Returns false, having said why, when this account cannot send to the chat.
+    @discardableResult
+    private func sendEntry(
+        _ entry: XChatOutgoing.Entry,
+        to convId: String,
+        placeholder: (_ messageId: String, _ keyVersion: String) -> DMMessage,
+        onFailure: (() -> Void)? = nil,
+        onSuccess: (() -> Void)? = nil
+    ) -> Bool {
         guard let keys = sendKeys(for: convId) else {
-            // Without the signing key nothing can be sent; recovering the secret again brings it back.
-            if signingKey == nil {
-                AppToastManager.shared.show(loc.t("messages_send_needs_passcode"), icon: "lock.fill")
-                promptPasscode()
-            } else {
-                AppToastManager.shared.show(loc.t("messages_send_no_key"), icon: "exclamationmark.triangle.fill")
-            }
-            return
+            reportMissingSendKeys()
+            return false
         }
-        
-        inputText = ""
-        isSending = true
-        let activeUserId = AccountManager.shared.activeId ?? ""
         let messageId = UUID().uuidString.lowercased()
-        let optimisticMsg = DMMessage(
-            id: messageId,
-            conversationId: convId,
-            senderId: activeUserId,
-            recipientId: selectedConversation?.otherParticipant?.id,
-            text: text,
-            createdAt: Date(),
-            isOutgoing: true,
-            keyVersion: keys.conversationKeyVersion
-        )
-        messagesByConv[convId, default: []].append(optimisticMsg)
-        if let idx = conversations.firstIndex(where: { $0.id == convId }) {
-            conversations[idx].lastMessage = optimisticMsg
+        let optimistic = placeholder(messageId, keys.conversationKeyVersion)
+        messagesByConv[convId, default: []].append(optimistic)
+        if optimistic.isListed, let idx = conversations.firstIndex(where: { $0.id == convId }) {
+            conversations[idx].lastMessage = optimistic
         }
         
-        DMAPI.shared.sendXChatMessage(conversationId: convId, messageId: messageId, text: text, keys: keys) { [weak self] result in
+        DMAPI.shared.sendXChatEntry(entry, conversationId: convId, messageId: messageId, keys: keys) { [weak self] result in
             guard let self else { return }
-            self.isSending = false
             var current = self.messagesByConv[convId] ?? []
             switch result {
-            case .success(let realMsg):
+            case .success(let stored):
                 if let i = current.firstIndex(where: { $0.id == messageId }) {
-                    current[i] = realMsg
+                    current[i] = stored
                 }
                 self.messagesByConv[convId] = current
-                if let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
-                    self.conversations[idx].lastMessage = realMsg
+                if stored.isListed, let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
+                    self.conversations[idx].lastMessage = stored
                 }
+                onSuccess?()
             case .failure(let error):
-                // Take the message back out and give the text back, so nothing typed is lost.
                 current.removeAll { $0.id == messageId }
                 self.messagesByConv[convId] = current
                 if let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
                     self.conversations[idx].lastMessage = current.last(where: { $0.isListed })
                 }
-                if self.inputText.isEmpty { self.inputText = text }
+                onFailure?()
                 AppToastManager.shared.show(
-                    loc.format("messages_send_failed", ["reason": error.localizedDescription]),
+                    LocalizationManager.shared.format("messages_send_failed", ["reason": error.localizedDescription]),
                     icon: "exclamationmark.triangle.fill"
                 )
             }
+        }
+        return true
+    }
+    
+    private func outgoing(_ id: String, _ convId: String, keyVersion: String, text: String = "",
+                          kind: DMEntryKind = .message, target: String? = nil, emoji: String? = nil) -> DMMessage {
+        DMMessage(
+            id: id,
+            conversationId: convId,
+            senderId: AccountManager.shared.activeId ?? "",
+            recipientId: nil,
+            text: text,
+            createdAt: Date(),
+            isOutgoing: true,
+            keyVersion: keyVersion,
+            entryKind: kind,
+            targetSequenceId: target,
+            emoji: emoji
+        )
+    }
+    
+    private func sendXChatMessage(_ text: String, attachments: [URL], conversationId convId: String) {
+        guard attachments.isEmpty else {
+            AppToastManager.shared.show(LocalizationManager.shared.t("messages_send_attachments_unsupported"), icon: "paperclip")
+            return
+        }
+        let reply = replyingTo.map(replyPreview(for:))
+        let sent = sendEntry(.text(text, replyingTo: reply), to: convId, placeholder: { id, version in
+            var message = self.outgoing(id, convId, keyVersion: version, text: text)
+            message.replyPreview = reply
+            return message
+        }, onFailure: { [weak self] in
+            // Give the text back, so nothing typed is lost.
+            if self?.inputText.isEmpty == true { self?.inputText = text }
+        })
+        if sent {
+            inputText = ""
+            replyingTo = nil
+        }
+    }
+    
+    // MARK: - Message Actions
+    
+    /// The display name X shows for a participant, falling back to the signed-in account's own.
+    func displayName(of userId: String, in convId: String) -> String {
+        if let p = conversations.first(where: { $0.id == convId })?.participants.first(where: { $0.id == userId }) {
+            return p.name
+        }
+        return AccountManager.shared.accounts.first { $0.id == userId }?.name ?? ""
+    }
+    
+    private func replyPreview(for message: DMMessage) -> DMReplyPreview {
+        DMReplyPreview(
+            senderId: message.senderId,
+            senderName: displayName(of: message.senderId, in: message.conversationId),
+            text: message.text,
+            sequenceId: message.sequenceId,
+            messageId: message.id
+        )
+    }
+    
+    /// Whether the menu's X Chat actions (react, reply, forward, delete) apply to this message.
+    func supportsActions(_ message: DMMessage) -> Bool {
+        isXChatConversation(message.conversationId) && message.sequenceId != nil && !message.isEncrypted
+    }
+    
+    func startReply(to message: DMMessage) {
+        replyingTo = message
+    }
+    
+    /// Adds `emoji`, replacing this account's earlier reaction, or takes it away when it is already the one shown.
+    func toggleReaction(_ emoji: String, on message: DMMessage, current: String?) {
+        guard let seq = message.sequenceId else { return }
+        let removing = current == emoji
+        let entry: XChatOutgoing.Entry = removing
+            ? .reactionRemove(targetSequenceId: seq, emoji: emoji)
+            : .reaction(targetSequenceId: seq, emoji: emoji)
+        sendEntry(entry, to: message.conversationId, placeholder: { id, version in
+            self.outgoing(id, message.conversationId, keyVersion: version,
+                          kind: removing ? .reactionRemove : .reaction, target: seq, emoji: emoji)
+        })
+    }
+    
+    /// X Chat conversations that can take a forward, newest first, without the one the message is in.
+    func forwardTargets(excluding convId: String) -> [DMConversation] {
+        conversations.filter { $0.id != convId && isXChatConversation($0.id) }
+    }
+    
+    func forward(_ message: DMMessage, to convId: String) {
+        let name = conversations.first { $0.id == convId }?.displayName ?? ""
+        sendEntry(.forward(message.text), to: convId, placeholder: { id, version in
+            var copy = self.outgoing(id, convId, keyVersion: version, text: message.text)
+            copy.isForwarded = true
+            return copy
+        }, onSuccess: {
+            AppToastManager.shared.show(
+                LocalizationManager.shared.format("messages_forwarded_toast", ["name": name]),
+                icon: "arrowshape.turn.up.right.fill"
+            )
+        })
+    }
+    
+    /// Deletes a message for this account's devices, or for everyone when it is one's own. It disappears at once;
+    /// a refusal brings it back.
+    func delete(_ message: DMMessage, forEveryone: Bool) {
+        guard let seq = message.sequenceId else { return }
+        guard let signingKey, let signingKeyVersion else {
+            reportMissingSendKeys()
+            return
+        }
+        let convId = message.conversationId
+        let localId = "local-delete-\(UUID().uuidString)"
+        var marker = outgoing(localId, convId, keyVersion: "", kind: .delete)
+        marker.deletedSequenceIds = [seq]
+        messagesByConv[convId, default: []].append(marker)
+        
+        DMAPI.shared.deleteXChatMessages(
+            sequenceIds: [seq],
+            forEveryone: forEveryone,
+            conversationId: convId,
+            signingKey: signingKey,
+            signingKeyVersion: signingKeyVersion
+        ) { [weak self] result in
+            guard let self, case .failure(let error) = result else { return }
+            self.messagesByConv[convId]?.removeAll { $0.id == localId }
+            AppToastManager.shared.show(
+                LocalizationManager.shared.format("messages_delete_failed", ["reason": error.localizedDescription]),
+                icon: "exclamationmark.triangle.fill"
+            )
         }
     }
     

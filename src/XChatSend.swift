@@ -58,6 +58,22 @@ struct ThriftBinaryWriter {
         append32(value)
     }
 
+    mutating func i64(_ id: Int16, _ value: Int64) {
+        header(id, type: 10)
+        withUnsafeBytes(of: value.bigEndian) { data.append(contentsOf: $0) }
+    }
+
+    mutating func stringList(_ id: Int16, _ values: [String]) {
+        header(id, type: 15)
+        data.append(11)
+        append32(Int32(values.count))
+        for v in values {
+            let bytes = Data(v.utf8)
+            append32(Int32(bytes.count))
+            data.append(bytes)
+        }
+    }
+
     mutating func structure(_ id: Int16, _ build: (inout ThriftBinaryWriter) -> Void) {
         header(id, type: 12)
         var inner = ThriftBinaryWriter()
@@ -142,19 +158,65 @@ enum XChatOutgoing {
         let encodedSignature: Data
     }
 
-    /// The plaintext of a text message: MessageEntryHolder { contents: MessageEntryContents { message:
-    /// MessageContents { message_text, entities: [], attachments: [], sent_from: 1 } } }.
-    static func plaintext(text: String) -> Data {
+    /// What a MessageCreateEvent carries. Everything but deletion travels this way, encrypted and signed alike.
+    enum Entry {
+        case text(String, replyingTo: DMReplyPreview?)
+        case forward(String)
+        case reaction(targetSequenceId: String, emoji: String)
+        case reactionRemove(targetSequenceId: String, emoji: String)
+    }
+
+    /// The plaintext of an entry: MessageEntryHolder { contents: MessageEntryContents { … } }. A message is
+    /// MessageContents { message_text, entities: [], attachments: [], replying_to_preview, forwarded_message,
+    /// sent_from: 1 }; a reaction is { message_sequence_id, emoji } under field 2 (add) or 3 (remove).
+    static func plaintext(_ entry: Entry) -> Data {
         var holder = ThriftBinaryWriter()
-        holder.structure(1) { entry in
-            entry.structure(1) { contents in
-                contents.string(1, text)
-                contents.structList(2, [])
-                contents.structList(3, [])
-                contents.i32(7, 1)
+        holder.structure(1) { contents in
+            switch entry {
+            case .text(let text, let reply):
+                contents.structure(1) { message in
+                    message.string(1, text)
+                    message.structList(2, [])
+                    message.structList(3, [])
+                    if let reply {
+                        // The preview x.com writes: sender, the first 140 characters, and both ids.
+                        message.structure(4) { preview in
+                            preview.i64(1, Int64(reply.senderId) ?? 0)
+                            preview.string(2, String(reply.text.prefix(140)))
+                            preview.structList(3, [])
+                            preview.structList(4, [])
+                            preview.string(5, reply.senderName)
+                            if let seq = reply.sequenceId { preview.string(6, seq) }
+                            if let id = reply.messageId { preview.string(7, id) }
+                        }
+                    }
+                    message.i32(7, 1)
+                }
+            case .forward(let text):
+                // A forward has no text of its own; the original's goes in forwarded_message.
+                contents.structure(1) { message in
+                    message.structList(2, [])
+                    message.structList(3, [])
+                    message.structure(6) { forwarded in
+                        forwarded.string(1, text)
+                        forwarded.structList(2, [])
+                    }
+                    message.i32(7, 1)
+                }
+            case .reaction(let target, let emoji), .reactionRemove(let target, let emoji):
+                let field: Int16
+                if case .reaction = entry { field = 2 } else { field = 3 }
+                contents.structure(field) { reaction in
+                    reaction.string(1, target)
+                    reaction.string(2, emoji)
+                }
             }
         }
         return holder.finished
+    }
+
+    static func plaintext(text: String) -> Data {
+        plaintext(.text(text, replyingTo: nil))
     }
 
     static func seal(_ message: Data, key: Data) -> Data? {
@@ -176,13 +238,13 @@ enum XChatOutgoing {
     }
 
     static func build(
-        text: String,
+        entry: Entry,
         messageId: String,
         conversationId: String,
         senderId: String,
         keys: XChatSendKeys
     ) -> Built? {
-        let plain = plaintext(text: text)
+        let plain = plaintext(entry)
         let frankingNonce = randomBytes(32)
         guard let contents = seal(plain, key: keys.conversationKey),
               let encryptedNonce = seal(frankingNonce, key: keys.conversationKey) else { return nil }
@@ -203,10 +265,10 @@ enum XChatOutgoing {
             "MessageCreateEvent", messageId, senderId, conversationId,
             keys.conversationKeyVersion, unpaddedBase64(contents)
         ].joined(separator: ",")
-        guard let signature = try? keys.signingKey.signature(for: Data(signed.utf8)) else { return nil }
+        guard let signature = sign(signed, with: keys.signingKey) else { return nil }
 
         var envelope = ThriftBinaryWriter()
-        envelope.string(1, unpaddedBase64(signature.rawRepresentation))
+        envelope.string(1, signature)
         envelope.string(2, keys.signingKeyVersion)
         envelope.string(3, signatureVersion)
         envelope.structList(5, [{ info in
@@ -215,6 +277,33 @@ enum XChatOutgoing {
         }])
 
         return Built(encodedCreateEvent: event.finished, encodedSignature: envelope.finished)
+    }
+
+    /// A deletion is not encrypted: it is the MessageEventDetail { 7: MessageDeleteEvent { sequence_ids, action } }
+    /// itself, signed as "MessageDeleteEvent,<action id>,<sender>,<conversation>,<action>,<sequence ids…>".
+    static func deletion(
+        sequenceIds: [String],
+        forEveryone: Bool,
+        actionId: String,
+        conversationId: String,
+        senderId: String,
+        signingKey: P256.Signing.PrivateKey
+    ) -> (detail: Data, signature: String)? {
+        let action: Int32 = forEveryone ? 2 : 1 // DELETE_FOR_ALL : DELETE_FOR_SELF
+        var detail = ThriftBinaryWriter()
+        detail.structure(7) { event in
+            event.stringList(1, sequenceIds)
+            event.i32(2, action)
+        }
+        let signed = (["MessageDeleteEvent", actionId, senderId, conversationId, String(action)] + sequenceIds)
+            .joined(separator: ",")
+        guard let signature = sign(signed, with: signingKey) else { return nil }
+        return (detail.finished, signature)
+    }
+
+    private static func sign(_ text: String, with key: P256.Signing.PrivateKey) -> String? {
+        guard let signature = try? key.signature(for: Data(text.utf8)) else { return nil }
+        return unpaddedBase64(signature.rawRepresentation)
     }
 
     private static func unpaddedBase64(_ data: Data) -> String {
@@ -236,18 +325,20 @@ enum XChatOutgoing {
 extension DMAPI {
     private static let sendMessageCreatePath = "/i/api/graphql/TWRPP7gnKwV_R8-tE-Dd3Q/SendMessageCreateMutation"
 
-    /// Sends `text` to an X Chat conversation. On success the message comes back as X stored it, with its
-    /// sequence id, so reactions and read receipts can find it.
-    func sendXChatMessage(
+    private static let deleteMessagesPath = "/i/api/graphql/4gsDQKEmYkOtvsSIpHXdQA/DeleteMessageMutation"
+
+    /// Sends an entry to an X Chat conversation. On success it comes back as X stored it, with its sequence id,
+    /// so reactions and read receipts can find it.
+    func sendXChatEntry(
+        _ entry: XChatOutgoing.Entry,
         conversationId: String,
         messageId: String,
-        text: String,
         keys: XChatSendKeys,
         completion: @escaping (Result<DMMessage, APIError>) -> Void
     ) {
         let senderId = AccountManager.shared.activeId ?? ""
         guard let built = XChatOutgoing.build(
-            text: text,
+            entry: entry,
             messageId: messageId,
             conversationId: conversationId,
             senderId: senderId,
@@ -273,9 +364,6 @@ extension DMAPI {
             return
         }
 
-        // The text is known, so the echoed event never needs decrypting to show it.
-        DMViewModel.shared.decryptedMessageCache[messageId] = DMDecodedContent(text: text)
-
         WebKitWriteChannel.shared.perform(path: Self.sendMessageCreatePath, body: ["variables": variablesString]) { result in
             switch result {
             case .success(let json):
@@ -285,19 +373,71 @@ extension DMAPI {
                     completion(.failure(.invalidResponse))
                     return
                 }
-                let message = self.parseXChatEvent(base64: encoded, activeUserId: senderId) ?? DMMessage(
-                    id: messageId,
-                    conversationId: conversationId,
-                    senderId: senderId,
-                    recipientId: nil,
-                    text: text,
-                    createdAt: Date(),
-                    isOutgoing: true,
-                    keyVersion: keys.conversationKeyVersion
-                )
+                guard let message = self.parseXChatEvent(base64: encoded, activeUserId: senderId) else {
+                    completion(.failure(.parseError))
+                    return
+                }
                 completion(.success(message))
             case .failure(let error):
                 dmLog.error("X Chat send failed: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Deletes messages by sequence id, for this account's devices or, for one's own messages, for everyone.
+    func deleteXChatMessages(
+        sequenceIds: [String],
+        forEveryone: Bool,
+        conversationId: String,
+        signingKey: P256.Signing.PrivateKey,
+        signingKeyVersion: String,
+        completion: @escaping (Result<Void, APIError>) -> Void
+    ) {
+        let senderId = AccountManager.shared.activeId ?? ""
+        let actionId = UUID().uuidString.lowercased()
+        guard let deletion = XChatOutgoing.deletion(
+            sequenceIds: sequenceIds,
+            forEveryone: forEveryone,
+            actionId: actionId,
+            conversationId: conversationId,
+            senderId: senderId,
+            signingKey: signingKey
+        ) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        let variables: [String: Any] = [
+            "sequence_ids": sequenceIds,
+            "conversation_id": conversationId,
+            "delete_message_action": forEveryone ? "DeleteForAll" : "DeleteForSelf",
+            "action_signatures": [[
+                "encoded_message_event_detail": deletion.detail.base64EncodedString(),
+                "message_event_signature": [
+                    "public_key_version": signingKeyVersion,
+                    "signature": deletion.signature,
+                    "signature_version": XChatOutgoing.signatureVersion,
+                    "signing_public_key": NSNull()
+                ],
+                "message_id": actionId
+            ]]
+        ]
+        guard let variablesData = try? JSONSerialization.data(withJSONObject: variables),
+              let variablesString = String(data: variablesData, encoding: .utf8) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        WebKitWriteChannel.shared.perform(path: Self.deleteMessagesPath, body: ["variables": variablesString]) { result in
+            switch result {
+            case .success(let json):
+                let response = (json["data"] as? [String: Any])?["xchat_delete_messages"] as? [String: Any]
+                if let code = response?["error_code"] as? String, !code.isEmpty {
+                    dmLog.error("X Chat delete refused: \(code)")
+                    completion(.failure(.serverError(code)))
+                } else {
+                    completion(.success(()))
+                }
+            case .failure(let error):
                 completion(.failure(error))
             }
         }

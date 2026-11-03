@@ -106,7 +106,18 @@ enum DMEntryKind: String, Codable {
     case reactionRemove
     case edit
     case read
+    /// Removes the messages in `deletedSequenceIds`, for everyone or for this account's devices.
+    case delete
     case other
+}
+
+/// The quoted message a reply carries, as X stores it in the reply itself.
+struct DMReplyPreview: Codable, Equatable {
+    var senderId: String
+    var senderName: String
+    var text: String
+    var sequenceId: String?
+    var messageId: String?
 }
 
 /// What an X Chat payload decodes to once decrypted.
@@ -117,6 +128,9 @@ struct DMDecodedContent: Equatable {
     var targetSequenceId: String? = nil
     var emoji: String? = nil
     var readAt: Date? = nil
+    var replyPreview: DMReplyPreview? = nil
+    var isForwarded = false
+    var deletedSequenceIds: [String]? = nil
 }
 
 struct DMMessage: Identifiable, Codable, Equatable {
@@ -141,6 +155,10 @@ struct DMMessage: Identifiable, Codable, Equatable {
     let readAt: Date?
     /// Set on the copy the chat draws once a later edit has replaced the text.
     var editedAt: Date? = nil
+    var replyPreview: DMReplyPreview? = nil
+    // Optional so chats cached before these existed still decode.
+    var isForwarded: Bool? = nil
+    var deletedSequenceIds: [String]? = nil
     
     init(
         id: String,
@@ -192,6 +210,8 @@ struct DMMessage: Identifiable, Codable, Equatable {
             entryKind: entryKind, targetSequenceId: targetSequenceId, emoji: emoji, readAt: readAt
         )
         copy.editedAt = date
+        copy.replyPreview = replyPreview
+        copy.isForwarded = isForwarded
         return copy
     }
     
@@ -202,7 +222,7 @@ struct DMMessage: Identifiable, Codable, Equatable {
     
     /// The same message with its decrypted contents filled in.
     func decrypted(_ content: DMDecodedContent) -> DMMessage {
-        DMMessage(
+        var message = DMMessage(
             id: id,
             conversationId: conversationId,
             senderId: senderId,
@@ -220,6 +240,15 @@ struct DMMessage: Identifiable, Codable, Equatable {
             emoji: content.emoji,
             readAt: content.readAt
         )
+        message.apply(content)
+        return message
+    }
+    
+    /// Carries over the parts of decoded contents that are not constructor arguments.
+    mutating func apply(_ content: DMDecodedContent) {
+        replyPreview = content.replyPreview
+        isForwarded = content.isForwarded ? true : nil
+        deletedSequenceIds = content.deletedSequenceIds
     }
     
     var formattedText: AttributedString {
@@ -306,7 +335,7 @@ struct DMConversation: Identifiable, Codable, Equatable {
     let otherParticipant: DMParticipant?
     var lastMessage: DMMessage?
     var lastReadEventId: String?
-    let sortTimestamp: Date
+    var sortTimestamp: Date
     let isMuted: Bool
     let isTrusted: Bool
     var isPinned: Bool
