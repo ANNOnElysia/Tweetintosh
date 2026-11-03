@@ -190,7 +190,10 @@ final class PeekCoordinator: ObservableObject {
         monitor = NSEvent.addLocalMonitorForEvents(
             matching: [.pressure, .leftMouseDown, .leftMouseUp, .keyDown, .scrollWheel]
         ) { [weak self] event in
-            self?.handle(event) ?? event
+            // Not `self?.handle(event) ?? event`: that turns a swallowed event (nil) back into the event, so Esc
+            // would still reach the window and beep.
+            guard let self else { return event }
+            return self.handle(event)
         }
     }
 
