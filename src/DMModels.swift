@@ -98,6 +98,13 @@ struct DMParticipant: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
+/// What an X Chat payload decodes to once decrypted: either a message's text or a reaction to another message.
+struct DMDecodedContent: Equatable {
+    var text: String = ""
+    var reactionTargetId: String? = nil
+    var reactionEmoji: String? = nil
+}
+
 struct DMMessage: Identifiable, Codable, Equatable {
     let id: String
     let conversationId: String
@@ -110,6 +117,11 @@ struct DMMessage: Identifiable, Codable, Equatable {
     let isEncrypted: Bool
     let rawCiphertextBase64: String?
     let keyVersion: String?
+    /// X Chat's per-conversation sequence id. Reactions point at their target by this id rather than by `id`.
+    let sequenceId: String?
+    /// Set when this event is a reaction rather than a message: the target's sequence id and the emoji.
+    let reactionTargetId: String?
+    let reactionEmoji: String?
     
     init(
         id: String,
@@ -122,7 +134,10 @@ struct DMMessage: Identifiable, Codable, Equatable {
         mediaUrl: String? = nil,
         isEncrypted: Bool = false,
         rawCiphertextBase64: String? = nil,
-        keyVersion: String? = nil
+        keyVersion: String? = nil,
+        sequenceId: String? = nil,
+        reactionTargetId: String? = nil,
+        reactionEmoji: String? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -135,6 +150,36 @@ struct DMMessage: Identifiable, Codable, Equatable {
         self.isEncrypted = isEncrypted
         self.rawCiphertextBase64 = rawCiphertextBase64
         self.keyVersion = keyVersion
+        self.sequenceId = sequenceId
+        self.reactionTargetId = reactionTargetId
+        self.reactionEmoji = reactionEmoji
+    }
+    
+    var isReaction: Bool { reactionEmoji != nil }
+    
+    /// Whether `targetId`, as carried by a reaction, names this message.
+    func isTarget(of targetId: String) -> Bool {
+        targetId == id || targetId == sequenceId
+    }
+    
+    /// The same message with its decrypted contents filled in.
+    func decrypted(_ content: DMDecodedContent) -> DMMessage {
+        DMMessage(
+            id: id,
+            conversationId: conversationId,
+            senderId: senderId,
+            recipientId: recipientId,
+            text: content.text,
+            createdAt: createdAt,
+            isOutgoing: isOutgoing,
+            mediaUrl: mediaUrl,
+            isEncrypted: false,
+            rawCiphertextBase64: rawCiphertextBase64,
+            keyVersion: keyVersion,
+            sequenceId: sequenceId,
+            reactionTargetId: content.reactionTargetId,
+            reactionEmoji: content.reactionEmoji
+        )
     }
     
     var formattedText: AttributedString {
@@ -201,7 +246,10 @@ struct DMConversation: Identifiable, Codable, Equatable {
     }
     
     var snippetText: AttributedString {
-        DMTextHelper.attributedMarkdown(lastMessage?.text ?? "")
+        if let emoji = lastMessage?.reactionEmoji {
+            return AttributedString(LocalizationManager.shared.format("messages_reacted_snippet", ["emoji": emoji]))
+        }
+        return DMTextHelper.attributedMarkdown(lastMessage?.text ?? "")
     }
 }
 

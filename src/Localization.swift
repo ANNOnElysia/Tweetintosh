@@ -188,6 +188,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "选择一个会话开始聊天",
             .traditionalChinese: "選擇一個對話開始聊天"
         ],
+        "messages_reacted_snippet": [
+            .english: "Reacted {emoji}",
+            .japanese: "{emoji} でリアクションしました",
+            .korean: "{emoji}(으)로 반응함",
+            .simplifiedChinese: "回应了 {emoji}",
+            .traditionalChinese: "回應了 {emoji}"
+        ],
         "messages_seen": [
             .english: "Seen",
             .japanese: "既読",

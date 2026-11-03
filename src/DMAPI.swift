@@ -116,6 +116,8 @@ struct ParsedXChatMessage {
     var rawCiphertext: Data? = nil
     var keyVersion: String? = nil
     var mediaUrl: String? = nil
+    var reactionTargetId: String? = nil
+    var reactionEmoji: String? = nil
 }
 
 final class DMAPI {
@@ -822,11 +824,11 @@ final class DMAPI {
         let resolvedId = msg.messageId.isEmpty ? (msg.eventId.isEmpty ? UUID().uuidString : msg.eventId) : msg.messageId
         
         var isActuallyEncrypted = msg.isEncrypted
-        var displayText = msg.text
+        var content = DMDecodedContent(text: msg.text, reactionTargetId: msg.reactionTargetId, reactionEmoji: msg.reactionEmoji)
         
         if isActuallyEncrypted, let raw = msg.rawCiphertext {
             if let cached = DMViewModel.shared.decryptedMessageCache[resolvedId] ?? DMViewModel.shared.decryptedMessageCache[msg.eventId] {
-                displayText = cached
+                content = cached
                 isActuallyEncrypted = false
             } else {
                 var convKey: Data? = nil
@@ -841,14 +843,14 @@ final class DMAPI {
                 }
                 
                 if let k = convKey, let decrypted = decryptMessagePayload(rawBinary: raw, conversationKey: k) {
-                    displayText = decrypted
+                    content = decrypted
                     isActuallyEncrypted = false
                     DMViewModel.shared.decryptedMessageCache[resolvedId] = decrypted
                 } else {
                     // Robust fallback: try all known conversation keys
                     for k in DMViewModel.shared.conversationKeys.values {
                         if let decrypted = decryptMessagePayload(rawBinary: raw, conversationKey: k) {
-                            displayText = decrypted
+                            content = decrypted
                             isActuallyEncrypted = false
                             DMViewModel.shared.decryptedMessageCache[resolvedId] = decrypted
                             break
@@ -865,13 +867,16 @@ final class DMAPI {
             conversationId: msg.conversationId,
             senderId: msg.senderId,
             recipientId: nil,
-            text: displayText,
+            text: content.text,
             createdAt: date,
             isOutgoing: isOutgoing,
             mediaUrl: msg.mediaUrl,
             isEncrypted: isActuallyEncrypted,
             rawCiphertextBase64: rawB64,
-            keyVersion: msg.keyVersion
+            keyVersion: msg.keyVersion,
+            sequenceId: msg.eventId.isEmpty ? nil : msg.eventId,
+            reactionTargetId: content.reactionTargetId,
+            reactionEmoji: content.reactionEmoji
         )
     }
     
@@ -910,7 +915,7 @@ final class DMAPI {
     }
     
     /// Tier 2: Decrypts message contents payload (Field 100) using 32-byte conversation key via XSalsa20-Poly1305 (Libsodium secretbox)
-    func decryptMessagePayload(rawBinary: Data, conversationKey: Data) -> String? {
+    func decryptMessagePayload(rawBinary: Data, conversationKey: Data) -> DMDecodedContent? {
         guard rawBinary.count > 24 + 16 else { return nil }
         let nonce = rawBinary.prefix(24)
         let box = rawBinary.dropFirst(24) // 16-byte MAC followed by ciphertext
@@ -922,10 +927,10 @@ final class DMAPI {
         var innerReader = ThriftBinaryReader(data: decryptedThrift)
         var dummyMsg = ParsedXChatMessage()
         extractTextFromInnerThrift(&innerReader, msg: &dummyMsg)
-        if !dummyMsg.text.isEmpty {
-            return dummyMsg.text
+        if dummyMsg.reactionEmoji != nil || !dummyMsg.text.isEmpty {
+            return DMDecodedContent(text: dummyMsg.text, reactionTargetId: dummyMsg.reactionTargetId, reactionEmoji: dummyMsg.reactionEmoji)
         }
-        return String(data: decryptedThrift, encoding: .utf8)
+        return String(data: decryptedThrift, encoding: .utf8).map { DMDecodedContent(text: $0) }
     }
     
     /// Parses Thrift binary encoded KeyChangeEvent to extract (conversationKeyVersion, encryptedPayload) for the active user.
@@ -1058,18 +1063,25 @@ final class DMAPI {
                 // MessageEntryContents -> MessageContents
                 extractTextFromInnerThrift(&reader, msg: &msg)
             } else if iId == 2 && iType == 12 {
-                // MessageReactionAdd: Field 1 is sequence_id, Field 2 is emoji
+                // MessageReactionAdd: Field 1 is the target's sequence_id, Field 2 is emoji. The reaction is kept as
+                // structured data so the chat can pin it to its target instead of showing it as a message of its own.
                 var emoji = ""
+                var target: String? = nil
                 while let rType = reader.readByte(), rType != 0 {
                     guard let rId = reader.readInt16() else { break }
-                    if rId == 2 && rType == 11 {
+                    if rId == 1 && rType == 11 {
+                        target = reader.readString()
+                    } else if rId == 1 && rType == 10 {
+                        target = reader.readInt64().map(String.init)
+                    } else if rId == 2 && rType == 11 {
                         emoji = reader.readString() ?? ""
                     } else {
                         reader.skip(type: rType)
                     }
                 }
                 if !emoji.isEmpty {
-                    msg.text = "Reacted " + emoji
+                    msg.reactionEmoji = emoji
+                    msg.reactionTargetId = target
                 }
             } else if iId == 1 && iType == 11 {
                 if let text = reader.readString(), !text.isEmpty {

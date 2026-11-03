@@ -39,7 +39,7 @@ final class DMViewModel: ObservableObject {
     @Published var passcodeErrorMessage: String? = nil
     
     var privateKey: P256.KeyAgreement.PrivateKey?
-    var decryptedMessageCache: [String: String] = [:]
+    var decryptedMessageCache: [String: DMDecodedContent] = [:]
     var rawConversationKeyEvents: [String: Data] = [:]
     var conversationKeys: [String: Data] = [:]
     
@@ -327,7 +327,7 @@ final class DMViewModel: ObservableObject {
             
             for msg in msgs {
                 if msg.isEncrypted, let b64 = msg.rawCiphertextBase64, let rawData = Data(base64Encoded: b64) {
-                    var decryptedText: String? = nil
+                    var decryptedText: DMDecodedContent? = nil
                     
                     if let ver = msg.keyVersion, let convKey = conversationKeys[ver] {
                         decryptedText = DMAPI.shared.decryptMessagePayload(rawBinary: rawData, conversationKey: convKey)
@@ -341,22 +341,9 @@ final class DMViewModel: ObservableObject {
                         }
                     }
                     
-                    if let text = decryptedText {
-                        decryptedMessageCache[msg.id] = text
-                        let newMsg = DMMessage(
-                            id: msg.id,
-                            conversationId: msg.conversationId,
-                            senderId: msg.senderId,
-                            recipientId: msg.recipientId,
-                            text: text,
-                            createdAt: msg.createdAt,
-                            isOutgoing: msg.isOutgoing,
-                            mediaUrl: msg.mediaUrl,
-                            isEncrypted: false,
-                            rawCiphertextBase64: b64,
-                            keyVersion: msg.keyVersion
-                        )
-                        updatedMsgs.append(newMsg)
+                    if let content = decryptedText {
+                        decryptedMessageCache[msg.id] = content
+                        updatedMsgs.append(msg.decrypted(content))
                     } else {
                         hasEncrypted = true
                         updatedMsgs.append(msg)

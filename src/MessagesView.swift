@@ -703,12 +703,37 @@ private struct DMBubbleScrollView: View {
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     
+    /// Reactions arrive as events of their own; they are drawn on the message they point at, not as bubbles.
+    private var bubbles: [DMMessage] {
+        messages.filter { !$0.isReaction }
+    }
+    
+    /// Each message's reactions, keyed by message id. A person holds one reaction per message, so a later one from
+    /// the same sender replaces the earlier.
+    private var reactionsByMessage: [String: [DMMessage]] {
+        var result: [String: [DMMessage]] = [:]
+        for reaction in messages where reaction.isReaction {
+            guard let targetId = reaction.reactionTargetId,
+                  let target = messages.last(where: { !$0.isReaction && $0.isTarget(of: targetId) }) else {
+                // The target is older than what is loaded; there is nothing on screen to attach it to.
+                continue
+            }
+            var list = result[target.id] ?? []
+            list.removeAll { $0.senderId == reaction.senderId }
+            list.append(reaction)
+            result[target.id] = list
+        }
+        return result
+    }
+    
     var body: some View {
+        let bubbles = bubbles
+        let reactions = reactionsByMessage
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    ForEach(messages) { msg in
-                        DMBubbleRow(message: msg, isLast: msg.id == messages.last?.id)
+                    ForEach(bubbles) { msg in
+                        DMBubbleRow(message: msg, isLast: msg.id == bubbles.last?.id, reactions: reactions[msg.id] ?? [])
                             .id(msg.id)
                     }
                 }
@@ -716,12 +741,12 @@ private struct DMBubbleScrollView: View {
                 .padding(.vertical, 14)
             }
             .onAppear {
-                if let last = messages.last {
+                if let last = bubbles.last {
                     scrollProxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
             .onChange(of: messages.count) {
-                if let last = messages.last {
+                if let last = bubbles.last {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                         scrollProxy.scrollTo(last.id, anchor: .bottom)
                     }
@@ -736,6 +761,7 @@ private struct DMBubbleScrollView: View {
 private struct DMBubbleRow: View {
     let message: DMMessage
     let isLast: Bool
+    let reactions: [DMMessage]
     
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
@@ -754,8 +780,10 @@ private struct DMBubbleRow: View {
                 } else if message.isOutgoing {
                     Spacer(minLength: 48)
                     outgoingBubble
+                        .modifier(DMReactionAttachment(reactions: reactions, isOutgoing: true))
                 } else {
                     incomingBubble
+                        .modifier(DMReactionAttachment(reactions: reactions, isOutgoing: false))
                     Spacer(minLength: 48)
                 }
             }
@@ -876,6 +904,76 @@ private struct DMBubbleRow: View {
             RoundedCorner(tl: 18, tr: 18, bl: 4, br: 18)
                 .fill(theme.isLight ? Color(hex: "#E5E5EA") : Color(hex: "#262628"))
         }
+    }
+}
+
+// MARK: - Reaction Badge
+
+/// Hangs a message's reactions off the bottom edge of its bubble, on the side the bubble's tail points to, the way
+/// X's own chat does. The row grows by the overhang so the badge never sits on top of the next message.
+private struct DMReactionAttachment: ViewModifier {
+    let reactions: [DMMessage]
+    let isOutgoing: Bool
+    
+    @ObservedObject private var theme = ThemeManager.shared
+    
+    private static let overhang: CGFloat = 12
+    
+    /// Distinct emoji in the order they were first used, each with how many people chose it.
+    private var groups: [(emoji: String, count: Int)] {
+        var order: [String] = []
+        var counts: [String: Int] = [:]
+        for r in reactions {
+            guard let e = r.reactionEmoji else { continue }
+            if counts[e] == nil { order.append(e) }
+            counts[e, default: 0] += 1
+        }
+        return order.map { ($0, counts[$0] ?? 0) }
+    }
+    
+    private var includesMine: Bool {
+        reactions.contains { $0.isOutgoing }
+    }
+    
+    func body(content: Content) -> some View {
+        if reactions.isEmpty {
+            content
+        } else {
+            content
+                .padding(.bottom, Self.overhang)
+                .overlay(alignment: isOutgoing ? .bottomTrailing : .bottomLeading) {
+                    badge
+                        .padding(isOutgoing ? .trailing : .leading, 10)
+                }
+        }
+    }
+    
+    private var badge: some View {
+        HStack(spacing: 3) {
+            ForEach(groups, id: \.emoji) { group in
+                HStack(spacing: 1) {
+                    Text(group.emoji)
+                        .font(.system(size: 12))
+                    if group.count > 1 {
+                        Text("\(group.count)")
+                            .font(theme.appFont(size: 10, weight: .semibold))
+                            .foregroundColor(ThemeManager.secondaryText)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2.5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(ThemeManager.background)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(includesMine ? ThemeManager.accent.opacity(0.55) : ThemeManager.divider, lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.30), radius: 2, x: 0, y: 1)
+        .help(groups.map(\.emoji).joined(separator: " "))
     }
 }
 
