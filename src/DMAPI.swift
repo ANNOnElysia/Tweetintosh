@@ -110,14 +110,12 @@ struct ParsedXChatMessage {
     var senderId: String = ""
     var conversationId: String = ""
     var timestampMs: Int64 = 0
-    var text: String = ""
+    var decoded = DMDecodedContent()
     var isEncrypted: Bool = false
     var hasMessagePayload: Bool = false
     var rawCiphertext: Data? = nil
     var keyVersion: String? = nil
     var mediaUrl: String? = nil
-    var reactionTargetId: String? = nil
-    var reactionEmoji: String? = nil
     var isReadReceipt: Bool = false
     var conversationToken: String? = nil
 }
@@ -762,7 +760,7 @@ final class DMAPI {
                 }
             }
             
-            let lastMsg = parsedMsgs.last
+            let lastMsg = parsedMsgs.last(where: { $0.isListed })
             let hasEncrypted = parsedMsgs.contains { $0.isEncrypted }
             
             convList.append(
@@ -849,7 +847,7 @@ final class DMAPI {
         let resolvedId = msg.messageId.isEmpty ? (msg.eventId.isEmpty ? UUID().uuidString : msg.eventId) : msg.messageId
         
         var isActuallyEncrypted = msg.isEncrypted
-        var content = DMDecodedContent(text: msg.text, reactionTargetId: msg.reactionTargetId, reactionEmoji: msg.reactionEmoji)
+        var content = msg.decoded
         
         if isActuallyEncrypted, let raw = msg.rawCiphertext {
             if let cached = DMViewModel.shared.decryptedMessageCache[resolvedId] ?? DMViewModel.shared.decryptedMessageCache[msg.eventId] {
@@ -900,8 +898,10 @@ final class DMAPI {
             rawCiphertextBase64: rawB64,
             keyVersion: msg.keyVersion,
             sequenceId: msg.eventId.isEmpty ? nil : msg.eventId,
-            reactionTargetId: content.reactionTargetId,
-            reactionEmoji: content.reactionEmoji
+            entryKind: content.kind,
+            targetSequenceId: content.targetSequenceId,
+            emoji: content.emoji,
+            readAt: content.readAt
         )
     }
     
@@ -949,13 +949,10 @@ final class DMAPI {
             return nil
         }
         
+        // Anything that is not a recognised entry decodes as `.other` and stays out of the chat, rather than
+        // its raw bytes being shown as text (a read receipt used to appear as its sequence id).
         var innerReader = ThriftBinaryReader(data: decryptedThrift)
-        var dummyMsg = ParsedXChatMessage()
-        extractTextFromInnerThrift(&innerReader, msg: &dummyMsg)
-        if dummyMsg.reactionEmoji != nil || !dummyMsg.text.isEmpty {
-            return DMDecodedContent(text: dummyMsg.text, reactionTargetId: dummyMsg.reactionTargetId, reactionEmoji: dummyMsg.reactionEmoji)
-        }
-        return String(data: decryptedThrift, encoding: .utf8).map { DMDecodedContent(text: $0) }
+        return decodeEntryHolder(&innerReader)
     }
     
     /// Parses Thrift binary encoded KeyChangeEvent to extract (conversationKeyVersion, encryptedPayload) for the active user.
@@ -1085,45 +1082,88 @@ final class DMAPI {
         
         if let bin = rawBinary, !isEncrypted {
             var innerReader = ThriftBinaryReader(data: bin)
-            extractTextFromInnerThrift(&innerReader, msg: &msg)
+            msg.decoded = decodeEntryHolder(&innerReader)
         }
     }
     
-    private func extractTextFromInnerThrift(_ reader: inout ThriftBinaryReader, msg: inout ParsedXChatMessage) {
-        while let iType = reader.readByte(), iType != 0 {
-            guard let iId = reader.readInt16() else { break }
-            if iId == 1 && iType == 12 {
-                // MessageEntryContents -> MessageContents
-                extractTextFromInnerThrift(&reader, msg: &msg)
-            } else if iId == 2 && iType == 12 {
-                // MessageReactionAdd: Field 1 is the target's sequence_id, Field 2 is emoji. The reaction is kept as
-                // structured data so the chat can pin it to its target instead of showing it as a message of its own.
-                var emoji = ""
-                var target: String? = nil
-                while let rType = reader.readByte(), rType != 0 {
-                    guard let rId = reader.readInt16() else { break }
-                    if rId == 1 && rType == 11 {
-                        target = reader.readString()
-                    } else if rId == 1 && rType == 10 {
-                        target = reader.readInt64().map(String.init)
-                    } else if rId == 2 && rType == 11 {
-                        emoji = reader.readString() ?? ""
-                    } else {
-                        reader.skip(type: rType)
-                    }
-                }
-                if !emoji.isEmpty {
-                    msg.reactionEmoji = emoji
-                    msg.reactionTargetId = target
-                }
-            } else if iId == 1 && iType == 11 {
-                if let text = reader.readString(), !text.isEmpty {
-                    msg.text = text
-                }
+    // MARK: Entry Contents
+    
+    /// MessageEntryHolder { 1: MessageEntryContents }.
+    private func decodeEntryHolder(_ reader: inout ThriftBinaryReader) -> DMDecodedContent {
+        var content = DMDecodedContent(kind: .other)
+        while let t = reader.readByte(), t != 0 {
+            guard let id = reader.readInt16() else { break }
+            if id == 1 && t == 12 {
+                content = decodeEntryContents(&reader)
             } else {
-                reader.skip(type: iType)
+                reader.skip(type: t)
             }
         }
+        return content
+    }
+    
+    /// MessageEntryContents is a union: 1 message, 2 reaction_add, 3 reaction_remove, 4 message_edit,
+    /// 5 mark_conversation_read, and kinds the chat does not show (pins, calls, drafts, screen captures…).
+    /// Reactions, edits and read marks are kept as structured entries so the chat can apply them to the message
+    /// they name instead of drawing them as messages.
+    private func decodeEntryContents(_ reader: inout ThriftBinaryReader) -> DMDecodedContent {
+        var content = DMDecodedContent(kind: .other)
+        while let t = reader.readByte(), t != 0 {
+            guard let id = reader.readInt16() else { break }
+            guard t == 12 else {
+                reader.skip(type: t)
+                continue
+            }
+            switch id {
+            case 1:
+                content = DMDecodedContent(kind: .message, text: decodeMessageText(&reader))
+            case 2, 3:
+                let f = readScalarFields(&reader)
+                content = DMDecodedContent(kind: id == 2 ? .reaction : .reactionRemove, targetSequenceId: f.strings[1], emoji: f.strings[2])
+            case 4:
+                let f = readScalarFields(&reader)
+                content = DMDecodedContent(kind: .edit, text: f.strings[2] ?? "", targetSequenceId: f.strings[1])
+            case 5:
+                let f = readScalarFields(&reader)
+                let readAt = f.ints[2].map { Date(timeIntervalSince1970: Double($0) / 1000.0) }
+                content = DMDecodedContent(kind: .read, targetSequenceId: f.strings[1], readAt: readAt)
+            default:
+                reader.skip(type: t)
+            }
+        }
+        return content
+    }
+    
+    /// MessageContents { 1: message_text, … }.
+    private func decodeMessageText(_ reader: inout ThriftBinaryReader) -> String {
+        var text = ""
+        while let t = reader.readByte(), t != 0 {
+            guard let id = reader.readInt16() else { break }
+            if id == 1 && t == 11 {
+                text = reader.readString() ?? ""
+            } else {
+                reader.skip(type: t)
+            }
+        }
+        return text
+    }
+    
+    /// A struct's string and i64 fields; sequence ids are strings, but older clients may send them as i64.
+    private func readScalarFields(_ reader: inout ThriftBinaryReader) -> (strings: [Int16: String], ints: [Int16: Int64]) {
+        var strings: [Int16: String] = [:]
+        var ints: [Int16: Int64] = [:]
+        while let t = reader.readByte(), t != 0 {
+            guard let id = reader.readInt16() else { break }
+            if t == 11, let s = reader.readString() {
+                strings[id] = s
+            } else if t == 10, let v = reader.readInt64() {
+                ints[id] = v
+                if strings[id] == nil { strings[id] = String(v) }
+            } else {
+                reader.skip(type: t)
+            }
+        }
+        return (strings, ints)
     }
     
     // MARK: - 5. Legacy REST Payload Parser Helper

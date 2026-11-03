@@ -207,6 +207,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func signOutActiveAccount() {
         TimelineCacheManager.shared.clearCache()
         NotificationCacheManager.shared.clearCache()
+        DMCacheManager.shared.clearCache()
         MediaCacheManager.shared.clearAllCache()
         let next = AccountManager.shared.removeActive()
         if next != nil {

@@ -48,6 +48,12 @@ final class DMViewModel: ObservableObject {
     var conversationKeys: [String: Data] = [:]
     
     private let pinnedStorageKey = "com.anno.tweetintosh.dm.pinned"
+    
+    // The disk cache: whose chats are loaded, whether the server has been asked this session, and the
+    // subscription that writes changes back.
+    private var cacheOwnerId: String?
+    private var hasFetchedInbox = false
+    private var cacheSubscription: AnyCancellable?
     @Published var pinnedConversationIds: Set<String> = []
     
     private var passcodeStorageKey: String {
@@ -88,6 +94,52 @@ final class DMViewModel: ObservableObject {
             self.isPasscodeUnlocked = true
         } else {
             self.isPasscodeUnlocked = false
+        }
+        
+        // Show the chats as they were last seen straight away; the inbox fetch then brings them up to date.
+        cacheOwnerId = AccountManager.shared.activeId
+        if let cached = DMCacheManager.shared.load() {
+            conversations = cached.conversations
+            messagesByConv = cached.messages
+        }
+        cacheSubscription = Publishers.CombineLatest($conversations, $messagesByConv)
+            .dropFirst()
+            .debounce(for: .seconds(2), scheduler: RunLoop.main)
+            .sink { [weak self] conversations, messages in
+                self?.saveCache(conversations: conversations, messages: messages)
+            }
+    }
+    
+    private func saveCache(conversations: [DMConversation], messages: [String: [DMMessage]]) {
+        // Chats loaded for one account are never written into another's folder.
+        guard let owner = cacheOwnerId, owner == AccountManager.shared.activeId,
+              !conversations.isEmpty || !messages.isEmpty else { return }
+        DMCacheManager.shared.save(.init(accountId: owner, conversations: conversations, messages: messages))
+    }
+    
+    /// Adds fetched messages to what is already known instead of replacing it, since the server only returns
+    /// recent events and older ones live on in the cache. A decrypted copy is never swapped for a locked one.
+    private func mergeMessages(_ fetched: [DMMessage], into convId: String) {
+        var byId: [String: DMMessage] = [:]
+        for m in messagesByConv[convId] ?? [] { byId[m.id] = m }
+        for m in fetched {
+            if let known = byId[m.id], !known.isEncrypted, m.isEncrypted { continue }
+            byId[m.id] = m
+        }
+        messagesByConv[convId] = byId.values.sorted { $0.createdAt < $1.createdAt }
+    }
+    
+    /// The server's conversations, plus cached ones it did not list this time.
+    private func mergedConversations(_ fetched: [DMConversation]) -> [DMConversation] {
+        var result = fetched
+        for i in result.indices where result[i].lastMessage == nil {
+            result[i].lastMessage = conversations.first { $0.id == result[i].id }?.lastMessage
+        }
+        let fetchedIds = Set(fetched.map(\.id))
+        result.append(contentsOf: conversations.filter { !fetchedIds.contains($0.id) })
+        return result.sorted {
+            if $0.isPinned != $1.isPinned { return $0.isPinned }
+            return $0.sortTimestamp > $1.sortTimestamp
         }
     }
     
@@ -176,7 +228,7 @@ final class DMViewModel: ObservableObject {
     
     func loadInbox(forceRefresh: Bool = false) {
         guard !isLoadingInbox else { return }
-        if !forceRefresh && !conversations.isEmpty { return }
+        if !forceRefresh && hasFetchedInbox { return }
         
         restoreUnlockedStateIfNeeded()
         
@@ -190,8 +242,11 @@ final class DMViewModel: ObservableObject {
             
             switch result {
             case .success(let (convs, msgs)):
-                self.conversations = convs
-                self.messagesByConv.merge(msgs) { existing, new in new }
+                self.hasFetchedInbox = true
+                self.conversations = self.mergedConversations(convs)
+                for (cid, list) in msgs {
+                    self.mergeMessages(list, into: cid)
+                }
                 
                 if self.isPasscodeUnlocked {
                     self.decryptAllLoadedMessages()
@@ -377,7 +432,7 @@ final class DMViewModel: ObservableObject {
             messagesByConv[convId] = updatedMsgs
             
             if let idx = conversations.firstIndex(where: { $0.id == convId }) {
-                conversations[idx].lastMessage = updatedMsgs.last
+                conversations[idx].lastMessage = updatedMsgs.last(where: { $0.isListed })
                 conversations[idx].hasEncryptedMessages = hasEncrypted
             }
         }
@@ -410,7 +465,7 @@ final class DMViewModel: ObservableObject {
                         }
                     }
                     self.messagesByConv[conversationId] = current.sorted { $0.createdAt < $1.createdAt }
-                    if let last = self.messagesByConv[conversationId]?.last,
+                    if let last = self.messagesByConv[conversationId]?.last(where: { $0.isListed }),
                        let idx = self.conversations.firstIndex(where: { $0.id == conversationId }) {
                         self.conversations[idx].lastMessage = last
                     }
@@ -570,7 +625,7 @@ final class DMViewModel: ObservableObject {
                 current.removeAll { $0.id == messageId }
                 self.messagesByConv[convId] = current
                 if let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
-                    self.conversations[idx].lastMessage = current.last
+                    self.conversations[idx].lastMessage = current.last(where: { $0.isListed })
                 }
                 if self.inputText.isEmpty { self.inputText = text }
                 AppToastManager.shared.show(

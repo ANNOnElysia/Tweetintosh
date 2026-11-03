@@ -316,8 +316,12 @@ private struct DMMessageInfoView: View {
         return nil
     }
 
+    private var conversationEntries: [DMMessage] {
+        vm.messagesByConv[message.conversationId] ?? []
+    }
+    
     private var seen: [(reader: String, at: Date)] {
-        DMReadReceiptStore.shared.seenTimes(for: message)
+        DMSeen.seenTimes(for: message, among: conversationEntries)
             .map { ($0.key, $0.value) }
             .sorted { $0.at < $1.at }
     }
@@ -345,6 +349,9 @@ private struct DMMessageInfoView: View {
                     title: loc.t(message.isOutgoing ? "messages_info_sent" : "messages_info_received"),
                     detail: Self.format(message.createdAt, language: loc.currentLanguage)
                 )
+                if let editedAt = message.editedAt {
+                    statusRow(icon: "pencil", title: loc.t("messages_info_edited"), detail: Self.format(editedAt, language: loc.currentLanguage))
+                }
                 if message.isOutgoing {
                     let seen = seen
                     // In a group, each reader gets a row of their own; in a one-to-one chat the reader is obvious.
@@ -356,7 +363,7 @@ private struct DMMessageInfoView: View {
                         statusRow(icon: "eye", title: title, detail: Self.format(entry.at, language: loc.currentLanguage))
                     }
                     // Only claim "not seen" once receipts are known to be arriving for this conversation.
-                    if seen.isEmpty && DMReadReceiptStore.shared.hasReceipts(in: message.conversationId, excluding: message.senderId) {
+                    if seen.isEmpty && DMSeen.hasReceipts(in: message.conversationId, excluding: message.senderId, among: conversationEntries) {
                         statusRow(icon: "eye.slash", title: loc.t("messages_info_not_seen"), detail: nil)
                     }
                 }
@@ -372,7 +379,7 @@ private struct DMMessageInfoView: View {
                         .foregroundColor(secondaryColor)
                     ForEach(reactions) { reaction in
                         HStack(spacing: 8) {
-                            Text(reaction.reactionEmoji ?? "")
+                            Text(reaction.emoji ?? "")
                                 .font(.system(size: 14))
                                 .frame(width: 20)
                             Text(person(reaction.senderId)?.name ?? "")

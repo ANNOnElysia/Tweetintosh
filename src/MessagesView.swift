@@ -703,37 +703,60 @@ private struct DMBubbleScrollView: View {
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     
-    /// Reactions arrive as events of their own; they are drawn on the message they point at, not as bubbles.
+    /// Only messages are drawn as bubbles. Reactions, edits and read marks arrive as entries of their own and are
+    /// applied to the message they name; a message shows its author's latest edit.
     private var bubbles: [DMMessage] {
-        messages.filter { !$0.isReaction }
+        var latestEdit: [String: DMMessage] = [:]
+        for edit in messages where edit.entryKind == .edit {
+            if let target = edit.targetSequenceId { latestEdit[target] = edit }
+        }
+        return messages.compactMap { msg in
+            guard msg.entryKind == .message else { return nil }
+            if let seq = msg.sequenceId, let edit = latestEdit[seq], edit.senderId == msg.senderId {
+                return msg.edited(to: edit.text, at: edit.createdAt)
+            }
+            return msg
+        }
     }
     
-    /// Each message's reactions, keyed by message id. A person holds one reaction per message, so a later one from
-    /// the same sender replaces the earlier.
+    /// Each message's reactions, keyed by message id, replayed in order: a person holds one reaction per message,
+    /// so a later one replaces the earlier, and a removal takes theirs away.
     private var reactionsByMessage: [String: [DMMessage]] {
         var result: [String: [DMMessage]] = [:]
-        for reaction in messages where reaction.isReaction {
-            guard let targetId = reaction.reactionTargetId,
-                  let target = messages.last(where: { !$0.isReaction && $0.isTarget(of: targetId) }) else {
+        for entry in messages where entry.entryKind == .reaction || entry.entryKind == .reactionRemove {
+            guard let targetId = entry.targetSequenceId,
+                  let target = messages.last(where: { $0.entryKind == .message && $0.isTarget(of: targetId) }) else {
                 // The target is older than what is loaded; there is nothing on screen to attach it to.
                 continue
             }
             var list = result[target.id] ?? []
-            list.removeAll { $0.senderId == reaction.senderId }
-            list.append(reaction)
+            if entry.entryKind == .reaction {
+                list.removeAll { $0.senderId == entry.senderId }
+                list.append(entry)
+            } else {
+                list.removeAll { $0.senderId == entry.senderId && $0.emoji == entry.emoji }
+            }
             result[target.id] = list
         }
         return result
     }
     
+    /// "Seen" only once a read receipt covers the last message, "Sent" until then.
+    private func status(for msg: DMMessage) -> String? {
+        guard msg.isOutgoing, !msg.isEncrypted else { return nil }
+        let seen = !DMSeen.seenTimes(for: msg, among: messages).isEmpty
+        return loc.t(seen ? "messages_seen" : "messages_sent_status")
+    }
+    
     var body: some View {
         let bubbles = bubbles
         let reactions = reactionsByMessage
+        let lastStatus = bubbles.last.flatMap { status(for: $0) }
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(spacing: 10) {
                     ForEach(bubbles) { msg in
-                        DMBubbleRow(message: msg, isLast: msg.id == bubbles.last?.id, reactions: reactions[msg.id] ?? [])
+                        DMBubbleRow(message: msg, status: msg.id == bubbles.last?.id ? lastStatus : nil, reactions: reactions[msg.id] ?? [])
                             .modifier(DMMessageMenuDimming(messageId: msg.id))
                             .id(msg.id)
                     }
@@ -766,7 +789,8 @@ private struct DMBubbleScrollView: View {
 
 private struct DMBubbleRow: View {
     let message: DMMessage
-    let isLast: Bool
+    /// "Sent" or "Seen" under the last message, when it is one's own.
+    let status: String?
     let reactions: [DMMessage]
     
     @ObservedObject private var theme = ThemeManager.shared
@@ -798,8 +822,8 @@ private struct DMBubbleRow: View {
                 }
             }
             
-            if isLast && message.isOutgoing && !message.isEncrypted {
-                Text(loc.t("messages_seen"))
+            if let status {
+                Text(status)
                     .font(.system(size: 10, weight: .regular))
                     .foregroundColor(theme.isLight ? ThemeManager.secondaryText.opacity(0.80) : Color.white.opacity(0.40))
                     .padding(.trailing, 6)
@@ -934,7 +958,7 @@ private struct DMReactionAttachment: ViewModifier {
         var order: [String] = []
         var counts: [String: Int] = [:]
         for r in reactions {
-            guard let e = r.reactionEmoji else { continue }
+            guard let e = r.emoji else { continue }
             if counts[e] == nil { order.append(e) }
             counts[e, default: 0] += 1
         }

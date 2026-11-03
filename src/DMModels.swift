@@ -98,11 +98,25 @@ struct DMParticipant: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
-/// What an X Chat payload decodes to once decrypted: either a message's text or a reaction to another message.
+/// What kind of entry an X Chat event carries. Only messages are drawn as bubbles; the rest act on the message
+/// their target sequence id names.
+enum DMEntryKind: String, Codable {
+    case message
+    case reaction
+    case reactionRemove
+    case edit
+    case read
+    case other
+}
+
+/// What an X Chat payload decodes to once decrypted.
 struct DMDecodedContent: Equatable {
+    var kind: DMEntryKind = .message
     var text: String = ""
-    var reactionTargetId: String? = nil
-    var reactionEmoji: String? = nil
+    /// The sequence id of the message a reaction, edit or read mark refers to.
+    var targetSequenceId: String? = nil
+    var emoji: String? = nil
+    var readAt: Date? = nil
 }
 
 struct DMMessage: Identifiable, Codable, Equatable {
@@ -119,9 +133,14 @@ struct DMMessage: Identifiable, Codable, Equatable {
     let keyVersion: String?
     /// X Chat's per-conversation sequence id. Reactions point at their target by this id rather than by `id`.
     let sequenceId: String?
-    /// Set when this event is a reaction rather than a message: the target's sequence id and the emoji.
-    let reactionTargetId: String?
-    let reactionEmoji: String?
+    let entryKind: DMEntryKind
+    /// For a reaction, edit or read mark: the sequence id of the message it refers to.
+    let targetSequenceId: String?
+    let emoji: String?
+    /// For a read mark: when the reader saw the conversation.
+    let readAt: Date?
+    /// Set on the copy the chat draws once a later edit has replaced the text.
+    var editedAt: Date? = nil
     
     init(
         id: String,
@@ -136,8 +155,10 @@ struct DMMessage: Identifiable, Codable, Equatable {
         rawCiphertextBase64: String? = nil,
         keyVersion: String? = nil,
         sequenceId: String? = nil,
-        reactionTargetId: String? = nil,
-        reactionEmoji: String? = nil
+        entryKind: DMEntryKind = .message,
+        targetSequenceId: String? = nil,
+        emoji: String? = nil,
+        readAt: Date? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -151,11 +172,28 @@ struct DMMessage: Identifiable, Codable, Equatable {
         self.rawCiphertextBase64 = rawCiphertextBase64
         self.keyVersion = keyVersion
         self.sequenceId = sequenceId
-        self.reactionTargetId = reactionTargetId
-        self.reactionEmoji = reactionEmoji
+        self.entryKind = entryKind
+        self.targetSequenceId = targetSequenceId
+        self.emoji = emoji
+        self.readAt = readAt
     }
     
-    var isReaction: Bool { reactionEmoji != nil }
+    var isReaction: Bool { entryKind == .reaction }
+    
+    /// Whether the conversation list may show this as the latest thing that happened.
+    var isListed: Bool { entryKind == .message || entryKind == .reaction }
+    
+    /// The same message showing an edit's text.
+    func edited(to text: String, at date: Date) -> DMMessage {
+        var copy = DMMessage(
+            id: id, conversationId: conversationId, senderId: senderId, recipientId: recipientId, text: text,
+            createdAt: createdAt, isOutgoing: isOutgoing, mediaUrl: mediaUrl, isEncrypted: isEncrypted,
+            rawCiphertextBase64: rawCiphertextBase64, keyVersion: keyVersion, sequenceId: sequenceId,
+            entryKind: entryKind, targetSequenceId: targetSequenceId, emoji: emoji, readAt: readAt
+        )
+        copy.editedAt = date
+        return copy
+    }
     
     /// Whether `targetId`, as carried by a reaction, names this message.
     func isTarget(of targetId: String) -> Bool {
@@ -177,8 +215,10 @@ struct DMMessage: Identifiable, Codable, Equatable {
             rawCiphertextBase64: rawCiphertextBase64,
             keyVersion: keyVersion,
             sequenceId: sequenceId,
-            reactionTargetId: content.reactionTargetId,
-            reactionEmoji: content.reactionEmoji
+            entryKind: content.kind,
+            targetSequenceId: content.targetSequenceId,
+            emoji: content.emoji,
+            readAt: content.readAt
         )
     }
     
@@ -193,6 +233,34 @@ struct DMReadReceipt: Equatable {
     let conversationId: String
     let readerId: String
     let readAt: Date
+}
+
+/// When the other people in a chat saw a message. X Chat reports it two ways: encrypted mark-read entries that
+/// name the newest message seen, and plain read-receipt events (`DMReadReceiptStore`).
+enum DMSeen {
+    static func seenTimes(for message: DMMessage, among messages: [DMMessage]) -> [String: Date] {
+        var result = DMReadReceiptStore.shared.seenTimes(for: message)
+        let sequence = message.sequenceId.flatMap { Int64($0) }
+        for mark in messages where mark.entryKind == .read && mark.senderId != message.senderId {
+            let covers: Bool
+            if let sequence, let upTo = mark.targetSequenceId.flatMap({ Int64($0) }) {
+                covers = upTo >= sequence
+            } else {
+                covers = mark.createdAt >= message.createdAt
+            }
+            guard covers else { continue }
+            let at = mark.readAt ?? mark.createdAt
+            if let known = result[mark.senderId], known <= at { continue }
+            result[mark.senderId] = at
+        }
+        return result
+    }
+    
+    /// Whether anyone but `senderId` has reported reading this chat at all, so "not seen yet" can be trusted.
+    static func hasReceipts(in conversationId: String, excluding senderId: String, among messages: [DMMessage]) -> Bool {
+        messages.contains { $0.entryKind == .read && $0.senderId != senderId }
+            || DMReadReceiptStore.shared.hasReceipts(in: conversationId, excluding: senderId)
+    }
 }
 
 /// Read receipts seen while decoding X Chat events. Decoding runs off the main thread, so access is locked.
@@ -290,7 +358,7 @@ struct DMConversation: Identifiable, Codable, Equatable {
     }
     
     var snippetText: AttributedString {
-        if let emoji = lastMessage?.reactionEmoji {
+        if lastMessage?.isReaction == true, let emoji = lastMessage?.emoji {
             return AttributedString(LocalizationManager.shared.format("messages_reacted_snippet", ["emoji": emoji]))
         }
         return DMTextHelper.attributedMarkdown(lastMessage?.text ?? "")

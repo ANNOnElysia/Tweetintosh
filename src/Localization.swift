@@ -279,6 +279,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "消息未发送：{reason}",
             .traditionalChinese: "訊息未傳送：{reason}"
         ],
+        "messages_sent_status": [
+            .english: "Sent",
+            .japanese: "送信済み",
+            .korean: "보냄",
+            .simplifiedChinese: "已发送",
+            .traditionalChinese: "已傳送"
+        ],
+        "messages_info_edited": [
+            .english: "Edited",
+            .japanese: "編集済み",
+            .korean: "수정됨",
+            .simplifiedChinese: "已编辑",
+            .traditionalChinese: "已編輯"
+        ],
         "messages_reacted_snippet": [
             .english: "Reacted {emoji}",
             .japanese: "{emoji} でリアクションしました",
