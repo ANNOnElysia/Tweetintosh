@@ -188,6 +188,69 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "选择一个会话开始聊天",
             .traditionalChinese: "選擇一個對話開始聊天"
         ],
+        "messages_menu_copy": [
+            .english: "Copy",
+            .japanese: "コピー",
+            .korean: "복사",
+            .simplifiedChinese: "复制",
+            .traditionalChinese: "拷貝"
+        ],
+        "messages_menu_info": [
+            .english: "Info",
+            .japanese: "情報",
+            .korean: "정보",
+            .simplifiedChinese: "信息",
+            .traditionalChinese: "資訊"
+        ],
+        "messages_copied": [
+            .english: "Message copied",
+            .japanese: "メッセージをコピーしました",
+            .korean: "메시지를 복사했습니다",
+            .simplifiedChinese: "已复制消息",
+            .traditionalChinese: "已拷貝訊息"
+        ],
+        "messages_info_sent": [
+            .english: "Sent",
+            .japanese: "送信",
+            .korean: "보냄",
+            .simplifiedChinese: "已发送",
+            .traditionalChinese: "已傳送"
+        ],
+        "messages_info_received": [
+            .english: "Received",
+            .japanese: "受信",
+            .korean: "받음",
+            .simplifiedChinese: "已接收",
+            .traditionalChinese: "已接收"
+        ],
+        "messages_info_seen": [
+            .english: "Seen",
+            .japanese: "既読",
+            .korean: "읽음",
+            .simplifiedChinese: "已读",
+            .traditionalChinese: "已讀"
+        ],
+        "messages_info_seen_by": [
+            .english: "Seen by {name}",
+            .japanese: "{name} が既読",
+            .korean: "{name}님이 읽음",
+            .simplifiedChinese: "{name} 已读",
+            .traditionalChinese: "{name} 已讀"
+        ],
+        "messages_info_not_seen": [
+            .english: "Not seen yet",
+            .japanese: "未読",
+            .korean: "아직 읽지 않음",
+            .simplifiedChinese: "尚未读",
+            .traditionalChinese: "尚未讀"
+        ],
+        "messages_info_reactions": [
+            .english: "Reactions",
+            .japanese: "リアクション",
+            .korean: "반응",
+            .simplifiedChinese: "回应",
+            .traditionalChinese: "回應"
+        ],
         "messages_reacted_snippet": [
             .english: "Reacted {emoji}",
             .japanese: "{emoji} でリアクションしました",

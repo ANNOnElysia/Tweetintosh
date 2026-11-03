@@ -365,13 +365,34 @@ private struct TweetMenuContentView: View {
         }
         .padding(5)
         .background {
-            menuBackground
+            FloatingMenuBackground()
         }
     }
     
-    // Adaptive Translucent Frosted Glass / Liquid Glass Background
-    @ViewBuilder
-    private var menuBackground: some View {
+    private func menuRow(
+        title: String,
+        icon: String,
+        iconColor: Color,
+        isDestructive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        MenuRowButton(
+            title: title,
+            icon: icon,
+            iconColor: iconColor,
+            isDestructive: isDestructive,
+            action: action
+        )
+    }
+}
+
+// MARK: - Floating Menu Glass (shared by the post menu and the message menu)
+
+/// Adaptive translucent frosted glass, or Liquid Glass on macOS 26, behind a floating menu card.
+struct FloatingMenuBackground: View {
+    @ObservedObject var theme = ThemeManager.shared
+    
+    var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
@@ -414,30 +435,14 @@ private struct TweetMenuContentView: View {
             y: 10
         )
     }
-    
-    private func menuRow(
-        title: String,
-        icon: String,
-        iconColor: Color,
-        isDestructive: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        MenuRowButton(
-            title: title,
-            icon: icon,
-            iconColor: iconColor,
-            isDestructive: isDestructive,
-            action: action
-        )
-    }
 }
 
 // MARK: - Menu Row Button (Apple HIG Selection & Metrics)
-private final class RowHoverState: ObservableObject {
+final class RowHoverState: ObservableObject {
     @Published var isHovered = false
 }
 
-private struct MenuRowButton: View {
+struct MenuRowButton: View {
     let title: String
     let icon: String
     let iconColor: Color

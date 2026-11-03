@@ -259,6 +259,10 @@ struct AppRootView: View {
             TweetOptionsMenuOverlay()
                 .zIndex(8500)
             
+            // Chat message deep-press / secondary-click menu
+            DMMessageMenuOverlay()
+                .zIndex(8600)
+            
             // Deep-press peek card (media, links, profiles)
             PeekOverlay()
                 .zIndex(9000)

@@ -187,6 +187,50 @@ struct DMMessage: Identifiable, Codable, Equatable {
     }
 }
 
+/// A participant's read receipt: they had the conversation open at `readAt`.
+struct DMReadReceipt: Equatable {
+    let eventId: String
+    let conversationId: String
+    let readerId: String
+    let readAt: Date
+}
+
+/// Read receipts seen while decoding X Chat events. Decoding runs off the main thread, so access is locked.
+final class DMReadReceiptStore {
+    static let shared = DMReadReceiptStore()
+    private init() {}
+    
+    private let lock = NSLock()
+    private var receipts: [String: [String: DMReadReceipt]] = [:]
+    
+    func record(_ receipt: DMReadReceipt) {
+        lock.lock()
+        receipts[receipt.conversationId, default: [:]][receipt.eventId] = receipt
+        lock.unlock()
+    }
+    
+    /// When each other participant first read the conversation after `message` arrived. A receipt carries the time
+    /// the reader caught up, so the earliest one at or after the message is when they saw it.
+    func seenTimes(for message: DMMessage) -> [String: Date] {
+        lock.lock()
+        let all = Array((receipts[message.conversationId] ?? [:]).values)
+        lock.unlock()
+        var result: [String: Date] = [:]
+        for r in all where r.readerId != message.senderId && r.readAt >= message.createdAt {
+            if let known = result[r.readerId], known <= r.readAt { continue }
+            result[r.readerId] = r.readAt
+        }
+        return result
+    }
+    
+    /// Whether any receipt from someone other than `senderId` has arrived, i.e. whether "not seen yet" can be said.
+    func hasReceipts(in conversationId: String, excluding senderId: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return receipts[conversationId]?.values.contains { $0.readerId != senderId } ?? false
+    }
+}
+
 struct DMConversation: Identifiable, Codable, Equatable {
     let id: String
     let type: DMConversationType

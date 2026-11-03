@@ -118,6 +118,7 @@ struct ParsedXChatMessage {
     var mediaUrl: String? = nil
     var reactionTargetId: String? = nil
     var reactionEmoji: String? = nil
+    var isReadReceipt: Bool = false
 }
 
 final class DMAPI {
@@ -815,6 +816,17 @@ final class DMAPI {
             }
         }
         
+        // A read receipt is not a chat entry, but its sender and time say who saw which messages, which the
+        // message Info card reports.
+        if msg.isReadReceipt, !msg.conversationId.isEmpty, !msg.senderId.isEmpty, msg.timestampMs > 0 {
+            DMReadReceiptStore.shared.record(DMReadReceipt(
+                eventId: msg.eventId.isEmpty ? "\(msg.senderId)-\(msg.timestampMs)" : msg.eventId,
+                conversationId: msg.conversationId,
+                readerId: msg.senderId,
+                readAt: Date(timeIntervalSince1970: Double(msg.timestampMs) / 1000.0)
+            ))
+        }
+        
         // Only events carrying actual message payloads (pId == 1) should be presented as chat entries.
         // Read receipts (pId == 12), reactions, and typing signals must not create dummy message bubbles.
         guard msg.hasMessagePayload else { return nil }
@@ -1006,7 +1018,9 @@ final class DMAPI {
                 msg.hasMessagePayload = true
                 parseMessageCreatePayload(&reader, msg: &msg)
             } else {
-                // Ignore read receipts (pId == 12), reactions, typing indicators
+                // Read receipts (pId == 12) only matter for who sent them and when, which the event header holds.
+                // Typing indicators and the rest are ignored.
+                if pId == 12 { msg.isReadReceipt = true }
                 reader.skip(type: pType)
             }
         }

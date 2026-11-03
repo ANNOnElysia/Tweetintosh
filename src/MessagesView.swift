@@ -734,11 +734,17 @@ private struct DMBubbleScrollView: View {
                 LazyVStack(spacing: 10) {
                     ForEach(bubbles) { msg in
                         DMBubbleRow(message: msg, isLast: msg.id == bubbles.last?.id, reactions: reactions[msg.id] ?? [])
+                            .modifier(DMMessageMenuDimming(messageId: msg.id))
                             .id(msg.id)
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
+            }
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .named("AppWindow"))
+            } action: { frame in
+                DMMessageMenuManager.shared.viewport = frame
             }
             .onAppear {
                 if let last = bubbles.last {
@@ -773,17 +779,21 @@ private struct DMBubbleRow: View {
                     if message.isOutgoing {
                         Spacer(minLength: 48)
                         encryptedBubble
+                            .modifier(DMMessageMenuAnchor(message: message, reactions: reactions))
                     } else {
                         encryptedBubble
+                            .modifier(DMMessageMenuAnchor(message: message, reactions: reactions))
                         Spacer(minLength: 48)
                     }
                 } else if message.isOutgoing {
                     Spacer(minLength: 48)
                     outgoingBubble
                         .modifier(DMReactionAttachment(reactions: reactions, isOutgoing: true))
+                        .modifier(DMMessageMenuAnchor(message: message, reactions: reactions))
                 } else {
                     incomingBubble
                         .modifier(DMReactionAttachment(reactions: reactions, isOutgoing: false))
+                        .modifier(DMMessageMenuAnchor(message: message, reactions: reactions))
                     Spacer(minLength: 48)
                 }
             }
@@ -1337,7 +1347,7 @@ private struct DMPasscodeModalOverlay: View {
 
 // MARK: - Reusable Avatar View
 
-private struct DMAvatarView: View {
+struct DMAvatarView: View {
     let url: String?
     let size: CGFloat
     
