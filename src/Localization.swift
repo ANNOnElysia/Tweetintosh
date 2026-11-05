@@ -804,6 +804,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "查看内嵌的帖子",
             .traditionalChinese: "查看內嵌的貼文"
         ],
+        "messages_more_reactions": [
+            .english: "More emoji",
+            .japanese: "その他の絵文字",
+            .korean: "이모지 더 보기",
+            .simplifiedChinese: "更多表情",
+            .traditionalChinese: "更多表情"
+        ],
         "sign_out": [
             .english: "Sign Out",
             .japanese: "ログアウト",

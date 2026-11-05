@@ -166,6 +166,85 @@ final class DMMessageMenuManager: ObservableObject {
     }
 }
 
+// MARK: - Reactions
+
+/// The emoji at the top of the menu: the ones used most recently, topped up with the reactions X has always offered.
+enum DMRecentReactions {
+    private static let defaultsKey = "Tweetintosh_RecentReactions"
+    private static let defaults = ["😂", "😲", "😢", "❤️", "🔥", "👍", "👎"]
+    private static let rowLength = 6
+
+    private static var recent: [String] {
+        UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []
+    }
+
+    /// The row to show. A reaction already on the message always appears, so it can be seen and taken back.
+    static func row(including chosen: String?) -> [String] {
+        var row: [String] = []
+        for emoji in recent + defaults where !row.contains(emoji) && row.count < rowLength {
+            row.append(emoji)
+        }
+        if let chosen, !row.contains(chosen) {
+            row[row.count - 1] = chosen
+        }
+        return row
+    }
+
+    static func record(_ emoji: String) {
+        let updated = [emoji] + recent.filter { $0 != emoji }
+        UserDefaults.standard.set(Array(updated.prefix(rowLength)), forKey: defaultsKey)
+    }
+}
+
+/// Opens the system Emoji & Symbols panel for the menu. The panel types into whichever text view has focus, so an
+/// invisible one holds the focus and passes on what arrives, keeping only emoji (the panel also offers symbols).
+final class DMEmojiCatcher: ObservableObject {
+    fileprivate weak var textView: DMEmojiCatcherTextView?
+
+    func open(onPick: @escaping (String) -> Void) {
+        guard let textView, let window = textView.window else { return }
+        textView.onPick = onPick
+        window.makeFirstResponder(textView)
+        textView.inputContext?.activate()
+        // The panel attaches to the active text input, which macOS connects a moment after the focus changes; asked
+        // any sooner, it doesn't open.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            NSApp.orderFrontCharacterPalette(nil)
+        }
+    }
+}
+
+fileprivate final class DMEmojiCatcherTextView: NSTextView {
+    var onPick: ((String) -> Void)?
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+        let isEmoji = text.unicodeScalars.contains { $0.properties.isEmojiPresentation || $0.value == 0xFE0F }
+        guard isEmoji else { return }
+        onPick?(text)
+    }
+}
+
+private struct DMEmojiCatcherView: NSViewRepresentable {
+    let catcher: DMEmojiCatcher
+
+    func makeNSView(context: Context) -> NSView {
+        // In a plain container so it stays tiny: at the right end of the row, which puts the panel under the arrow
+        let container = NSView()
+        let textView = DMEmojiCatcherTextView(frame: NSRect(x: 0, y: 0, width: 1, height: 16))
+        textView.drawsBackground = false
+        textView.insertionPointColor = .clear
+        textView.autoresizingMask = [.minXMargin]
+        container.addSubview(textView)
+        catcher.textView = textView
+        return container
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        catcher.textView?.frame.origin.x = max(0, view.bounds.width - 16)
+    }
+}
+
 // MARK: - Bubble Hooks
 
 /// Records a bubble's frame for the menu, and lifts the bubble while its menu is open.
@@ -267,8 +346,7 @@ private struct DMMessageMenuCard: View {
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var vm = DMViewModel.shared
 
-    /// The quick reactions X has always offered in DMs.
-    private static let quickReactions = ["😂", "😲", "😢", "❤️", "🔥", "👍", "👎"]
+    @StateObject private var emojiCatcher = DMEmojiCatcher()
 
     private var message: DMMessage { payload.message }
     private var menu: DMMessageMenuManager { DMMessageMenuManager.shared }
@@ -352,16 +430,28 @@ private struct DMMessageMenuCard: View {
 
     private var reactionRow: some View {
         HStack(spacing: 2) {
-            ForEach(Self.quickReactions, id: \.self) { emoji in
-                DMQuickReactionButton(emoji: emoji, isChosen: myReaction == emoji) {
-                    menu.dismiss()
-                    vm.toggleReaction(emoji, on: message, current: myReaction)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+            ForEach(DMRecentReactions.row(including: myReaction), id: \.self) { emoji in
+                DMQuickReactionButton(emoji: emoji) {
+                    react(emoji)
+                }
+            }
+            DMMoreReactionsButton {
+                emojiCatcher.open { emoji in
+                    react(emoji)
                 }
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 2)
+        .background(DMEmojiCatcherView(catcher: emojiCatcher))
+    }
+
+    private func react(_ emoji: String) {
+        let current = myReaction
+        menu.dismiss()
+        if current != emoji { DMRecentReactions.record(emoji) }
+        vm.toggleReaction(emoji, on: message, current: current)
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
     }
 
     // MARK: Forward
@@ -424,10 +514,9 @@ private final class DMHoverFlag: ObservableObject {
     @Published var isHovered = false
 }
 
-/// One emoji in the reaction row; the one already chosen sits on an accent disc.
+/// One emoji in the reaction row.
 private struct DMQuickReactionButton: View {
     let emoji: String
-    let isChosen: Bool
     let action: () -> Void
 
     @StateObject private var hover = DMHoverFlag()
@@ -437,14 +526,38 @@ private struct DMQuickReactionButton: View {
             Text(emoji)
                 .font(.system(size: 19))
                 .frame(width: 30, height: 30)
-                .background(
-                    Circle().fill(isChosen ? ThemeManager.accent.opacity(0.25) : Color.clear)
-                )
                 .scaleEffect(hover.isHovered ? 1.22 : 1.0)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .animation(.spring(response: 0.22, dampingFraction: 0.6), value: hover.isHovered)
+        .onHover { hover.isHovered = $0 }
+    }
+}
+
+/// The small arrow after the reactions, which opens the system's Emoji & Symbols panel.
+private struct DMMoreReactionsButton: View {
+    let action: () -> Void
+
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+    @StateObject private var hover = DMHoverFlag()
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65))
+                .frame(width: 24, height: 30)
+                .background(
+                    Circle()
+                        .fill(hover.isHovered ? (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12)) : Color.clear)
+                        .frame(width: 24, height: 24)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(loc.t("messages_more_reactions"))
         .onHover { hover.isHovered = $0 }
     }
 }

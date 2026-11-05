@@ -815,11 +815,11 @@ private struct DMBubbleRow: View {
                 } else if message.isOutgoing {
                     Spacer(minLength: 48)
                     outgoingBubble
-                        .modifier(DMReactionAttachment(reactions: reactions, isOutgoing: true))
+                        .modifier(DMReactionAttachment(message: message, reactions: reactions, isOutgoing: true))
                         .modifier(DMMessageMenuAnchor(message: message, reactions: reactions))
                 } else {
                     incomingBubble
-                        .modifier(DMReactionAttachment(reactions: reactions, isOutgoing: false))
+                        .modifier(DMReactionAttachment(message: message, reactions: reactions, isOutgoing: false))
                         .modifier(DMMessageMenuAnchor(message: message, reactions: reactions))
                     Spacer(minLength: 48)
                 }
@@ -1005,6 +1005,7 @@ private struct DMBubbleAttribution: View {
 /// Hangs a message's reactions off the bottom edge of its bubble, on the side the bubble's tail points to, the way
 /// X's own chat does. The row grows by the overhang so the badge never sits on top of the next message.
 private struct DMReactionAttachment: ViewModifier {
+    let message: DMMessage
     let reactions: [DMMessage]
     let isOutgoing: Bool
     
@@ -1024,8 +1025,8 @@ private struct DMReactionAttachment: ViewModifier {
         return order.map { ($0, counts[$0] ?? 0) }
     }
     
-    private var includesMine: Bool {
-        reactions.contains { $0.isOutgoing }
+    private var myEmoji: String? {
+        reactions.first { $0.isOutgoing }?.emoji
     }
     
     func body(content: Content) -> some View {
@@ -1044,7 +1045,7 @@ private struct DMReactionAttachment: ViewModifier {
     private var badge: some View {
         HStack(spacing: 3) {
             ForEach(groups, id: \.emoji) { group in
-                HStack(spacing: 1) {
+                let label = HStack(spacing: 1) {
                     Text(group.emoji)
                         .font(.system(size: 12))
                     if group.count > 1 {
@@ -1052,6 +1053,17 @@ private struct DMReactionAttachment: ViewModifier {
                             .font(theme.appFont(size: 10, weight: .semibold))
                             .foregroundColor(ThemeManager.secondaryText)
                     }
+                }
+                // Clicking your own reaction takes it back
+                if group.emoji == myEmoji {
+                    Button {
+                        DMViewModel.shared.toggleReaction(group.emoji, on: message, current: group.emoji)
+                    } label: {
+                        label.contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    label
                 }
             }
         }
@@ -1063,7 +1075,7 @@ private struct DMReactionAttachment: ViewModifier {
         )
         .overlay(
             Capsule(style: .continuous)
-                .stroke(includesMine ? ThemeManager.accent.opacity(0.55) : ThemeManager.divider, lineWidth: 0.75)
+                .stroke(ThemeManager.divider, lineWidth: 0.75)
         )
         .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.30), radius: 2, x: 0, y: 1)
         .help(groups.map(\.emoji).joined(separator: " "))
