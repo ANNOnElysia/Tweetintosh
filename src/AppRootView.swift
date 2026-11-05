@@ -733,7 +733,9 @@ private struct LiquidGlassSidebar: View {
                 }
             }
             
-            Spacer()
+            SidebarListsSection(selection: $selection)
+            
+            Spacer(minLength: 0)
             
             // New Post Button
             Button(action: {
@@ -943,66 +945,18 @@ private struct SidebarHomeFeedSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // First row: For You and Following. Second row: Lists (with its dropdown), only if the user has lists.
-            HStack(spacing: 2) {
-                // 1. 推荐 (For You)
+            HStack(spacing: 0) {
                 feedButton(type: .forYou)
-                
-                // 2. 关注中 (Following)
                 feedButton(type: .following)
+            }
+            .pressDragSelection { (type: HomeFeedType) in
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                    selection = .home
+                    timelineVM.selectFeed(type)
+                }
             }
             .padding(2.5)
             .background(feedRowBackground)
-            
-            if !timelineVM.userLists.isEmpty {
-                HStack(spacing: 2) {
-                    // 3. 列表 (List with dropdown menu)
-                    listFeedButton
-                }
-                .padding(2.5)
-                .background(feedRowBackground)
-            }
-            
-            // If List is currently selected and user has lists, show active list banner
-            if timelineVM.selectedFeed == .list && !timelineVM.userLists.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: timelineVM.selectedList?.iconName ?? "list.bullet")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(ThemeManager.accent)
-                    
-                    Text(timelineVM.selectedList?.name ?? loc.t("feed_list"))
-                        .font(theme.appFont(size: 11, weight: .medium))
-                        .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.9) : Color.white.opacity(0.88))
-                        .lineLimit(1)
-                    
-                    if let count = timelineVM.selectedList?.memberCount, count > 0 {
-                        Text("\(count)")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(
-                                Capsule()
-                                    .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
-                            )
-                    }
-                    
-                    Spacer()
-                    
-                    listPickerMenu
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(ThemeManager.accent.opacity(theme.isLight ? 0.09 : 0.14))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(ThemeManager.accent.opacity(theme.isLight ? 0.25 : 0.35), lineWidth: 0.6)
-                        )
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            }
         }
     }
     
@@ -1016,164 +970,40 @@ private struct SidebarHomeFeedSection: View {
             )
     }
     
-    // Regular feed button (For You / Following)
     private func feedButton(type: HomeFeedType) -> some View {
         let isSelected = (selection == .home && timelineVM.selectedFeed == type)
-        return Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                selection = .home
-                timelineVM.selectFeed(type)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: type.iconName)
-                    .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                    .frame(width: 20)
-                
-                Text(loc.t(type.titleKey))
-                    .font(theme.appFont(size: 11, weight: isSelected ? .semibold : .medium))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                
-                if nav.showShortcutBadges {
-                    Text(type.shortcutLetter)
-                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                        .foregroundColor(isSelected ? ThemeManager.accent : ThemeManager.tertiaryText)
-                        .padding(.horizontal, 2.5)
-                        .padding(.vertical, 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(isSelected ? ThemeManager.accent.opacity(0.15) : Color.black.opacity(0.05))
-                        )
-                }
-            }
-            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
-            .padding(.leading, 8.5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 28)
-            .background {
-                if isSelected {
-                    feedActiveBackground
-                }
-            }
-            .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    // List feed button with dropdown menu: a plain row that pops up a native menu (a SwiftUI Menu draws its own label
-    // and would not line its icon up with the other rows)
-    private var listFeedButton: some View {
-        let isSelected = (selection == .home && timelineVM.selectedFeed == .list)
-        return Button(action: showListMenu) {
-            listRowVisual(isSelected: isSelected)
-                .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    private func showListMenu() {
-        let menu = NSMenu()
-        let header = NSMenuItem(title: loc.t("select_list"), action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
-        for list in timelineVM.userLists {
-            let title = list.name + (list.memberCount > 0 ? " · \(list.memberCount)" : "")
-            menu.addItem(ClosureMenuItem(
-                title: title, symbol: list.iconName,
-                isChecked: timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id
-            ) {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                    selection = .home
-                    timelineVM.selectList(list)
-                }
-            })
-        }
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(ClosureMenuItem(title: loc.t("refresh_lists"), symbol: "arrow.clockwise") {
-            timelineVM.fetchUserLists()
-        })
-        menu.addItem(ClosureMenuItem(title: loc.t("manage_lists_on_x"), symbol: "arrow.up.forward.square") {
-            if let url = URL(string: "https://x.com/i/lists") { NSWorkspace.shared.open(url) }
-        })
-        if let event = NSApp.currentEvent, let window = event.window,
-           event.type == .leftMouseUp || event.type == .leftMouseDown {
-            menu.popUp(positioning: nil, at: window.convertPoint(toScreen: event.locationInWindow), in: nil)
-        } else {
-            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-        }
-    }
-    
-    private func listRowVisual(isSelected: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: HomeFeedType.list.iconName)
-                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                .frame(width: 20)
+        return HStack(spacing: 4) {
+            Image(systemName: type.iconName)
+                .font(.system(size: 10, weight: isSelected ? .bold : .medium))
             
-            Text(loc.t("feed_list"))
+            Text(loc.t(type.titleKey))
                 .font(theme.appFont(size: 11, weight: isSelected ? .semibold : .medium))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
             
-            Spacer(minLength: 0)
-            
-            Image(systemName: "chevron.down")
-                .font(.system(size: 7, weight: .bold))
-                .opacity(0.7)
-                .padding(.trailing, 10)
+            if nav.showShortcutBadges {
+                Text(type.shortcutLetter)
+                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(isSelected ? ThemeManager.accent : ThemeManager.tertiaryText)
+                    .padding(.horizontal, 2.5)
+                    .padding(.vertical, 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(isSelected ? ThemeManager.accent.opacity(0.15) : Color.black.opacity(0.05))
+                    )
+            }
         }
         .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
-        .padding(.leading, 8.5)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 5)
+        .frame(maxWidth: .infinity)
         .frame(height: 28)
         .background {
             if isSelected {
                 feedActiveBackground
             }
         }
-    }
-    
-    // Quick switcher menu inside the active list banner
-    private var listPickerMenu: some View {
-        Menu {
-            ForEach(timelineVM.userLists) { list in
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                        timelineVM.selectList(list)
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: list.iconName)
-                        Text(list.name + (list.memberCount > 0 ? " · \(list.memberCount)" : ""))
-                        if timelineVM.selectedListId == list.id {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-            Divider()
-            Button {
-                timelineVM.fetchUserLists()
-            } label: {
-                Label(loc.t("refresh_lists"), systemImage: "arrow.clockwise")
-            }
-            Button {
-                if let url = URL(string: "https://x.com/i/lists") {
-                    NSWorkspace.shared.open(url)
-                }
-            } label: {
-                Label(loc.t("manage_lists_on_x"), systemImage: "arrow.up.forward.square")
-            }
-        } label: {
-            HStack(spacing: 2) {
-                Text(loc.t("switch_list"))
-                    .font(.system(size: 10, weight: .semibold))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8))
-            }
-            .foregroundColor(ThemeManager.accent)
-        }
-        .menuStyle(BorderlessButtonMenuStyle())
+        .contentShape(Capsule(style: .continuous))
+        .pressDragItem(type)
     }
     
     @ViewBuilder
@@ -1204,6 +1034,140 @@ private struct SidebarHomeFeedSection: View {
                     .stroke(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 0.6)
             )
             .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
+    }
+}
+
+// MARK: - Sidebar Lists Section
+
+private final class SidebarListsState: ObservableObject {
+    private static let key = "Tweetintosh_SidebarListsExpanded"
+    @Published var isExpanded = UserDefaults.standard.bool(forKey: SidebarListsState.key) {
+        didSet { UserDefaults.standard.set(isExpanded, forKey: Self.key) }
+    }
+}
+
+// A collapsible section, like Playlists in Music on iPad: the header folds it, and each row opens that list's feed
+private struct SidebarListsSection: View {
+    @Binding var selection: AppTab
+    @ObservedObject private var timelineVM = TimelineViewModel.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+    @StateObject private var state = SidebarListsState()
+    
+    private var isShowingList: Bool { selection == .home && timelineVM.selectedFeed == .list }
+    private var secondary: Color { theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65) }
+    
+    var body: some View {
+        if !timelineVM.userLists.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                header
+                if state.isExpanded {
+                    // Scrolls only when there are too many lists for the sidebar's height
+                    ViewThatFits(in: .vertical) {
+                        rows
+                        ScrollView(showsIndicators: false) { rows }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(.horizontal, 8)
+            .clipped()
+        }
+    }
+    
+    private var header: some View {
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                state.isExpanded.toggle()
+            }
+        } label: {
+            HStack {
+                Text(loc.t("feed_list"))
+                    .font(theme.appFont(size: 13, weight: .semibold))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10.5, weight: .bold))
+                    .rotationEffect(.degrees(state.isExpanded ? 90 : 0))
+            }
+            // Folded away, this is the only sign that a list is what the timeline is showing
+            .foregroundColor(isShowingList && !state.isExpanded ? ThemeManager.accent : secondary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(loc.t("refresh_lists")) { timelineVM.fetchUserLists() }
+        }
+    }
+    
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(timelineVM.userLists) { list in
+                listRow(list)
+            }
+            Button {
+                if let url = URL(string: "https://x.com/i/lists") { NSWorkspace.shared.open(url) }
+            } label: {
+                rowContent(title: loc.t("manage_lists_on_x"), color: ThemeManager.accent) {
+                    iconTile("arrow.up.forward", color: ThemeManager.accent)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    private func listRow(_ list: TwitterList) -> some View {
+        let isSelected = isShowingList && timelineVM.selectedListId == list.id
+        return Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                selection = .home
+                timelineVM.selectList(list)
+            }
+        } label: {
+            rowContent(title: list.name, color: isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.88))) {
+                if let banner = list.bannerUrl {
+                    CachedAsyncImage(urlString: banner, targetSize: CGSize(width: 26, height: 26))
+                        .frame(width: 26, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else {
+                    iconTile(list.iconName, color: secondary)
+                }
+            }
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(list.memberCount > 0 ? "\(list.name) · \(list.memberCount)" : list.name)
+    }
+    
+    private func rowContent<Icon: View>(title: String, color: Color, @ViewBuilder icon: () -> Icon) -> some View {
+        HStack(spacing: 9) {
+            icon()
+            Text(title)
+                .font(theme.appFont(size: 13))
+                .foregroundColor(color)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+    
+    private func iconTile(_ symbol: String, color: Color) -> some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
+            .frame(width: 26, height: 26)
+            .overlay(
+                Image(systemName: symbol)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(color)
+            )
     }
 }
 
