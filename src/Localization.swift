@@ -1056,6 +1056,97 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "正在关注",
             .traditionalChinese: "跟隨中"
         ],
+        "profile_more": [
+            .english: "More",
+            .japanese: "その他",
+            .korean: "더 보기",
+            .simplifiedChinese: "更多",
+            .traditionalChinese: "更多"
+        ],
+        "profile_add_to_list": [
+            .english: "Add to List",
+            .japanese: "リストに追加",
+            .korean: "리스트에 추가",
+            .simplifiedChinese: "添加到列表",
+            .traditionalChinese: "加入列表"
+        ],
+        "profile_lists_loading": [
+            .english: "Loading…",
+            .japanese: "読み込み中…",
+            .korean: "불러오는 중…",
+            .simplifiedChinese: "正在加载…",
+            .traditionalChinese: "載入中…"
+        ],
+        "profile_lists_failed": [
+            .english: "Couldn't load your lists",
+            .japanese: "リストを読み込めませんでした",
+            .korean: "리스트를 불러오지 못했습니다",
+            .simplifiedChinese: "无法加载你的列表",
+            .traditionalChinese: "無法載入你的列表"
+        ],
+        "profile_no_lists": [
+            .english: "You have no lists",
+            .japanese: "リストがありません",
+            .korean: "리스트가 없습니다",
+            .simplifiedChinese: "你还没有列表",
+            .traditionalChinese: "你還沒有列表"
+        ],
+        "profile_menu_unmute": [
+            .english: "Unmute {handle}",
+            .japanese: "{handle} のミュートを解除",
+            .korean: "{handle} 님 뮤트 해제",
+            .simplifiedChinese: "取消静音 {handle}",
+            .traditionalChinese: "解除 {handle} 的靜音"
+        ],
+        "profile_menu_unblock": [
+            .english: "Unblock {handle}",
+            .japanese: "{handle} のブロックを解除",
+            .korean: "{handle} 님 차단 해제",
+            .simplifiedChinese: "取消屏蔽 {handle}",
+            .traditionalChinese: "解除封鎖 {handle}"
+        ],
+        "profile_unmuted_toast": [
+            .english: "Unmuted {handle}",
+            .japanese: "{handle} のミュートを解除しました",
+            .korean: "{handle} 님 뮤트를 해제했습니다",
+            .simplifiedChinese: "已取消静音 {handle}",
+            .traditionalChinese: "已解除 {handle} 的靜音"
+        ],
+        "profile_unblocked_toast": [
+            .english: "Unblocked {handle}",
+            .japanese: "{handle} のブロックを解除しました",
+            .korean: "{handle} 님 차단을 해제했습니다",
+            .simplifiedChinese: "已取消屏蔽 {handle}",
+            .traditionalChinese: "已解除封鎖 {handle}"
+        ],
+        "profile_added_to_list": [
+            .english: "Added {handle} to {list}",
+            .japanese: "{handle} を {list} に追加しました",
+            .korean: "{handle} 님을 {list}에 추가했습니다",
+            .simplifiedChinese: "已将 {handle} 添加到 {list}",
+            .traditionalChinese: "已將 {handle} 加入 {list}"
+        ],
+        "profile_removed_from_list": [
+            .english: "Removed {handle} from {list}",
+            .japanese: "{handle} を {list} から削除しました",
+            .korean: "{handle} 님을 {list}에서 삭제했습니다",
+            .simplifiedChinese: "已将 {handle} 从 {list} 移除",
+            .traditionalChinese: "已將 {handle} 從 {list} 移除"
+        ],
+        "profile_block_confirm": [
+            .english: "Block",
+            .japanese: "ブロック",
+            .korean: "차단",
+            .simplifiedChinese: "屏蔽",
+            .traditionalChinese: "封鎖"
+        ],
+        "profile_block_message": [
+            .english: "They will no longer be able to follow you or see your posts, and you will stop following them.",
+            .japanese: "相手はあなたをフォローしたり、あなたのポストを見たりできなくなり、あなたのフォローも解除されます。",
+            .korean: "상대방은 회원님을 팔로우하거나 게시물을 볼 수 없게 되며, 회원님의 팔로우도 해제됩니다.",
+            .simplifiedChinese: "对方将无法关注你或查看你的帖子，你也会取消关注对方。",
+            .traditionalChinese: "對方將無法跟隨你或查看你的貼文，你也會取消跟隨對方。"
+        ],
         "profile_unfollow": [
             .english: "Unfollow",
             .japanese: "フォロー解除",

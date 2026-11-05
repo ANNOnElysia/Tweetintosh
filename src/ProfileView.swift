@@ -23,6 +23,14 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
     @Published private(set) var failedTabs: Set<ProfileTab> = []
     @Published private(set) var isFollowing = false
     @Published private(set) var isFollowBusy = false
+    @Published private(set) var isMuting = false
+    @Published private(set) var isBlocking = false
+    // Nil until they have been fetched
+    @Published private(set) var ownedLists: [OwnedList]?
+    private var isLoadingLists = false
+    // The menu says so rather than showing "Loading" for ever; the next hover tries again
+    @Published private(set) var listsFailed = false
+    @Published var isConfirmingBlock = false
 
     private var cursors: [ProfileTab: String] = [:]
     private var exhausted: Set<ProfileTab> = []
@@ -75,6 +83,8 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
                 self.profile = profile
                 self.user = profile.user
                 self.isFollowing = profile.isFollowing
+                self.isMuting = profile.isMuting
+                self.isBlocking = profile.isBlocking
                 hasProfile = true
             }
             if let posts = preloaded.posts, tweets[.posts] == nil {
@@ -95,6 +105,8 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
                     self.profile = profile
                     self.user = profile.user
                     self.isFollowing = profile.isFollowing
+                    self.isMuting = profile.isMuting
+                    self.isBlocking = profile.isBlocking
                     // Posts loaded before the profile (their authors carry no block flag) re-check it now
                     self.objectWillChange.send()
                 }
@@ -142,6 +154,108 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
                 }
             }
         }
+    }
+
+    var isOwnProfile: Bool { !userId.isEmpty && userId == AccountManager.shared.active?.id }
+
+    func toggleMute() {
+        let target = !isMuting
+        isMuting = target
+        let handle = user.formattedHandle
+        let finish: (Result<Void, APIError>) -> Void = { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    if target { TimelineViewModel.shared.removeTweets(byAuthorId: self.userId, screenName: self.user.screenName) }
+                    let key = target ? "post_muted_toast" : "profile_unmuted_toast"
+                    AppToastManager.shared.show(LocalizationManager.shared.format(key, ["handle": handle]),
+                                                icon: target ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                case .failure(let error):
+                    self.isMuting = !target
+                    EngagementGuard.reportFailure(error)
+                }
+            }
+        }
+        if target {
+            APIClient.shared.muteUser(userId: userId, screenName: user.screenName, completion: finish)
+        } else {
+            APIClient.shared.unmuteUser(userId: userId, screenName: user.screenName, completion: finish)
+        }
+    }
+
+    func toggleBlock() {
+        let target = !isBlocking
+        let wasFollowing = isFollowing
+        isBlocking = target
+        // Blocking someone also ends your follow of them
+        if target { isFollowing = false }
+        let handle = user.formattedHandle
+        let finish: (Result<Void, APIError>) -> Void = { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    if target { TimelineViewModel.shared.removeTweets(byAuthorId: self.userId, screenName: self.user.screenName) }
+                    let key = target ? "post_blocked_toast" : "profile_unblocked_toast"
+                    AppToastManager.shared.show(LocalizationManager.shared.format(key, ["handle": handle]),
+                                                icon: target ? "nosign" : "checkmark.circle")
+                case .failure(let error):
+                    self.isBlocking = !target
+                    self.isFollowing = wasFollowing
+                    EngagementGuard.reportFailure(error)
+                }
+            }
+        }
+        if target {
+            APIClient.shared.blockUser(userId: userId, screenName: user.screenName, completion: finish)
+        } else {
+            APIClient.shared.unblockUser(userId: userId, screenName: user.screenName, completion: finish)
+        }
+    }
+
+    // Fetched when the pointer reaches the menu, so most profile visits cost no extra request
+    func loadOwnedListsIfNeeded() {
+        guard ownedLists == nil, !isLoadingLists, !userId.isEmpty, let ownerId = AccountManager.shared.active?.id else { return }
+        isLoadingLists = true
+        APIClient.shared.fetchOwnedLists(ownerId: ownerId, targetUserId: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoadingLists = false
+                switch result {
+                case .success(let lists):
+                    self.ownedLists = lists
+                    self.listsFailed = false
+                case .failure(let error):
+                    self.listsFailed = true
+                }
+            }
+        }
+    }
+
+    func toggleList(_ list: OwnedList) {
+        let target = !list.isMember
+        setMember(target, of: list.id)
+        let handle = user.formattedHandle
+        APIClient.shared.setListMember(target, listId: list.id, userId: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    let key = target ? "profile_added_to_list" : "profile_removed_from_list"
+                    AppToastManager.shared.show(LocalizationManager.shared.format(key, ["handle": handle, "list": list.name]),
+                                                icon: "list.bullet")
+                case .failure(let error):
+                    self.setMember(!target, of: list.id)
+                    EngagementGuard.reportFailure(error)
+                }
+            }
+        }
+    }
+
+    private func setMember(_ member: Bool, of listId: String) {
+        guard let index = ownedLists?.firstIndex(where: { $0.id == listId }) else { return }
+        ownedLists?[index].isMember = member
     }
 
     func toggleFollow() {
@@ -536,9 +650,60 @@ struct ProfileView: View {
             Spacer()
 
             followButton
+
+            if !vm.isOwnProfile {
+                moreMenu
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Menu(loc.t("profile_add_to_list")) {
+                if let lists = vm.ownedLists {
+                    if lists.isEmpty {
+                        Text(loc.t("profile_no_lists"))
+                    }
+                    ForEach(lists) { list in
+                        Toggle(list.name, isOn: Binding(get: { list.isMember }, set: { _ in vm.toggleList(list) }))
+                    }
+                } else {
+                    Text(loc.t(vm.listsFailed ? "profile_lists_failed" : "profile_lists_loading"))
+                }
+            }
+            Divider()
+            Button(loc.format(vm.isMuting ? "profile_menu_unmute" : "post_menu_mute", ["handle": vm.user.formattedHandle]),
+                   action: vm.toggleMute)
+            if vm.isBlocking {
+                Button(loc.format("profile_menu_unblock", ["handle": vm.user.formattedHandle]), action: vm.toggleBlock)
+            } else {
+                Button(loc.format("post_menu_block", ["handle": vm.user.formattedHandle]), role: .destructive) {
+                    vm.isConfirmingBlock = true
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(ThemeManager.primaryText)
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+        }
+        // The borderless style flattens its label into a dimmed, left-aligned image; this one draws the view as it is
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
+        .help(loc.t("profile_more"))
+        .onHover { if $0 { vm.loadOwnedListsIfNeeded() } }
+        .alert(loc.format("post_menu_block", ["handle": vm.user.formattedHandle]), isPresented: $vm.isConfirmingBlock) {
+            Button(loc.t("profile_block_confirm"), role: .destructive, action: vm.toggleBlock)
+            Button(loc.t("cancel"), role: .cancel) {}
+        } message: {
+            Text(loc.t("profile_block_message"))
+        }
     }
 
     @ViewBuilder private var followButton: some View {

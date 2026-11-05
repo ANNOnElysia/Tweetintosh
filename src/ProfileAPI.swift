@@ -20,6 +20,15 @@ struct UserProfile {
     var postsCount: Int?
     var isFollowing: Bool
     var isProtected: Bool
+    var isMuting: Bool = false
+    var isBlocking: Bool = false
+}
+
+// One of the signed-in account's own lists, and whether the person being looked at is on it
+struct OwnedList: Identifiable, Equatable {
+    let id: String
+    let name: String
+    var isMember: Bool
 }
 
 // A post in a profile tab; Replies-tab posts can be part of a conversation thread drawn with a connecting line
@@ -98,7 +107,12 @@ final class GraphQLOperationIDs {
         ],
         "CreateTweet": [
             "5CVj-J0FZWyGgJpcjeBJEA", "jm93VcEnLxM7My_CL9C_EA", "znCVAd692dKBq9MgkEhKPQ", "TAJw1rBsjAtdNgTdlo2oeg"
-        ]
+        ],
+        // These live in a script X's client only loads on demand, which discovery doesn't reach, so they can't be
+        // repaired automatically when X changes them
+        "ListOwnerships": ["6spVXajXDiSz025ZUwzOfQ"],
+        "ListAddMember": ["-Kf1YVC1rNKkPvPFk7YXZw"],
+        "ListRemoveMember": ["_2o1-wSMWGFSi5HUscn1Hw"]
     ]
 
     private let defaultsKey = "Tweetintosh_GraphQLOperationIDs"
@@ -448,7 +462,9 @@ extension APIClient {
             joinedAt: created.flatMap(formatter.date(from:)),
             postsCount: ((userResult["tweet_counts"] as? [String: Any])?["tweets"] as? Int) ?? (legacy["statuses_count"] as? Int),
             isFollowing: ((userResult["relationship_perspectives"] as? [String: Any])?["following"] as? Bool) ?? (legacy["following"] as? Bool) ?? false,
-            isProtected: ((userResult["privacy"] as? [String: Any])?["protected"] as? Bool) ?? (legacy["protected"] as? Bool) ?? false
+            isProtected: ((userResult["privacy"] as? [String: Any])?["protected"] as? Bool) ?? (legacy["protected"] as? Bool) ?? false,
+            isMuting: ((userResult["relationship_perspectives"] as? [String: Any])?["muting"] as? Bool) ?? (legacy["muting"] as? Bool) ?? false,
+            isBlocking: ((userResult["relationship_perspectives"] as? [String: Any])?["blocking"] as? Bool) ?? (legacy["blocking"] as? Bool) ?? false
         )
     }
 
@@ -561,6 +577,75 @@ extension APIClient {
         // The pinned post also appears in the regular list; show it once, at the top
         let pinnedIds = Set(pinned.map { $0.tweet.id })
         return (pinned + items.filter { !pinnedIds.contains($0.tweet.id) || $0.threadAbove || $0.threadBelow }, bottomCursor)
+    }
+
+    // MARK: Lists
+
+    // The account's own lists, not the ones it merely subscribes to: only an owner can add people
+    func fetchOwnedLists(ownerId: String, targetUserId: String, completion: @escaping (Result<[OwnedList], APIError>) -> Void) {
+        let variables: [String: Any] = ["userId": ownerId, "isListMemberTargetUserId": targetUserId, "count": 100]
+        graphQLGet(operation: "ListOwnerships", variables: variables) { result in
+            completion(result.map { json in
+                var lists: [OwnedList] = []
+                Self.collectOwnedLists(in: json, into: &lists)
+                return lists
+            })
+        }
+    }
+
+    // Timeline responses nest their entries differently from one page to the next, so this looks for the lists
+    // themselves rather than following one path
+    private static func collectOwnedLists(in value: Any, into lists: inout [OwnedList]) {
+        if let array = value as? [Any] {
+            array.forEach { collectOwnedLists(in: $0, into: &lists) }
+        } else if let dict = value as? [String: Any] {
+            if let list = dict["list"] as? [String: Any], let id = list["id_str"] as? String, let name = list["name"] as? String,
+               !lists.contains(where: { $0.id == id }) {
+                lists.append(OwnedList(id: id, name: name, isMember: (list["is_member"] as? Bool) ?? false))
+                return
+            }
+            dict.values.forEach { collectOwnedLists(in: $0, into: &lists) }
+        }
+    }
+
+    func setListMember(_ member: Bool, listId: String, userId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        let operation = member ? "ListAddMember" : "ListRemoveMember"
+
+        func attempt(_ ids: [String]) {
+            guard let id = ids.first else {
+                completion(.failure(.serverError("No working query id for \(operation)")))
+                return
+            }
+            let body: [String: Any] = [
+                "variables": ["listId": listId, "userId": userId],
+                "features": Self.profileFeatures,
+                "queryId": id
+            ]
+            WebKitWriteChannel.shared.perform(path: "/i/api/graphql/\(id)/\(operation)", body: body) { result in
+                switch result {
+                case .success(let json) where (json["data"] as? [String: Any])?["list"] != nil:
+                    GraphQLOperationIDs.shared.markWorking(id, for: operation)
+                    completion(.success(()))
+                case .failure(let error):
+                    if case .refused = error { completion(.failure(error)) } else { attempt(Array(ids.dropFirst())) }
+                case .success:
+                    attempt(Array(ids.dropFirst()))
+                }
+            }
+        }
+
+        let known = GraphQLOperationIDs.shared.ids(for: operation)
+        if known.isEmpty {
+            GraphQLOperationIDs.shared.discover(using: self, creds: creds) {
+                attempt(GraphQLOperationIDs.shared.ids(for: operation))
+            }
+        } else {
+            attempt(known)
+        }
     }
 
     // MARK: Follow
