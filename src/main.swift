@@ -145,10 +145,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.center()
         }
         applyMinimumSize(to: window)
+        updateLayout(for: window)
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self, weak window] _ in
-            if let window = window { self?.applyMinimumSize(to: window) }
+            if let window = window {
+                self?.applyMinimumSize(to: window)
+                self?.updateLayout(for: window)
+            }
         }
         
         let rootView = AppRootView(
@@ -248,7 +252,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     func windowDidChangeScreen(_ notification: Notification) {
-        if let window = notification.object as? NSWindow, window === mainWindow { applyMinimumSize(to: window) }
+        guard let window = notification.object as? NSWindow, window === mainWindow else { return }
+        applyMinimumSize(to: window)
+        updateLayout(for: window)
+    }
+    
+    func windowDidResize(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === mainWindow { updateLayout(for: window) }
+    }
+    
+    private func updateLayout(for window: NSWindow) {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        NavigationManager.shared.updateLayout(windowWidth: window.frame.width, screenWidth: screen.frame.width)
     }
     
     // MARK: - NSWindowDelegate (Prevent Deallocation on Close)

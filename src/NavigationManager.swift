@@ -161,6 +161,31 @@ final class NavigationManager: ObservableObject {
         }
     }
     
+    // MARK: Layout by window width
+    
+    // The contact list on the Messages page gives way in a narrow window, and can be slid over the chat for a moment
+    @Published private(set) var isContactListFolded = false
+    @Published var isContactListPeeking = false
+    private var isWideWindow: Bool?
+    
+    // Acts only when the window crosses a line, so a sidebar opened or closed by hand stays that way until the next
+    // crossing. Rounded down, so a window tiled to exactly half of an odd-width screen still counts as half.
+    func updateLayout(windowWidth: CGFloat, screenWidth: CGFloat) {
+        let isWide = windowWidth >= (screenWidth / 2).rounded(.down)
+        let isFolded = windowWidth < (screenWidth * 2 / 5).rounded(.down)
+        guard isWide != isWideWindow || isFolded != isContactListFolded else { return }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+            if isWide != isWideWindow {
+                isWideWindow = isWide
+                sidebarExpanded = isWide
+                // The search field lives in the bar the sidebar replaces
+                if isWide { isSearchActive = false }
+            }
+            isContactListFolded = isFolded
+            if !isFolded { isContactListPeeking = false }
+        }
+    }
+    
     func toggleSidebar() {
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {

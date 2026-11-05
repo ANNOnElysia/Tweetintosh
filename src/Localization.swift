@@ -1848,6 +1848,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "在时间线和帖子页面上静音播放视频和 GIF。点击后可带声音打开。",
             .traditionalChinese: "在時間軸和貼文頁面上靜音播放影片和 GIF。點擊後可帶聲音開啟。"
         ],
+        "messages_show_contacts": [
+            .english: "Show Conversations",
+            .japanese: "会話一覧を表示",
+            .korean: "대화 목록 표시",
+            .simplifiedChinese: "显示会话列表",
+            .traditionalChinese: "顯示對話列表"
+        ],
         "show_promoted_posts": [
             .english: "Show Promoted Posts",
             .japanese: "プロモーション（広告）を表示",

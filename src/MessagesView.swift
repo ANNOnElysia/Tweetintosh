@@ -27,15 +27,19 @@ struct MessagesView: View {
         ZStack {
             GeometryReader { proxy in
                 HStack(spacing: 0) {
-                    // Left Column: Conversation Sidebar
-                    DMConversationListView()
-                        .frame(width: min(max(proxy.size.width * 0.35, 290), 340))
-                    
-                    // Hairline Divider
-                    Rectangle()
-                        .fill(ThemeManager.divider)
-                        .frame(width: 0.5)
-                        .ignoresSafeArea()
+                    if !nav.isContactListFolded {
+                        // Left Column: Conversation Sidebar. It gives up width before the chat does, which matters
+                        // when the app's sidebar is open in a half-screen window.
+                        DMConversationListView()
+                            .frame(width: min(max(proxy.size.width * 0.36, 230), 340))
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                        
+                        // Hairline Divider
+                        Rectangle()
+                            .fill(ThemeManager.divider)
+                            .frame(width: 0.5)
+                            .ignoresSafeArea()
+                    }
                     
                     // Right Column: Chat Stream & Message Detail
                     DMChatDetailView()
@@ -44,6 +48,26 @@ struct MessagesView: View {
             }
             // Strict adherence to user's Tone (Minimalism = Pitch Black #000000 in dark mode)
             .background(ThemeManager.background.ignoresSafeArea())
+            
+            // The folded contact list, slid over the chat without resizing it. Picking a contact or clicking away closes it.
+            if nav.isContactListFolded && nav.isContactListPeeking {
+                Color.black.opacity(theme.isLight ? 0.12 : 0.3)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { closeContactList() }
+                    .transition(.opacity)
+                    .zIndex(10)
+                
+                HStack(spacing: 0) {
+                    DMConversationListView()
+                        .frame(width: 290)
+                        .background(ThemeManager.background.ignoresSafeArea())
+                        .shadow(color: Color.black.opacity(theme.isLight ? 0.18 : 0.5), radius: 16, x: 4)
+                    Spacer(minLength: 0)
+                }
+                .transition(.move(edge: .leading))
+                .zIndex(11)
+            }
             
             // X Chat 4-Digit Passcode Modal Overlay
             if vm.showPasscodeSheet {
@@ -55,6 +79,41 @@ struct MessagesView: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: vm.showPasscodeSheet)
         .onAppear {
             vm.loadInbox()
+        }
+        .onChange(of: vm.selectedConversationId) { closeContactList() }
+        .onDisappear { nav.isContactListPeeking = false }
+    }
+    
+    private func closeContactList() {
+        guard nav.isContactListPeeking else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            nav.isContactListPeeking = false
+        }
+    }
+}
+
+// Shown where the contact list would be when the window is too narrow for it
+private struct DMShowContactListButton: View {
+    @ObservedObject private var nav = NavigationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+    
+    var body: some View {
+        if nav.isContactListFolded {
+            Button {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                    nav.isContactListPeeking = true
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .frame(width: 32, height: 32)
+                    .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
+            }
+            .buttonStyle(.plain)
+            .help(loc.t("messages_show_contacts"))
+            .accessibilityLabel(loc.t("messages_show_contacts"))
         }
     }
 }
@@ -508,6 +567,11 @@ private struct DMChatDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.top, nav.sidebarExpanded ? 14 : 64)
             .background(ThemeManager.background)
+            .overlay(alignment: .topLeading) {
+                DMShowContactListButton()
+                    .padding(.leading, 16)
+                    .padding(.top, nav.sidebarExpanded ? 14 : 64)
+            }
         }
     }
 }
@@ -604,6 +668,8 @@ private struct DMContactHeader: View {
     
     var body: some View {
         HStack(spacing: 10) {
+            DMShowContactListButton()
+            
             if let other = conversation.otherParticipant {
                 Button(action: {
                     NavigationManager.shared.openProfile(other.asTweetUser)
