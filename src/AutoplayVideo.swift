@@ -68,8 +68,6 @@ final class AutoplayCoordinator {
         guard let clipView = object as? NSClipView, watchedClipViews.contains(clipView) else { return }
         lastScrollAt = CACurrentMediaTime()
         guard settleTimer == nil else { return }
-        // A video frame arriving mid-scroll competes with the scroll for the frame, so it holds still until the scroll ends
-        views.allObjects.forEach { $0.pause() }
         let timer = Timer(timeInterval: Self.scrollSettleDelay, repeats: true) { [weak self] timer in
             guard let self = self, !self.isScrolling else { return }
             timer.invalidate()
@@ -194,12 +192,7 @@ final class AutoplayVideoView: NSView {
     }
 
     func start() {
-        // Already loaded: this is the end of a scroll
-        if player.currentItem != nil {
-            player.play()
-            return
-        }
-        guard let url = url else { return }
+        guard player.currentItem == nil, let url = url else { return }
         let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
         readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
@@ -217,10 +210,6 @@ final class AutoplayVideoView: NSView {
             self?.player.play()
         }
         player.play()
-    }
-
-    func pause() {
-        player.pause()
     }
 
     func stop() {
