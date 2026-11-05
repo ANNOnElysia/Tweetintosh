@@ -32,13 +32,16 @@ struct MessagesView: View {
                         // when the app's sidebar is open in a half-screen window.
                         DMConversationListView()
                             .frame(width: min(max(proxy.size.width * 0.36, 230), 340))
+                            .modifier(DMContactPanel())
                             .transition(.move(edge: .leading).combined(with: .opacity))
                         
-                        // Hairline Divider
-                        Rectangle()
-                            .fill(ThemeManager.divider)
-                            .frame(width: 0.5)
-                            .ignoresSafeArea()
+                        // Hairline Divider: a floating glass panel needs nothing to separate it
+                        if !theme.usesGlassMessages {
+                            Rectangle()
+                                .fill(ThemeManager.divider)
+                                .frame(width: 0.5)
+                                .ignoresSafeArea()
+                        }
                     }
                     
                     // Right Column: Chat Stream & Message Detail
@@ -59,10 +62,16 @@ struct MessagesView: View {
                     .zIndex(10)
                 
                 HStack(spacing: 0) {
-                    DMConversationListView()
-                        .frame(width: 290)
-                        .background(ThemeManager.background.ignoresSafeArea())
-                        .shadow(color: Color.black.opacity(theme.isLight ? 0.18 : 0.5), radius: 16, x: 4)
+                    if theme.usesGlassMessages {
+                        DMConversationListView()
+                            .frame(width: 290)
+                            .modifier(DMContactPanel())
+                    } else {
+                        DMConversationListView()
+                            .frame(width: 290)
+                            .background(ThemeManager.background.ignoresSafeArea())
+                            .shadow(color: Color.black.opacity(theme.isLight ? 0.18 : 0.5), radius: 16, x: 4)
+                    }
                     Spacer(minLength: 0)
                 }
                 .transition(.move(edge: .leading))
@@ -88,6 +97,64 @@ struct MessagesView: View {
         guard nav.isContactListPeeking else { return }
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
             nav.isContactListPeeking = false
+        }
+    }
+}
+
+// MARK: - Liquid Glass
+
+// With Liquid Glass on, the page follows the HIG's layering: messages and contacts are the content, and the controls float
+// over them on glass, which content scrolls beneath. Off, it is the flat iMessage-style layout with dividers. Bubbles
+// stay solid in both, because glass is for the controls layer and not for content itself.
+extension ThemeManager {
+    var usesGlassMessages: Bool {
+        if #available(macOS 26.0, *) { return useLiquidGlass }
+        return false
+    }
+}
+
+// The contact list as a floating pane, lined up with the app's sidebar
+private struct DMContactPanel: ViewModifier {
+    @ObservedObject private var theme = ThemeManager.shared
+    @ObservedObject private var nav = NavigationManager.shared
+    private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+
+    func body(content: Content) -> some View {
+        if theme.usesGlassMessages {
+            content
+                .clipShape(shape)
+                .modifier(AdaptiveGlassModifier(isLiquid: true, shape: shape))
+                .padding(.leading, nav.sidebarExpanded ? 6 : 12)
+                .padding(.trailing, 4)
+                .padding(.top, nav.sidebarExpanded ? 42 : 64)
+                .padding(.bottom, 12)
+        } else {
+            content
+        }
+    }
+}
+
+// A control on glass in the Liquid Glass layout; the flat layout draws its own background, so this leaves it alone
+private struct DMGlassControl<S: Shape>: ViewModifier {
+    let shape: S
+    @ObservedObject private var theme = ThemeManager.shared
+
+    func body(content: Content) -> some View {
+        if theme.usesGlassMessages {
+            content.modifier(AdaptiveGlassModifier(isLiquid: true, shape: shape))
+        } else {
+            content
+        }
+    }
+}
+
+// Glass can't sample other glass, so neighbouring pieces share a container to read as one material
+private struct DMGlassGroup: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 8) { content }
+        } else {
+            content
         }
     }
 }
@@ -182,7 +249,7 @@ private struct DMConversationListView: View {
             }
             .padding(.horizontal, 16)
             // Safe distance: accounts for macOS traffic lights & top floating droplet capsule
-            .padding(.top, nav.sidebarExpanded ? 36 : 64)
+            .padding(.top, theme.usesGlassMessages ? 12 : (nav.sidebarExpanded ? 36 : 64))
             .padding(.bottom, 8)
             
             // Search Capsule Bar (iMessage style, clean and without microphone)
@@ -207,10 +274,15 @@ private struct DMConversationListView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(theme.isLight ? Color(hex: "#EAEAEB") : Color(hex: "#1C1C1E"))
-            )
+            .background {
+                // Already on the panel's glass, where more glass wouldn't show: a light fill marks the field
+                if theme.usesGlassMessages {
+                    Capsule().fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
+                } else {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(theme.isLight ? Color(hex: "#EAEAEB") : Color(hex: "#1C1C1E"))
+                }
+            }
             .padding(.horizontal, 14)
             .padding(.bottom, 8)
             
@@ -317,9 +389,11 @@ private struct DMConversationListView: View {
                     .padding(.vertical, 8)
                 }
                 
-                Rectangle()
-                    .fill(ThemeManager.divider)
-                    .frame(height: 0.5)
+                if !theme.usesGlassMessages {
+                    Rectangle()
+                        .fill(ThemeManager.divider)
+                        .frame(height: 0.5)
+                }
             }
             
             // Conversation Scroll List
@@ -485,12 +559,12 @@ private struct DMConversationRow: View {
     
     @ViewBuilder
     private var rowBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: theme.usesGlassMessages ? 14 : 10, style: .continuous)
         if isSelected {
             if theme.useLiquidGlass {
                 shape
                     .fill(ThemeManager.accent.opacity(theme.isLight ? 0.16 : 0.22))
-                    .overlay(shape.stroke(ThemeManager.accent.opacity(0.35), lineWidth: 0.75))
+                    .overlay(shape.stroke(ThemeManager.accent.opacity(theme.usesGlassMessages ? 0 : 0.35), lineWidth: 0.75))
             } else {
                 shape
                     .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12))
@@ -527,8 +601,25 @@ private struct DMChatDetailView: View {
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var nav = NavigationManager.shared
     
+    @ViewBuilder private func glassChat(_ conv: DMConversation) -> some View {
+        if #available(macOS 26.0, *) {
+            Group {
+                if conv.hasEncryptedMessages && !vm.isPasscodeUnlocked {
+                    DMEncryptedGuidanceCard()
+                } else {
+                    DMBubbleScrollView(messages: vm.activeMessages)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .modifier(DMGlassChatBars(conversation: conv))
+            .background(ThemeManager.background)
+        }
+    }
+    
     var body: some View {
-        if let conv = vm.selectedConversation {
+        if let conv = vm.selectedConversation, theme.usesGlassMessages {
+            glassChat(conv)
+        } else if let conv = vm.selectedConversation {
             VStack(spacing: 0) {
                 // 1. Contact Top Header (with safe clearance below top floating capsule)
                 DMContactHeader(conversation: conv)
@@ -577,6 +668,18 @@ private struct DMChatDetailView: View {
 }
 
 // MARK: - End-to-End Encrypted Guidance Card
+
+@available(macOS 26.0, *)
+private struct DMGlassChatBars: ViewModifier {
+    let conversation: DMConversation
+
+    func body(content: Content) -> some View {
+        // Bars rather than a stack, so messages scroll beneath the glass under the system's scroll edge effect
+        content
+            .safeAreaBar(edge: .top) { DMContactHeader(conversation: conversation) }
+            .safeAreaBar(edge: .bottom) { DMInputDock() }
+    }
+}
 
 private struct DMEncryptedGuidanceCard: View {
     @ObservedObject private var vm = DMViewModel.shared
@@ -696,14 +799,16 @@ private struct DMContactHeader: View {
                                 .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.50))
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(.leading, theme.usesGlassMessages ? 5 : 8)
+                    .padding(.trailing, theme.usesGlassMessages ? 14 : 8)
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(hover.isHovered ? (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)) : Color.clear)
+                            .fill(hover.isHovered && !theme.usesGlassMessages ? (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)) : Color.clear)
                     )
                 }
                 .buttonStyle(.plain)
+                .modifier(DMGlassControl(shape: Capsule()))
                 .onHover { hover.isHovered = $0 }
                 .peekable(.profile(other.asTweetUser)) // Deep-press / Force Click Peek card!
             } else {
@@ -728,14 +833,17 @@ private struct DMContactHeader: View {
                     .foregroundColor(ThemeManager.accent)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.20))
-                            .overlay(
-                                Capsule()
-                                    .stroke(ThemeManager.accent.opacity(0.35), lineWidth: 0.75)
-                            )
-                    )
+                    .background {
+                        if !theme.usesGlassMessages {
+                            Capsule()
+                                .fill(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.20))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(ThemeManager.accent.opacity(0.35), lineWidth: 0.75)
+                                )
+                        }
+                    }
+                    .modifier(DMGlassControl(shape: Capsule()))
                 }
                 .buttonStyle(.plain)
             } else {
@@ -746,17 +854,20 @@ private struct DMContactHeader: View {
                         .font(theme.appFont(size: 11, weight: .medium))
                 }
                 .foregroundColor(ThemeManager.accent.opacity(0.85))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(ThemeManager.accent.opacity(theme.isLight ? 0.08 : 0.15))
-                )
+                .padding(.horizontal, theme.usesGlassMessages ? 12 : 9)
+                .padding(.vertical, theme.usesGlassMessages ? 7 : 4)
+                .background {
+                    if !theme.usesGlassMessages {
+                        Capsule()
+                            .fill(ThemeManager.accent.opacity(theme.isLight ? 0.08 : 0.15))
+                    }
+                }
+                .modifier(DMGlassControl(shape: Capsule()))
             }
         }
         .padding(.horizontal, 16)
         // Generous safe distance: fully clears the top floating capsule!
-        .padding(.top, nav.sidebarExpanded ? 14 : 64)
+        .padding(.top, theme.usesGlassMessages ? (nav.sidebarExpanded ? 42 : 64) : (nav.sidebarExpanded ? 14 : 64))
         .padding(.bottom, 10)
     }
 }
@@ -1181,7 +1292,10 @@ private struct DMInputDock: View {
                     .keyboardShortcut(.cancelAction)
                     .help(loc.t("messages_cancel"))
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, theme.usesGlassMessages ? 14 : 18)
+                .padding(.vertical, theme.usesGlassMessages ? 8 : 0)
+                .modifier(DMGlassControl(shape: RoundedRectangle(cornerRadius: 18, style: .continuous)))
+                .padding(.horizontal, theme.usesGlassMessages ? 14 : 0)
                 .padding(.top, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -1221,7 +1335,7 @@ private struct DMInputDock: View {
                 }
             }
             
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: theme.usesGlassMessages ? .center : .bottom, spacing: 8) {
                 // 1. Plus Action Button (directly opens Finder via NSOpenPanel, supports ⌥A)
                 Button(action: {
                     MediaAttachments.pick(parent: NSApp.keyWindow) { urls in
@@ -1231,11 +1345,14 @@ private struct DMInputDock: View {
                     Image(systemName: "plus")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70))
-                        .frame(width: 30, height: 30)
-                        .background(
-                            Circle()
-                                .fill(theme.isLight ? Color.black.opacity(0.06) : Color(hex: "#262628"))
-                        )
+                        .frame(width: theme.usesGlassMessages ? 36 : 30, height: theme.usesGlassMessages ? 36 : 30)
+                        .background {
+                            if !theme.usesGlassMessages {
+                                Circle()
+                                    .fill(theme.isLight ? Color.black.opacity(0.06) : Color(hex: "#262628"))
+                            }
+                        }
+                        .modifier(DMGlassControl(shape: Circle()))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut("a", modifiers: [.option])
@@ -1257,35 +1374,49 @@ private struct DMInputDock: View {
                         }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule()
-                        .fill(theme.isLight ? Color(hex: "#E5E5EA") : Color(hex: "#1C1C1E"))
-                        .overlay(
-                            Capsule()
-                                .stroke(
-                                    isInputFocused
-                                        ? ThemeManager.accent.opacity(0.60)
-                                        : (theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12)),
-                                    lineWidth: 0.75
-                                )
-                        )
-                )
+                .padding(.vertical, theme.usesGlassMessages ? 10 : 7)
+                .background {
+                    if !theme.usesGlassMessages {
+                        Capsule()
+                            .fill(theme.isLight ? Color(hex: "#E5E5EA") : Color(hex: "#1C1C1E"))
+                            .overlay(
+                                Capsule()
+                                    .stroke(
+                                        isInputFocused
+                                            ? ThemeManager.accent.opacity(0.60)
+                                            : (theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12)),
+                                        lineWidth: 0.75
+                                    )
+                            )
+                    }
+                }
+                .modifier(DMGlassControl(shape: Capsule()))
                 
                 // 3. Send Up-Arrow Button (iMessage upward circle)
                 let canSend = !vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !vm.pendingAttachments.isEmpty
                 Button(action: {
                     vm.sendMessage()
                 }) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 28, weight: .medium))
-                        .foregroundColor(canSend ? ThemeManager.accent : (theme.isLight ? Color.black.opacity(0.15) : Color.white.opacity(0.20)))
-                        .scaleEffect(canSend ? 1.05 : 1.0)
-                        .animation(.spring(response: 0.20, dampingFraction: 0.75), value: canSend)
+                    if theme.usesGlassMessages, #available(macOS 26.0, *) {
+                        // The one prominent action, so the one tinted piece of glass
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(canSend ? ThemeManager.onAccent : (theme.isLight ? Color.black.opacity(0.25) : Color.white.opacity(0.30)))
+                            .frame(width: 36, height: 36)
+                            .tweetGlass(canSend ? .regular.tint(ThemeManager.accent).interactive() : .regular, in: Circle())
+                            .animation(.spring(response: 0.20, dampingFraction: 0.75), value: canSend)
+                    } else {
+    Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundColor(canSend ? ThemeManager.accent : (theme.isLight ? Color.black.opacity(0.15) : Color.white.opacity(0.20)))
+                            .scaleEffect(canSend ? 1.05 : 1.0)
+                            .animation(.spring(response: 0.20, dampingFraction: 0.75), value: canSend)
+                    }
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend || vm.isSending)
             }
+            .modifier(DMGlassGroup())
             .padding(.horizontal, 14)
             .padding(.top, 4)
             .padding(.bottom, 12)
