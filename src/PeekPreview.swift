@@ -38,6 +38,7 @@ enum PeekScope: Equatable {
     case none
     case timeline
     case notifications
+    case messages
     // A full-pane page; the index is its depth in the navigation stack
     case overlay(Int)
 }
@@ -370,6 +371,7 @@ final class PeekCoordinator: ObservableObject {
         switch nav.currentTab {
         case .home: return .timeline
         case .notifications: return .notifications
+        case .messages: return .messages
         default: return .none
         }
     }

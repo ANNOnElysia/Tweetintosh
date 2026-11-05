@@ -89,6 +89,7 @@ struct MessagesView: View {
         .onAppear {
             vm.loadInbox()
         }
+        .environment(\.peekScope, .messages)
         .onChange(of: vm.selectedConversationId) { closeContactList() }
         .onDisappear { nav.isContactListPeeking = false }
     }
@@ -422,6 +423,8 @@ private struct DMConversationListView: View {
                                 isEditMode: vm.isEditMode,
                                 isChecked: vm.selectedConversationIds.contains(conv.id),
                                 onSelect: {
+                                    // The release that ends a deep press on the avatar still arrives as a click
+                                    guard !PeekCoordinator.shared.suppressesActivation else { return }
                                     if vm.isEditMode {
                                         if vm.selectedConversationIds.contains(conv.id) {
                                             vm.selectedConversationIds.remove(conv.id)
@@ -471,7 +474,14 @@ private struct DMConversationRow: View {
                 
                 // Avatar
                 ZStack(alignment: .bottomTrailing) {
-                    DMAvatarView(url: conversation.avatarUrl, size: 44)
+                    Group {
+                        if let other = conversation.otherParticipant {
+                            DMAvatarView(url: conversation.avatarUrl, size: 44)
+                                .peekable(.profile(other.asTweetUser))
+                        } else {
+                            DMAvatarView(url: conversation.avatarUrl, size: 44)
+                        }
+                    }
                     
                     if conversation.isPinned {
                         Image(systemName: "pin.fill")
