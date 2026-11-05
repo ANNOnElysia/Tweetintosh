@@ -197,8 +197,7 @@ struct ArticleReaderView: View {
                     }
                 } else {
                     row {
-                        GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 20)
-                            .frame(maxWidth: .infinity)
+                        LoadingIndicator()
                             .padding(.vertical, 50)
                     }
                 }

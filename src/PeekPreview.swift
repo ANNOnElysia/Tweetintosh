@@ -627,7 +627,7 @@ private struct PeekLinkCard: View {
                 }
                 Spacer()
                 if state.isLoading {
-                    GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 14)
+                    LoadingIndicator(compactHeight: 18)
                 }
             }
             .padding(.horizontal, 14)

@@ -143,8 +143,7 @@ struct TweetDetailView: View {
                         Spacer()
                         
                         if viewModel.isLoading {
-                            ProgressView()
-                                .scaleEffect(0.7)
+                            LoadingIndicator(compactHeight: 20)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -192,11 +191,9 @@ struct TweetDetailView: View {
                         
                         // Pagination trigger
                         if viewModel.bottomCursor != nil {
-                            HStack {
-                                Spacer()
+                            Group {
                                 if viewModel.isLoadingMore {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
+                                    LoadingIndicator()
                                 } else {
                                     Color.clear
                                         .frame(height: 20)
@@ -204,7 +201,6 @@ struct TweetDetailView: View {
                                             viewModel.loadMoreReplies()
                                         }
                                 }
-                                Spacer()
                             }
                             .padding(.vertical, 16)
                         }
@@ -997,9 +993,7 @@ struct TweetDetailView: View {
                     viewModel.postQuickReply()
                 }) {
                     if viewModel.isSubmittingReply {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 26, height: 26)
+                        LoadingIndicator(compactHeight: 22)
                     } else {
                         Group {
                             if #available(macOS 26.0, *) {
@@ -1080,9 +1074,7 @@ struct TweetDetailView: View {
                     viewModel.postQuickReply()
                 }) {
                     if viewModel.isSubmittingReply {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 26, height: 26)
+                        LoadingIndicator(compactHeight: 22)
                     } else {
                         Text(loc.t("post_reply"))
                             .font(theme.appFont(size: 12, weight: .bold))

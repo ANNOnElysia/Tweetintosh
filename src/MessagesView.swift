@@ -268,8 +268,7 @@ private struct DMConversationListView: View {
                 LazyVStack(spacing: 2) {
                     if vm.isLoadingInbox && vm.conversations.isEmpty {
                         VStack(spacing: 10) {
-                            ProgressView()
-                                .scaleEffect(0.85)
+                            LoadingIndicator()
                                 .padding(.top, 40)
                         }
                     } else if vm.filteredConversations.isEmpty {
@@ -1282,8 +1281,7 @@ private struct DMPasscodeModalOverlay: View {
                 VStack(spacing: 8) {
                     if vm.isVerifyingPasscode {
                         HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
+                            LoadingIndicator(compactHeight: 20)
                             Text(loc.t("messages_verifying_passcode"))
                                 .font(theme.appFont(size: 12.5, weight: .medium))
                                 .foregroundColor(ThemeManager.accent)

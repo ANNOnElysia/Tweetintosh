@@ -122,10 +122,7 @@ struct TweetComposerSheet: View {
             Button(action: submitPost) {
                 HStack(spacing: 6) {
                     if state.isSending {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: ThemeManager.onAccent))
-                            .scaleEffect(0.65)
-                            .frame(width: 14, height: 14)
+                        LoadingIndicator(compactHeight: 16, tint: ThemeManager.onAccent)
                     }
                     Text(loc.t("post_action"))
                         .font(theme.appFont(size: 13, weight: .semibold))

@@ -647,9 +647,7 @@ struct MainTimelineView: View {
                     .listRowBackground(Color.clear)
             }
             
-            GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 16)
-                .opacity(viewModel.isLoadingMore ? 1 : 0)
-                .frame(maxWidth: .infinity)
+            LoadingIndicator(active: viewModel.isLoadingMore)
                 .frame(height: 60)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)

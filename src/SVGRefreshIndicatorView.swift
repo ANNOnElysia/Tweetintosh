@@ -21,6 +21,8 @@ final class SVGRefreshIndicatorNSView: NSView {
     private var isRefreshing: Bool = false
     private var colorScheme: AppThemeColor = .blue
     private var isAnimatingLoop: Bool = false
+    // A single colour instead of the theme gradient, for places the gradient would vanish into (an accent button)
+    private var tint: NSColor?
     
     // Cached path geometry
     private var cachedWidth: CGFloat = 0
@@ -87,6 +89,14 @@ final class SVGRefreshIndicatorNSView: NSView {
         setupLayers()
     }
     
+    // A view leaving the window loses its running animations, and a List does that to rows as it recycles them
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, isRefreshing else { return }
+        stopLoopAnimation()
+        startLoopAnimationIfNeeded()
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         return nil // Non-interactive, transparent pass-through
     }
@@ -112,11 +122,16 @@ final class SVGRefreshIndicatorNSView: NSView {
     }
     
     private func updateGradientColors() {
-        gradientLayer.colors = colorScheme.gradientColors.map { $0.cgColor }
+        if let tint = tint {
+            gradientLayer.colors = [tint.cgColor, tint.cgColor, tint.cgColor]
+        } else {
+            gradientLayer.colors = colorScheme.gradientColors.map { $0.cgColor }
+        }
     }
     
-    func configure(progress: CGFloat, isRefreshing: Bool, color: AppThemeColor) {
-        let colorChanged = (self.colorScheme != color)
+    func configure(progress: CGFloat, isRefreshing: Bool, color: AppThemeColor, tint: NSColor? = nil) {
+        let colorChanged = (self.colorScheme != color) || self.tint != tint
+        self.tint = tint
         let refreshStateChanged = (self.isRefreshing != isRefreshing)
         self.pullProgress = progress
         self.isRefreshing = isRefreshing
@@ -216,6 +231,8 @@ final class SVGRefreshIndicatorNSView: NSView {
         // Allocated height is 40pt; cursive word scaled height is ~30pt
         let targetWordHeight = min(30.0, height * 0.75)
         let s = targetWordHeight / 414.94
+        // The line thins with the word, or a small one fills in
+        shapeLayer.lineWidth = max(1.3, 2.4 * targetWordHeight / 30.0)
         let scaledWordWidth = 779.66 * s
         
         // Word horizontally centered between window borders
@@ -258,14 +275,42 @@ struct SVGRefreshIndicatorView: NSViewRepresentable {
     var pullProgress: CGFloat
     var isRefreshing: Bool
     var colorScheme: AppThemeColor
+    var tint: NSColor? = nil
     
     func makeNSView(context: Context) -> SVGRefreshIndicatorNSView {
         let view = SVGRefreshIndicatorNSView(frame: .zero)
-        view.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme)
+        view.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme, tint: tint)
         return view
     }
     
     func updateNSView(_ nsView: SVGRefreshIndicatorNSView, context: Context) {
-        nsView.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme)
+        nsView.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme, tint: tint)
+    }
+}
+
+// MARK: - The App's Loading Animation
+// The cursive "loading" from pull-to-refresh, for everything that waits. By default it runs edge to edge like the
+// refresh line; give it a compact height where it sits inline, beside text or inside a button, and only the word shows.
+struct LoadingIndicator: View {
+    // False keeps the space but draws and animates nothing, for list footers that are only sometimes loading
+    var active: Bool = true
+    var compactHeight: CGFloat? = nil
+    var tint: Color? = nil
+
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        let line = SVGRefreshIndicatorView(
+            pullProgress: active ? 1 : 0,
+            isRefreshing: active,
+            colorScheme: theme.themeColor,
+            tint: tint.map { NSColor($0) }
+        )
+        if let height = compactHeight {
+            // Wide enough for the word (its width is about 1.41 times this height) with nothing left for the line
+            line.frame(width: height * 1.5, height: height)
+        } else {
+            line.frame(height: 40).frame(maxWidth: .infinity)
+        }
     }
 }

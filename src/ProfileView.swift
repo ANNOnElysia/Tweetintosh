@@ -441,7 +441,7 @@ struct ProfileView: View {
         if list.isEmpty {
             Group {
                 if vm.loadingTabs.contains(tab) || vm.tweets[tab] == nil && !vm.failedTabs.contains(tab) {
-                    GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 20)
+                    LoadingIndicator()
                 } else if vm.failedTabs.contains(tab) {
                     VStack(spacing: 10) {
                         Text(loc.t("profile_load_failed"))
@@ -485,9 +485,7 @@ struct ProfileView: View {
 
     @ViewBuilder private func footer(for tab: ProfileTab) -> some View {
         if vm.hasMore(tab) {
-            GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 16)
-                .opacity(vm.loadingTabs.contains(tab) ? 1 : 0)
-                .frame(maxWidth: .infinity)
+            LoadingIndicator(active: vm.loadingTabs.contains(tab))
                 .frame(height: 50)
                 .onAppear { vm.loadTab(tab, more: true) }
         } else {

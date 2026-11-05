@@ -107,8 +107,7 @@ struct NotificationsView: View {
                     
                     // Items List or Empty Placeholder
                     if viewModel.isLoadingSelectedFeed {
-                        GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 20)
-                            .frame(maxWidth: .infinity)
+                        LoadingIndicator()
                             .padding(.vertical, 48)
                     } else if viewModel.filteredItems.isEmpty {
                         emptyFilterView

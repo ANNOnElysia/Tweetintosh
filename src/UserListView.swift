@@ -71,9 +71,8 @@ struct UserListView: View {
                         userRow(user)
                     }
                     if vm.isLoading {
-                        GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 16)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
+                        LoadingIndicator()
+                            .padding(.vertical, 8)
                     } else {
                         Color.clear.frame(height: 30)
                     }
@@ -114,7 +113,7 @@ struct UserListView: View {
     @ViewBuilder private var emptyState: some View {
         Group {
             if vm.isLoading || !vm.hasLoaded {
-                GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 20)
+                LoadingIndicator()
             } else if vm.failed {
                 VStack(spacing: 10) {
                     Text(loc.t("users_load_failed"))

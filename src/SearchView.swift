@@ -285,7 +285,7 @@ struct SearchView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 } else {
-                    GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 20)
+                    LoadingIndicator()
                 }
             }
             .frame(maxWidth: .infinity)
@@ -305,9 +305,7 @@ struct SearchView: View {
 
     @ViewBuilder private func footer(for tab: SearchTab) -> some View {
         if vm.hasMore(tab) {
-            GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 16)
-                .opacity(vm.loadingTabs.contains(tab) ? 1 : 0)
-                .frame(maxWidth: .infinity)
+            LoadingIndicator(active: vm.loadingTabs.contains(tab))
                 .frame(height: 50)
                 .onAppear { vm.loadTab(tab, more: true) }
         } else {

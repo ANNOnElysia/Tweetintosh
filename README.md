@@ -32,7 +32,7 @@
 
 ### 5. 高性能 120Hz 现代微动效（无系统灰菊花）
 - **骨架屏扫光**：基于 `SwiftUI.TimelineView` 的 120Hz 高刷新率骨架屏（`shimmering`），推文占位高帧率流畅平滑。
-- **极细弧光加载器**：放弃系统陈旧旋转灰菊花，采用 1.5px 纯矢量极细环形生长弧光（`GrowingArcIndicator`）与脉冲微波。
+- **手写加载动效**：全应用统一使用下拉刷新的手写 “loading” 线条（`LoadingIndicator`），取代系统旋转菊花。
 
 ### 6. 多语言与排版热切换（Cmd + , Settings）
 - **默认语言**：英语（English）。
@@ -67,7 +67,6 @@
     ├── TimelineViewModel.swift    # 状态控制器（增量轮询、分页、待推入队列）
     ├── TweetRowView.swift         # 推文行卡片、转推/蓝标/排版/互动栏
     ├── ImageGridView.swift        # 1-4 张配图网格与异步内存/磁盘图片加载器
-    ├── ActivityIndicators.swift   # 120Hz GrowingArc 极细生长弧光加载微动效
     ├── ShimmerView.swift          # 120Hz TimelineView 骨架屏微光扫光
     ├── APIClient.swift            # 内部私有 GraphQL 协议请求与 JSON 解析层
     ├── Models.swift               # Tweet、User、Media、Cursor Codable 数据模型
