@@ -340,6 +340,13 @@ final class NavigationManager: ObservableObject {
                         self.dismissTweetDetail()
                         return nil
                     }
+                    // A profile preview opened from the list closes first, on its own Esc
+                    if self.isContactListPeeking && PeekCoordinator.shared.target == nil {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                            self.isContactListPeeking = false
+                        }
+                        return nil
+                    }
                     if self.isSearchActive {
                         self.toggleSearch()
                         return nil
