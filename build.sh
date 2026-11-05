@@ -11,17 +11,17 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 echo "=== Building Tweetintosh (Headless Native Swift & SwiftUI) ==="
 
-# 1. Clean previous build directory
-rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR"
-mkdir -p "$RESOURCES_DIR"
-
 # 2. Compile Release Binary using Swift Package Manager
 echo "-> Compiling optimized native binary with SPM..."
 cd "$BASE_DIR"
 swift build -c release
 
-# 3. Copy binary into app bundle
+# 3. Replace the app bundle. This happens only after the compile, so the app stays openable while it runs: a bundle
+#    deleted up front makes macOS report it as damaged if someone opens it during the build.
+rm -rf "$APP_DIR"
+mkdir -p "$MACOS_DIR"
+mkdir -p "$RESOURCES_DIR"
+
 echo "-> Packaging binary..."
 cp "$BASE_DIR/.build/release/Tweetintosh" "$MACOS_DIR/Tweetintosh"
 strip "$MACOS_DIR/Tweetintosh"
