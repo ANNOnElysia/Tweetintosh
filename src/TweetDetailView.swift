@@ -828,7 +828,6 @@ struct TweetDetailView: View {
                             .font(theme.appFont(size: 13.5))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineSpacing(theme.lineSpacing() * 0.7)
-                            .textSelection(.enabled)
                     }
                     
                     // Media
@@ -912,7 +911,15 @@ struct TweetDetailView: View {
                         }
                     }
                     .padding(.top, 4)
+                    // A click in the gaps between the buttons shouldn't count as a click on the reply: a near miss
+                    // on the like button would leave the page
+                    .contentShape(Rectangle())
+                    .onTapGesture {}
                 }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                NavigationManager.shared.openTweetDetail(tweet)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
