@@ -91,6 +91,8 @@ final class NavigationManager: ObservableObject {
     
     // Single app-level reply sheet, so timeline rows don't each carry their own .sheet
     @Published var replyTargetTweet: Tweet? = nil
+    // Set by the sheet itself, because a post page opens its own reply sheet without going through replyTargetTweet
+    var isReplyComposerOpen = false
 
     func openReply(to tweet: Tweet) {
         guard EngagementGuard.allows(tweet) else { return }
@@ -318,14 +320,14 @@ final class NavigationManager: ObservableObject {
                 
                 // Command + V (keyCode 9) while composing, with an image or media file on the clipboard -> attach it.
                 // Anything else on the clipboard (text) pastes as usual.
-                if keyCode == 9 && hasCmd && !hasOption && !hasCtrl && self.isShowingCompose
+                if keyCode == 9 && hasCmd && !hasOption && !hasCtrl && (self.isShowingCompose || self.isReplyComposerOpen)
                     && !event.modifierFlags.contains(.shift) && MediaAttachments.hasPastableMedia(.general) {
                     NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_PasteMedia"), object: nil)
                     return nil
                 }
                 
                 // Option + A (keyCode 0) while composing -> Attach media
-                if keyCode == 0 && hasOption && !hasCmd && !hasCtrl && self.isShowingCompose {
+                if keyCode == 0 && hasOption && !hasCmd && !hasCtrl && (self.isShowingCompose || self.isReplyComposerOpen) {
                     NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_AttachMedia"), object: nil)
                     return nil
                 }

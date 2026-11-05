@@ -55,6 +55,7 @@ Media
 - `ImageGridView.swift`, `ImageLightboxView.swift`, `VideoLightboxView.swift` — 1–4 image layouts, photo viewer,
   native AVPlayer with quality and subtitles.
 - `AutoplayVideo.swift` — muted, looping playback of videos and GIFs in place on the timeline.
+- `ComposerMedia.swift` — the attach button, thumbnails, and upload shared by the post and reply composers.
 - `MediaCacheManager.swift`, `MediaActions.swift`, `MediaAttachments.swift` — memory/disk image cache, save/copy/open
   actions, attachment parsing.
 

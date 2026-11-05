@@ -1473,8 +1473,8 @@ final class APIClient {
     }
     
     /// Reply to a tweet
-    func reply(to tweetId: String, text: String, completion: @escaping (Result<String, APIError>) -> Void) {
-        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, completion: completion)
+    func reply(to tweetId: String, text: String, mediaIds: [String] = [], completion: @escaping (Result<String, APIError>) -> Void) {
+        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, mediaIds: mediaIds, completion: completion)
     }
     
     // MARK: - Mute & Block Actions

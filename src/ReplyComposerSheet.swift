@@ -10,6 +10,8 @@ final class ReplyComposerState: ObservableObject {
     @Published var replyText: String = ""
     @Published var isSending: Bool = false
     @Published var errorMessage: String? = nil
+    @Published var attachments: [ComposerAttachment] = []
+    @Published var uploadStatus: String? = nil
 }
 
 struct ReplyComposerSheet: View {
@@ -27,7 +29,7 @@ struct ReplyComposerSheet: View {
     
     private var canSend: Bool {
         let trimmed = state.replyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmed.isEmpty && remainingCharacters >= 0 && !state.isSending
+        return (!trimmed.isEmpty || !state.attachments.isEmpty) && remainingCharacters >= 0 && !state.isSending
     }
     
     var body: some View {
@@ -44,6 +46,19 @@ struct ReplyComposerSheet: View {
                     originalTweetSnippet
                     composerInputRow
                     
+                    if !state.attachments.isEmpty {
+                        ComposerAttachmentStrip(attachments: $state.attachments, isDisabled: state.isSending)
+                            .padding(.top, 8)
+                    }
+                    
+                    if let status = state.uploadStatus {
+                        Text(status)
+                            .font(.system(size: 12))
+                            .foregroundColor(ThemeManager.secondaryText)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                    }
+                    
                     if let error = state.errorMessage {
                         errorBanner(error)
                     }
@@ -55,8 +70,40 @@ struct ReplyComposerSheet: View {
             
             bottomControlsBar
         }
-        .frame(width: 520, height: 340)
+        .frame(width: 520, height: 340 + (state.attachments.isEmpty ? 0 : 110))
         .background(ThemeManager.background)
+        .onAppear { NavigationManager.shared.isReplyComposerOpen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_AttachMedia"))) { _ in
+            chooseMedia()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_PasteMedia"))) { _ in
+            addMedia(MediaAttachments.pastedMedia(from: .general), pasted: true)
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url = url else { return }
+                    DispatchQueue.main.async { addMedia([url], pasted: false) }
+                }
+            }
+            return true
+        }
+        .onDisappear {
+            NavigationManager.shared.isReplyComposerOpen = false
+            state.attachments.filter(\.isTemporaryCopy).forEach { try? FileManager.default.removeItem(at: $0.url) }
+        }
+    }
+    
+    private func chooseMedia() {
+        guard !state.isSending else { return }
+        MediaAttachments.pick(parent: nil) { urls in
+            addMedia(urls, pasted: false)
+        }
+    }
+    
+    private func addMedia(_ urls: [URL], pasted: Bool) {
+        guard !state.isSending else { return }
+        state.errorMessage = MediaAttachments.add(urls, to: &state.attachments, pasted: pasted)
     }
     
     // MARK: - Subviews
@@ -207,7 +254,9 @@ struct ReplyComposerSheet: View {
     }
     
     private var bottomControlsBar: some View {
-        HStack {
+        HStack(spacing: 8) {
+            ComposerAttachButton(isDisabled: state.isSending, action: chooseMedia)
+            
             Text("⌘ + Enter")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(ThemeManager.secondaryText.opacity(0.6))
@@ -243,22 +292,34 @@ struct ReplyComposerSheet: View {
     
     private func submitReply() {
         let textToSend = state.replyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !textToSend.isEmpty else { return }
+        guard !textToSend.isEmpty || !state.attachments.isEmpty else { return }
         
         state.isSending = true
         state.errorMessage = nil
+        let attachments = state.attachments
         
-        TimelineViewModel.shared.postReply(to: tweet, text: textToSend) { result in
-            DispatchQueue.main.async {
-                self.state.isSending = false
-                switch result {
-                case .success:
-                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-                    NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_ReplyPosted"), object: nil,
-                                                    userInfo: ["targetId": self.tweet.id])
-                    self.dismiss()
-                case .failure(let err):
-                    self.state.errorMessage = err.localizedDescription
+        Task { @MainActor in
+            let mediaIds: [String]
+            do {
+                mediaIds = try await MediaAttachments.upload(attachments) { state.uploadStatus = $0 }
+            } catch {
+                state.isSending = false
+                state.errorMessage = error.localizedDescription
+                return
+            }
+            
+            TimelineViewModel.shared.postReply(to: tweet, text: textToSend, mediaIds: mediaIds) { result in
+                DispatchQueue.main.async {
+                    self.state.isSending = false
+                    switch result {
+                    case .success:
+                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_ReplyPosted"), object: nil,
+                                                        userInfo: ["targetId": self.tweet.id])
+                        self.dismiss()
+                    case .failure(let err):
+                        self.state.errorMessage = err.localizedDescription
+                    }
                 }
             }
         }

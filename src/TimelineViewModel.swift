@@ -747,14 +747,14 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
-    func postReply(to tweet: Tweet, text: String, completion: @escaping (Result<String, APIError>) -> Void) {
+    func postReply(to tweet: Tweet, text: String, mediaIds: [String] = [], completion: @escaping (Result<String, APIError>) -> Void) {
         let tweetId = tweet.id
         
         mutateTweet(id: tweetId) { t in
             t.replyCount += 1
         }
         
-        APIClient.shared.reply(to: tweetId, text: text) { [weak self] result in
+        APIClient.shared.reply(to: tweetId, text: text, mediaIds: mediaIds) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {

@@ -45,7 +45,7 @@ struct TweetComposerSheet: View {
                     composerInputRow
                     
                     if !state.attachments.isEmpty {
-                        attachmentStrip
+                        ComposerAttachmentStrip(attachments: $state.attachments, isDisabled: state.isSending)
                     }
                     
                     if let quoted = quotedTweet {
@@ -194,26 +194,7 @@ struct TweetComposerSheet: View {
     
     private var bottomControlsBar: some View {
         HStack(spacing: 8) {
-            Button(action: chooseMedia) {
-                HStack(spacing: 5) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 12, weight: .medium))
-                    Text(loc.t("attach_media"))
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundColor(ThemeManager.accent)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(state.isSending)
-            
-            Text("⌥ + A")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(ThemeManager.secondaryText.opacity(0.6))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(ThemeManager.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+            ComposerAttachButton(isDisabled: state.isSending, action: chooseMedia)
             
             Text("⌘ + Enter")
                 .font(.system(size: 11, weight: .medium))
@@ -250,54 +231,6 @@ struct TweetComposerSheet: View {
     
     // MARK: - Attachments
     
-    private var attachmentStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(state.attachments) { attachment in
-                    ZStack(alignment: .topTrailing) {
-                        Group {
-                            if let image = attachment.thumbnail {
-                                Image(nsImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                            } else {
-                                Rectangle().fill(ThemeManager.cardBackground)
-                            }
-                        }
-                        .frame(width: 84, height: 84)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(alignment: .bottomLeading) {
-                            if attachment.kind != .image {
-                                Text(attachment.kind == .gif ? "GIF" : "▶")
-                                    .font(.system(size: 9.5, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(Color.black.opacity(0.6))
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    .padding(5)
-                            }
-                        }
-                        
-                        Button {
-                            remove(attachment)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundColor(.white)
-                                .background(Circle().fill(Color.black.opacity(0.55)))
-                                .padding(4)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(state.isSending)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-        .frame(height: 90)
-    }
-    
     private func chooseMedia() {
         guard !state.isSending else { return }
         MediaAttachments.pick(parent: nil) { urls in
@@ -305,32 +238,9 @@ struct TweetComposerSheet: View {
         }
     }
     
-    // Adds chosen, pasted or dropped files, checking each against the supported formats and X's limits
     private func addMedia(_ urls: [URL], pasted: Bool) {
         guard !state.isSending else { return }
-        state.errorMessage = nil
-        for url in urls {
-            do {
-                var attachment = try MediaAttachments.makeAttachment(from: url)
-                // A pasted image only exists as the temporary file made for it, which goes with the attachment
-                if pasted && !attachment.isTemporaryCopy { attachment = attachment.asTemporaryCopy() }
-                do {
-                    try MediaAttachments.validateAdding(attachment, to: state.attachments)
-                } catch {
-                    if attachment.isTemporaryCopy { try? FileManager.default.removeItem(at: attachment.url) }
-                    throw error
-                }
-                state.attachments.append(attachment)
-            } catch {
-                if pasted { try? FileManager.default.removeItem(at: url) }
-                state.errorMessage = error.localizedDescription
-            }
-        }
-    }
-    
-    private func remove(_ attachment: ComposerAttachment) {
-        state.attachments.removeAll { $0.id == attachment.id }
-        if attachment.isTemporaryCopy { try? FileManager.default.removeItem(at: attachment.url) }
+        state.errorMessage = MediaAttachments.add(urls, to: &state.attachments, pasted: pasted)
     }
     
     private func submitPost() {
@@ -345,10 +255,7 @@ struct TweetComposerSheet: View {
             // Upload the media first; the post is created once X has every file
             var mediaIds: [String] = []
             do {
-                for (index, attachment) in attachments.enumerated() {
-                    state.uploadStatus = loc.format("media_uploading", ["current": String(index + 1), "total": String(attachments.count)])
-                    mediaIds.append(try await APIClient.shared.uploadMedia(attachment))
-                }
+                mediaIds = try await MediaAttachments.upload(attachments) { state.uploadStatus = $0 }
             } catch {
                 state.isSending = false
                 state.uploadStatus = nil
