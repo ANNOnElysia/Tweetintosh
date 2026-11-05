@@ -447,13 +447,6 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "加密消息",
             .traditionalChinese: "加密訊息"
         ],
-        "messages_e2ee_badge": [
-            .english: "End-to-End Encrypted",
-            .japanese: "エンドツーエンド暗号化",
-            .korean: "종단간 암호화됨",
-            .simplifiedChinese: "端到端加密",
-            .traditionalChinese: "端對端加密"
-        ],
         "messages_locked_header_btn": [
             .english: "Locked · Tap to Unlock",
             .japanese: "ロック中 · タップして解除",

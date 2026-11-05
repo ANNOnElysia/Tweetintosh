@@ -859,23 +859,6 @@ private struct DMContactHeader: View {
                     .modifier(DMGlassControl(shape: Capsule()))
                 }
                 .buttonStyle(.plain)
-            } else {
-                HStack(spacing: 4) {
-                    Image(systemName: "lock.shield.fill")
-                        .font(.system(size: 11))
-                    Text(loc.t("messages_e2ee_badge"))
-                        .font(theme.appFont(size: 11, weight: .medium))
-                }
-                .foregroundColor(ThemeManager.accent.opacity(0.85))
-                .padding(.horizontal, theme.usesGlassMessages ? 12 : 9)
-                .padding(.vertical, theme.usesGlassMessages ? 7 : 4)
-                .background {
-                    if !theme.usesGlassMessages {
-                        Capsule()
-                            .fill(ThemeManager.accent.opacity(theme.isLight ? 0.08 : 0.15))
-                    }
-                }
-                .modifier(DMGlassControl(shape: Capsule()))
             }
         }
         .padding(.horizontal, 16)
