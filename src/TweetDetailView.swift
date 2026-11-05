@@ -479,139 +479,47 @@ struct TweetDetailView: View {
                     .padding(.top, 6)
             }
             
-            // Formatted Date & Time
-            HStack(spacing: 6) {
-                Text(formattedExactDate(viewModel.focalTweet.createdAt))
-                    .font(theme.appFont(size: 12))
-                    .foregroundColor(ThemeManager.secondaryText)
-            }
-            .padding(.top, 4)
-            
-            // Metrics Counter Bar (Views, Reposts, Likes, Bookmarks)
-            if viewModel.focalTweet.retweetCount > 0 || viewModel.focalTweet.favoriteCount > 0 || viewModel.focalTweet.bookmarkCount > 0 || (viewModel.focalTweet.viewCount ?? 0) > 0 {
-                Divider()
-                    .background(ThemeManager.divider)
-                
-                HStack(spacing: 16) {
-                    if let views = viewModel.focalTweet.viewCount, views > 0 {
-                        HStack(spacing: 4) {
-                            Text(formatCount(views))
-                                .font(theme.appFont(size: 13, weight: .bold))
-                                .foregroundColor(ThemeManager.primaryText)
-                            Text(loc.t("views"))
-                                .font(theme.appFont(size: 13))
-                                .foregroundColor(ThemeManager.secondaryText)
-                        }
-                    }
-                    if viewModel.focalTweet.retweetCount > 0 {
-                        HStack(spacing: 4) {
-                            Text("\(viewModel.focalTweet.retweetCount)")
-                                .font(theme.appFont(size: 13, weight: .bold))
-                                .foregroundColor(ThemeManager.primaryText)
-                            Text(loc.t("retweet"))
-                                .font(theme.appFont(size: 13))
-                                .foregroundColor(ThemeManager.secondaryText)
-                        }
-                    }
-                    if viewModel.focalTweet.favoriteCount > 0 {
-                        HStack(spacing: 4) {
-                            Text("\(viewModel.focalTweet.favoriteCount)")
-                                .font(theme.appFont(size: 13, weight: .bold))
-                                .foregroundColor(ThemeManager.primaryText)
-                            Text(loc.t("like"))
-                                .font(theme.appFont(size: 13))
-                                .foregroundColor(ThemeManager.secondaryText)
-                        }
-                    }
-                    if viewModel.focalTweet.bookmarkCount > 0 {
-                        HStack(spacing: 4) {
-                            Text("\(viewModel.focalTweet.bookmarkCount)")
-                                .font(theme.appFont(size: 13, weight: .bold))
-                                .foregroundColor(ThemeManager.primaryText)
-                            Text(loc.t("bookmark"))
-                                .font(theme.appFont(size: 13))
-                                .foregroundColor(ThemeManager.secondaryText)
-                        }
-                    }
-                    Spacer()
-                }
-                .padding(.vertical, 2)
-            }
+            // Date, time and views on one line
+            dateAndViews
+                .padding(.top, 4)
             
             Divider()
                 .background(ThemeManager.divider)
             
             // Interactive Social Action Bar
-            heroActionBar
+            TweetActionBar(tweet: viewModel.focalTweet, actions: tweetActions(share: { _ in copyTweetLink() }), isProminent: true)
+                .padding(.vertical, 4)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
     }
     
-    // MARK: - Hero Tweet Action Bar
-    private var heroActionBar: some View {
-        HStack {
-            // Reply Button
-            actionButton(
-                icon: "bubble.left",
-                activeIcon: "bubble.left.fill",
-                count: viewModel.focalTweet.replyCount,
-                isActive: false,
-                activeColor: ThemeManager.accent
-            ) {
-                guard EngagementGuard.allows(viewModel.focalTweet) else { return }
-                state.modalReplyTargetTweet = viewModel.focalTweet
-                state.isReplyingModal = true
-            }
-            
-            Spacer()
-            
-            // Retweet & Quote Menu
-            Menu {
-                Button(action: {
-                    viewModel.toggleRetweet(for: viewModel.focalTweet)
-                }) {
-                    Label(viewModel.focalTweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
-                }
-                Button(action: {
-                    NavigationManager.shared.openComposer(quoting: viewModel.focalTweet)
-                }) {
-                    Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
-                }
-            } label: {
-                Image(systemName: "arrow.2.squarepath")
-                    .font(.system(size: 18))
-                    .foregroundColor(viewModel.focalTweet.isRetweeted ? Color(hex: "#00BA7C") : ThemeManager.secondaryText)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .help(viewModel.focalTweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
-            
-            Spacer()
-            
-            // Like Button
-            actionButton(
-                icon: "heart",
-                activeIcon: "heart.fill",
-                count: viewModel.focalTweet.favoriteCount,
-                isActive: viewModel.focalTweet.isFavorited,
-                activeColor: Color(hex: "#F91880")
-            ) {
-                viewModel.toggleLike(for: viewModel.focalTweet)
-            }
-            
-            Spacer()
-            
-            // Share Button
-            Button(action: copyTweetLink) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 15))
-                    .foregroundColor(ThemeManager.secondaryText)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(PlainButtonStyle())
+    private var dateAndViews: some View {
+        var line = Text(formattedExactDate(viewModel.focalTweet.createdAt))
+            .foregroundColor(ThemeManager.secondaryText)
+        if let views = viewModel.focalTweet.viewCount, views > 0 {
+            let count = NumberFormatter.localizedString(from: NSNumber(value: views), number: .decimal)
+            line = line
+                + Text(" · ").foregroundColor(ThemeManager.secondaryText)
+                + Text(count).foregroundColor(ThemeManager.primaryText).bold()
+                + Text(" \(loc.t("views"))").foregroundColor(ThemeManager.secondaryText)
         }
-        .padding(.vertical, 4)
+        return line.font(theme.appFont(size: 13))
+    }
+    
+    // The buttons act on this page's copy of a post, and replying opens this page's reply sheet
+    private func tweetActions(share: ((Tweet) -> Void)? = nil) -> TweetActions {
+        var actions = TweetActions()
+        actions.reply = { [state] tweet in
+            guard EngagementGuard.allows(tweet) else { return }
+            state.modalReplyTargetTweet = tweet
+            state.isReplyingModal = true
+        }
+        actions.like = { [viewModel] in viewModel.toggleLike(for: $0) }
+        actions.repost = { [viewModel] in viewModel.toggleRetweet(for: $0) }
+        actions.bookmark = { [viewModel] in viewModel.toggleBookmark(for: $0) }
+        if let share = share { actions.share = share }
+        return actions
     }
     
     // MARK: - Ancestor Tweet Row (With Thread Line)
@@ -845,74 +753,7 @@ struct TweetDetailView: View {
                             .padding(.top, 4)
                     }
                     
-                    // Reply Action Bar (Compact)
-                    HStack(alignment: .center) {
-                        // Left: Reply to this reply
-                        Button(action: {
-                            guard EngagementGuard.allows(tweet) else { return }
-                            state.modalReplyTargetTweet = tweet
-                            state.isReplyingModal = true
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 12))
-                                if tweet.replyCount > 0 {
-                                    Text("\(tweet.replyCount)")
-                                        .font(theme.appFont(size: 11))
-                                }
-                            }
-                            .foregroundColor(ThemeManager.secondaryText)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        
-                        Spacer()
-                        
-                        // Right group: Like + Retweet (转帖塞在右边)
-                        HStack(spacing: 20) {
-                            // Like
-                            Button(action: {
-                                viewModel.toggleLike(for: tweet)
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: tweet.isFavorited ? "heart.fill" : "heart")
-                                        .font(.system(size: 12))
-                                    if tweet.favoriteCount > 0 {
-                                        Text("\(tweet.favoriteCount)")
-                                            .font(theme.appFont(size: 11))
-                                    }
-                                }
-                                .foregroundColor(tweet.isFavorited ? Color(hex: "#F91880") : ThemeManager.secondaryText)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
-                            // Retweet & Quote Menu (右边)
-                            Menu {
-                                Button(action: {
-                                    viewModel.toggleRetweet(for: tweet)
-                                }) {
-                                    Label(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), systemImage: "arrow.2.squarepath")
-                                }
-                                Button(action: {
-                                    NavigationManager.shared.openComposer(quoting: tweet)
-                                }) {
-                                    Label(loc.t("quote_tweet"), systemImage: "quote.bubble")
-                                }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.2.squarepath")
-                                        .font(.system(size: 12))
-                                    if tweet.retweetCount > 0 {
-                                        Text("\(tweet.retweetCount)")
-                                            .font(theme.appFont(size: 11))
-                                    }
-                                }
-                                .foregroundColor(tweet.isRetweeted ? Color(hex: "#00BA7C") : ThemeManager.secondaryText)
-                            }
-                            .menuStyle(.borderlessButton)
-                            .menuIndicator(.hidden)
-                            .fixedSize()
-                        }
-                    }
+                    TweetActionBar(tweet: tweet, actions: tweetActions())
                     .padding(.top, 4)
                     // A click in the gaps between the buttons shouldn't count as a click on the reply: a near miss
                     // on the like button would leave the page
@@ -1118,34 +959,6 @@ struct TweetDetailView: View {
         .padding(.bottom, 12)
     }
     
-    // MARK: - Reusable Action Button
-    @ViewBuilder
-    private func actionButton(
-        icon: String,
-        activeIcon: String,
-        count: Int,
-        isActive: Bool,
-        activeColor: Color,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: isActive ? activeIcon : icon)
-                    .font(.system(size: 15))
-                    .foregroundColor(isActive ? activeColor : ThemeManager.secondaryText)
-                
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(isActive ? activeColor : ThemeManager.secondaryText)
-                }
-            }
-            .frame(height: 32)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
     // MARK: - Avatar View
     @ViewBuilder
     private func avatarView(url: String?, size: CGFloat) -> some View {
@@ -1179,21 +992,15 @@ struct TweetDetailView: View {
     }
     
     // MARK: - Helpers
-    private func formatCount(_ n: Int) -> String {
-        if n >= 1_000_000 {
-            return String(format: "%.1fM", Double(n) / 1_000_000.0)
-        } else if n >= 1_000 {
-            return String(format: "%.1fK", Double(n) / 1_000.0)
-        }
-        return "\(n)"
-    }
-    
     private func formattedExactDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: loc.currentLanguage.rawValue)
-        formatter.dateStyle = .medium
+        formatter.dateStyle = .none
         formatter.timeStyle = .short
-        return formatter.string(from: date)
+        let time = formatter.string(from: date)
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return "\(time) · \(formatter.string(from: date))"
     }
     
     private func copyTweetLink() {

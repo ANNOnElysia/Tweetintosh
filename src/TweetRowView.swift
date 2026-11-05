@@ -137,7 +137,7 @@ struct TweetRowView: View {
                 TweetDetailPrefetcher.shared.prefetch(tweet)
             }
             
-            // 3. Interaction Metrics Bar: Impressions (Views) on Left, Actions on Right
+            // 3. Actions, with the post's views among them
             // Kept outside content onTapGesture to allow direct, uninhibited interaction with buttons & menus
             TweetActionBar(tweet: tweet)
                 .padding(.leading, 66) // Aligns with text column (16 horizontal padding + 40 avatar + 10 spacing)
@@ -234,69 +234,61 @@ private final class LikeAnimationState: ObservableObject {
 }
 
 // MARK: - Tweet Action Bar (Views count + Reply, Repost, Like, Bookmark)
-private struct TweetActionBar: View {
+// What a row's buttons do. The timeline's and a post page's view models each keep their own copy of a post.
+struct TweetActions {
+    var reply: (Tweet) -> Void = { NavigationManager.shared.openReply(to: $0) }
+    var like: (Tweet) -> Void = { TimelineViewModel.shared.toggleLike(for: $0) }
+    var repost: (Tweet) -> Void = { TimelineViewModel.shared.toggleRetweet(for: $0) }
+    var bookmark: (Tweet) -> Void = { TimelineViewModel.shared.toggleBookmark(for: $0) }
+    var share: (Tweet) -> Void = { tweet in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("https://x.com/\(tweet.author.screenName)/status/\(tweet.id)", forType: .string)
+        AppToastManager.shared.show(LocalizationManager.shared.t("link_copied"), icon: "checkmark.circle.fill")
+    }
+}
+
+// Equal columns, so the same button lines up from one post to the next whatever its count is
+struct TweetActionBar: View {
     let tweet: Tweet
+    var actions = TweetActions()
+    // The main post on its page: larger, with a bookmark count, and its views are shown beside the date instead
+    var isProminent = false
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @StateObject private var like = LikeAnimationState()
     
+    private var iconSize: CGFloat { isProminent ? 16 : 13 }
+    private var textSize: CGFloat { isProminent ? 13 : 12 }
+    private static let replyColor = Color(red: 0.114, green: 0.608, blue: 0.941)
+    private static let repostColor = Color(red: 0.0, green: 0.73, blue: 0.49)
+    private static let likeColor = Color(red: 0.976, green: 0.094, blue: 0.502)
+    
     var body: some View {
-        HStack(alignment: .center) {
-            // Left: Impressions / Views Count
-            HStack(spacing: 5) {
-                Image(systemName: "chart.bar.xaxis")
-                    .font(.system(size: 11.5))
-                Text(formatCount(tweet.viewCount ?? 0))
-                    .font(theme.appFont(size: 11.5))
-            }
-            .foregroundColor(ThemeManager.secondaryText.opacity(0.85))
-            .help(loc.t("views"))
-            
-            Spacer()
-            
-            // Right: Interaction Metrics (Reply, Repost, Like, Bookmark)
-            HStack(spacing: 24) {
-                // 1. Reply
+        HStack(alignment: .center, spacing: 0) {
+            // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
+            Group {
                 HoverReader { hovered in
-                    Button(action: { NavigationManager.shared.openReply(to: tweet) }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "bubble.left")
-                                .font(.system(size: 12))
-                            if tweet.replyCount > 0 {
-                                Text(formatCount(tweet.replyCount))
-                                    .font(theme.appFont(size: 12))
-                            }
-                        }
-                        .foregroundColor(hovered ? Color(red: 0.114, green: 0.608, blue: 0.941) : ThemeManager.secondaryText)
-                        .contentShape(Rectangle())
+                    Button(action: { actions.reply(tweet) }) {
+                        label(icon: "bubble.left", count: tweet.replyCount,
+                              color: hovered ? Self.replyColor : ThemeManager.secondaryText)
                     }
                     .buttonStyle(.plain)
                 }
                 .help(loc.t("reply"))
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                // 2. Repost & Quote Menu
                 // A plain Button that pops up an NSMenu on click: SwiftUI's Menu is backed by an NSPopUpButton,
                 // and creating one per row as rows scroll into view was a major source of scroll hitches.
                 HoverReader { hovered in
                     Button(action: showRepostMenu) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "arrow.2.squarepath")
-                                .font(.system(size: 12, weight: tweet.isRetweeted ? .bold : .regular))
-                            if tweet.retweetCount > 0 {
-                                Text(formatCount(tweet.retweetCount))
-                                    .font(theme.appFont(size: 12, weight: tweet.isRetweeted ? .semibold : .regular))
-                            }
-                        }
-                        .foregroundColor(
-                            tweet.isRetweeted || hovered ? Color(red: 0.0, green: 0.73, blue: 0.49) : ThemeManager.secondaryText
-                        )
-                        .contentShape(Rectangle())
+                        label(icon: "arrow.2.squarepath", count: tweet.retweetCount, isActive: tweet.isRetweeted,
+                              color: tweet.isRetweeted || hovered ? Self.repostColor : ThemeManager.secondaryText)
                     }
                     .buttonStyle(.plain)
                 }
                 .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                // 3. Like
                 HoverReader { hovered in
                     Button(action: {
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
@@ -307,39 +299,71 @@ private struct TweetActionBar: View {
                                 like.scale = 1.0
                             }
                         }
-                        TimelineViewModel.shared.toggleLike(for: tweet)
+                        actions.like(tweet)
                     }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: tweet.isFavorited ? "heart.fill" : "heart")
-                                .font(.system(size: 12))
-                                .scaleEffect(like.scale)
-                            if tweet.favoriteCount > 0 {
-                                Text(formatCount(tweet.favoriteCount))
-                                    .font(theme.appFont(size: 12, weight: tweet.isFavorited ? .semibold : .regular))
-                            }
-                        }
-                        .foregroundColor(
-                            tweet.isFavorited || hovered ? Color(red: 0.976, green: 0.094, blue: 0.502) : ThemeManager.secondaryText
-                        )
-                        .contentShape(Rectangle())
+                        label(icon: tweet.isFavorited ? "heart.fill" : "heart", count: tweet.favoriteCount,
+                              isActive: tweet.isFavorited, iconScale: like.scale,
+                              color: tweet.isFavorited || hovered ? Self.likeColor : ThemeManager.secondaryText)
                     }
                     .buttonStyle(.plain)
                 }
                 .help(tweet.isFavorited ? loc.t("unlike") : loc.t("like"))
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
             .opacity(tweet.author.hasBlockedYou ? 0.35 : 1)
+            
+            if !isProminent {
+                label(icon: "chart.bar.xaxis", count: tweet.viewCount ?? 0, color: ThemeManager.secondaryText)
+                    .help(loc.t("views"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            HoverReader { hovered in
+                Button(action: { actions.bookmark(tweet) }) {
+                    label(icon: tweet.isBookmarked ? "bookmark.fill" : "bookmark",
+                          count: isProminent ? tweet.bookmarkCount : 0, isActive: tweet.isBookmarked,
+                          color: tweet.isBookmarked || hovered ? ThemeManager.accent : ThemeManager.secondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+            .help(loc.t(tweet.isBookmarked ? "remove_bookmark" : "bookmark"))
+            .padding(.trailing, isProminent ? 0 : 18)
+            .frame(maxWidth: isProminent ? .infinity : nil, alignment: .leading)
+            
+            HoverReader { hovered in
+                Button(action: { actions.share(tweet) }) {
+                    label(icon: "square.and.arrow.up", count: 0,
+                          color: hovered ? ThemeManager.accent : ThemeManager.secondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+            .help(loc.t("copy_link"))
         }
+    }
+    
+    private func label(icon: String, count: Int, isActive: Bool = false, iconScale: CGFloat = 1, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: iconSize, weight: isActive && icon == "arrow.2.squarepath" ? .bold : .regular))
+                .scaleEffect(iconScale)
+            if count > 0 {
+                Text(formatCount(count))
+                    .font(theme.appFont(size: textSize, weight: isActive ? .semibold : .regular))
+            }
+        }
+        .foregroundColor(color)
+        .contentShape(Rectangle())
     }
     
     private func showRepostMenu() {
         let menu = NSMenu()
         let tweet = tweet
+        let actions = actions
         menu.addItem(ClosureMenuItem(
             title: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"),
             symbol: "arrow.2.squarepath"
         ) {
-            TimelineViewModel.shared.toggleRetweet(for: tweet)
+            actions.repost(tweet)
         })
         menu.addItem(ClosureMenuItem(title: loc.t("quote_tweet"), symbol: "quote.bubble") {
             NavigationManager.shared.openComposer(quoting: tweet)
