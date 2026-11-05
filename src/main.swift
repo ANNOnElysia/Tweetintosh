@@ -134,7 +134,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.backgroundColor = ThemeManager.windowBackgroundColor
         window.isMovableByWindowBackground = true
-        window.minSize = NSSize(width: 500, height: 600)
+        applyMinimumSize(to: window)
         window.isReleasedWhenClosed = false
         window.delegate = self
         // Reopen where the window was last left; centring unconditionally would undo the restored frame, so only a
@@ -143,6 +143,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setFrameAutosaveName("TweetintoshMainWindow")
         if !restoredFrame {
             window.center()
+        }
+        applyMinimumSize(to: window)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self, weak window] _ in
+            if let window = window { self?.applyMinimumSize(to: window) }
         }
         
         let rootView = AppRootView(
@@ -226,6 +232,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ) {
             DispatchQueue.main.async { [weak self] in self?.replaceMainWindow() }
         }
+    }
+    
+    // The window stays at least a third of its screen wide, so it follows the screen it is on. A window saved narrower,
+    // or moved over from a smaller display, grows to fit rather than waiting to be resized.
+    private func applyMinimumSize(to window: NSWindow) {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        let minWidth = max(500, (screen.frame.width / 3).rounded(.up))
+        window.minSize = NSSize(width: minWidth, height: 600)
+        guard window.frame.width < minWidth else { return }
+        var frame = window.frame
+        frame.size.width = minWidth
+        frame.origin.x = min(frame.origin.x, screen.visibleFrame.maxX - minWidth)
+        window.setFrame(frame, display: true)
+    }
+    
+    func windowDidChangeScreen(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === mainWindow { applyMinimumSize(to: window) }
     }
     
     // MARK: - NSWindowDelegate (Prevent Deallocation on Close)
