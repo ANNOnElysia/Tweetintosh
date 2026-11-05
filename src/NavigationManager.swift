@@ -199,6 +199,17 @@ final class NavigationManager: ObservableObject {
         }
     }
     
+    // Arriving from outside the window: the tab has to end up on screen, so any page open over it closes
+    func showTab(_ tab: AppTab) {
+        overlayStack = []
+        selectTab(tab)
+    }
+    
+    func showSearch() {
+        overlayStack = []
+        if !isSearchActive { toggleSearch() }
+    }
+    
     func nextTab() {
         let all = AppTab.allCases
         if let idx = all.firstIndex(of: currentTab), idx < all.count - 1 {

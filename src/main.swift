@@ -286,6 +286,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
     
+    // MARK: - Dock Menu
+    // The app's items above what macOS adds itself (Options, Show All Windows, Hide, Quit). Built each time the menu
+    // opens, so it follows the current language.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let loc = LocalizationManager.shared
+        let menu = NSMenu()
+        let items: [(key: String, action: Selector)] = [
+            ("new_post", #selector(dockNewPost)),
+            ("tab_search", #selector(dockSearch)),
+            ("tab_notifications", #selector(dockNotifications)),
+            ("tab_messages", #selector(dockMessages))
+        ]
+        for item in items {
+            let menuItem = NSMenuItem(title: loc.t(item.key), action: item.action, keyEquivalent: "")
+            menuItem.target = self
+            menu.addItem(menuItem)
+        }
+        return menu
+    }
+    
+    // A Dock menu is used while the app is in the background, or with its window closed
+    private func bringMainWindowForward() {
+        if let window = mainWindow {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            setupMainWindow()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    @objc private func dockNewPost() {
+        bringMainWindowForward()
+        NavigationManager.shared.openComposer()
+    }
+    @objc private func dockSearch() {
+        bringMainWindowForward()
+        NavigationManager.shared.showSearch()
+    }
+    @objc private func dockNotifications() {
+        bringMainWindowForward()
+        NavigationManager.shared.showTab(.notifications)
+    }
+    @objc private func dockMessages() {
+        bringMainWindowForward()
+        NavigationManager.shared.showTab(.messages)
+    }
+    
     // MARK: - Navigation Menu Actions
     @objc func selectHome() {
         NavigationManager.shared.selectTab(.home)
