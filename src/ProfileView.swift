@@ -499,11 +499,7 @@ struct ProfileView: View {
         HStack(spacing: 2) {
             ForEach(ProfileTab.allCases) { tab in
                 let selected = vm.selectedTab == tab
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        vm.select(tab)
-                    }
-                } label: {
+                Group {
                     HStack(spacing: 5) {
                         Text(loc.t("profile_tab_\(tab.rawValue)"))
                             .font(theme.appFont(size: 13, weight: selected ? .semibold : .regular))
@@ -534,7 +530,12 @@ struct ProfileView: View {
                         }
                         .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .pressDragItem(tab)
+            }
+        }
+        .pressDragSelection { (tab: ProfileTab) in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                vm.select(tab)
             }
         }
         .padding(4)

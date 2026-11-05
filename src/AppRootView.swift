@@ -340,12 +340,7 @@ private struct LiquidGlassCapsule: View {
                     HStack(spacing: 3) {
                         ForEach(AppTab.allCases) { tab in
                             let isSelected = selection == tab && !nav.isSearchActive
-                            Button {
-                                withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                                    selection = tab
-                                    nav.isSearchActive = false
-                                }
-                            } label: {
+                            Group {
                                 HStack(spacing: 5) {
                                     Image(systemName: tab.iconName)
                                         .font(.system(size: 12, weight: isSelected ? .bold : .medium))
@@ -380,7 +375,13 @@ private struct LiquidGlassCapsule: View {
                                 }
                                 .contentShape(Capsule())
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .pressDragItem(tab)
+                        }
+                    }
+                    .pressDragSelection { (tab: AppTab) in
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+                            selection = tab
+                            nav.isSearchActive = false
                         }
                     }
                     .transition(.opacity)

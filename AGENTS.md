@@ -48,6 +48,7 @@ Other screens
   Mentions feeds, fetched separately.
 - `SearchView.swift`, `SearchAPI.swift`, `SearchSuggestions.swift` — search, typeahead, recent searches.
 - `Article.swift`, `ArticleReaderView.swift` — X Articles rendered natively.
+- `PressDragSelection.swift` — capsule tab bars that select on press and follow a drag.
 - `ListSupport.swift` — X Lists, and the shared helpers for hosting scrolling screens in a SwiftUI `List`.
 
 Media

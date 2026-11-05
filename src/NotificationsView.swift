@@ -169,9 +169,7 @@ private struct NotificationFilterCapsuleBar: View {
         HStack(spacing: 3) {
             ForEach(NotificationFilter.allCases) { filter in
                 let isSelected = viewModel.selectedFilter == filter
-                Button {
-                    viewModel.selectFilter(filter)
-                } label: {
+                Group {
                     HStack(spacing: 4) {
                         Image(systemName: filter.iconName)
                             .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
@@ -201,9 +199,12 @@ private struct NotificationFilterCapsuleBar: View {
                     }
                     .contentShape(Capsule())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .pressDragItem(filter)
                 .help(loc.t(filter.titleKey))
             }
+        }
+        .pressDragSelection { (filter: NotificationFilter) in
+            viewModel.selectFilter(filter)
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 3.5)
