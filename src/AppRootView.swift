@@ -57,7 +57,7 @@ extension View {
 struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     var isLiquid: Bool
     var shape: S
-    // Clear variant: .clear glass with a light backing fill, so content behind stays visible (top tab switcher)
+    // Clear variant, so content behind stays visible (top tab switcher)
     var isClear: Bool = false
     @ObservedObject private var theme = ThemeManager.shared
 
@@ -69,28 +69,10 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 let glassStyle: Glass = theme.useLiquidGlassTint
                     ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
                     : base.interactive()
-                let backingFill: Color = isClear
-                    ? (theme.isLight ? Color.white.opacity(0.22) : Color.black.opacity(0.10))
-                    : (theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.20))
 
-                content
-                    .background(
-                        shape.fill(backingFill)
-                    )
-                    .tweetGlass(glassStyle, in: shape)
-                    .overlay(
-                        shape.stroke(
-                            theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.20),
-                            lineWidth: 0.75
-                        )
-                        .allowsHitTesting(false)
-                    )
-                    .shadow(
-                        color: Color.black.opacity(theme.isLight ? 0.08 : 0.35),
-                        radius: theme.isLight ? 10 : 14,
-                        x: 0,
-                        y: theme.isLight ? 3 : 5
-                    )
+                // Nothing painted behind or around it: a fill sits between the glass and what it refracts and turns it
+                // milky, and the system glass already draws its own edge and shadow
+                content.tweetGlass(glassStyle, in: shape)
             } else {
                 fallbackFrostedGlass(content: content)
             }

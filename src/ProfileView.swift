@@ -434,12 +434,13 @@ struct ProfileView: View {
 
     private func statPill(_ count: Int, _ label: String) -> some View {
         HStack(spacing: 4) {
+            // Semantic styles rather than the theme's fixed colours, whose gray washes out on bare glass over a banner
             Text(Self.formatCount(count))
                 .font(theme.appFont(size: 13, weight: .bold))
-                .foregroundColor(ThemeManager.primaryText)
+                .foregroundStyle(.primary)
             Text(label)
                 .font(theme.appFont(size: 12.5))
-                .foregroundColor(ThemeManager.secondaryText)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
