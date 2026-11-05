@@ -50,7 +50,11 @@ final class NavigationManager: ObservableObject {
     static let shared = NavigationManager()
     
     @Published var currentTab: AppTab = .home
-    @Published var sidebarExpanded: Bool = false
+    @Published var sidebarExpanded: Bool = false {
+        didSet {
+            if !isContactListFolded { isContactListPeeking = false }
+        }
+    }
     @Published var isSearchActive: Bool = false
     @Published var searchQuery: String = ""
     // Full-pane pages pushed over the tabs (tweet detail, profiles), newest last. Each entry keeps its own
@@ -164,16 +168,24 @@ final class NavigationManager: ObservableObject {
     // MARK: Layout by window width
     
     // The contact list on the Messages page gives way in a narrow window, and can be slid over the chat for a moment
-    @Published private(set) var isContactListFolded = false
+    @Published private var isTooNarrowForContactList = false
     @Published var isContactListPeeking = false
-    private var isWideWindow: Bool?
+    @Published private var isWideWindow: Bool?
+    
+    // The sidebar and the contact list only sit side by side past half the screen, so opening the sidebar by hand in a
+    // narrower window folds the list for as long as it is open
+    var isContactListFolded: Bool {
+        isTooNarrowForContactList || (sidebarExpanded && isWideWindow == false)
+    }
     
     // Acts only when the window crosses a line, so a sidebar opened or closed by hand stays that way until the next
-    // crossing. Rounded down, so a window tiled to exactly half of an odd-width screen still counts as half.
+    // crossing. Wide means clearly past half the screen: a window tiled to half doesn't have the room for the sidebar and
+    // the contact list together, and macOS can make it slightly wider than half, so the line sits at 51%. Both lines are
+    // shares of the screen the window is on, so they hold on any display.
     func updateLayout(windowWidth: CGFloat, screenWidth: CGFloat) {
-        let isWide = windowWidth >= (screenWidth / 2).rounded(.down)
+        let isWide = windowWidth >= screenWidth * 0.51
         let isFolded = windowWidth < (screenWidth * 2 / 5).rounded(.down)
-        guard isWide != isWideWindow || isFolded != isContactListFolded else { return }
+        guard isWide != isWideWindow || isFolded != isTooNarrowForContactList else { return }
         withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
             if isWide != isWideWindow {
                 isWideWindow = isWide
@@ -181,8 +193,8 @@ final class NavigationManager: ObservableObject {
                 // The search field lives in the bar the sidebar replaces
                 if isWide { isSearchActive = false }
             }
-            isContactListFolded = isFolded
-            if !isFolded { isContactListPeeking = false }
+            isTooNarrowForContactList = isFolded
+            if !isContactListFolded { isContactListPeeking = false }
         }
     }
     
