@@ -464,7 +464,7 @@ private struct PeekVideoView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PeekPlayerView {
         let view = PeekPlayerView()
-        if let url = Self.playbackURL(for: media) {
+        if let url = MediaHelpers.previewPlaybackURL(for: media) {
             view.play(url)
         }
         return view
@@ -474,17 +474,6 @@ private struct PeekVideoView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: PeekPlayerView, coordinator: ()) {
         nsView.stop()
-    }
-
-    // A prefetched file when available, otherwise a mid-bitrate stream so the peek starts quickly
-    private static func playbackURL(for media: TweetMedia) -> URL? {
-        guard let info = media.videoInfo else { return nil }
-        if let best = info.highestBitrateVariant?.url, let cached = MediaCacheManager.shared.cachedVideoURL(for: best) {
-            return cached
-        }
-        let variants = info.sortedMp4Variants
-        let pick = variants.first(where: { ($0.bitrate ?? 0) <= 2_200_000 }) ?? variants.last
-        return pick.flatMap { URL(string: $0.url) }
     }
 }
 

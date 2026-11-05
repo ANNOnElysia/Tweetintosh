@@ -64,6 +64,17 @@ enum MediaHelpers {
         return "\(cleanBase)?format=\(format)&name=orig"
     }
     
+    /// For playing a video small: a prefetched file when there is one, otherwise a mid-bitrate stream that starts quickly
+    static func previewPlaybackURL(for media: TweetMedia) -> URL? {
+        guard let info = media.videoInfo else { return nil }
+        if let best = info.highestBitrateVariant?.url, let cached = MediaCacheManager.shared.cachedVideoURL(for: best) {
+            return cached
+        }
+        let variants = info.sortedMp4Variants
+        let pick = variants.first(where: { ($0.bitrate ?? 0) <= 2_200_000 }) ?? variants.last
+        return pick.flatMap { URL(string: $0.url) }
+    }
+
     /// Finds the highest bitrate / highest resolution MP4 variant available for a video
     static func bestVideoUrl(_ media: TweetMedia) -> String {
         if let variants = media.videoInfo?.variants {

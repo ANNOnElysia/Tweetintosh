@@ -213,6 +213,12 @@ final class ThemeManager: ObservableObject {
         }
     }
     
+    @Published var autoplayMedia: Bool {
+        didSet {
+            UserDefaults.standard.set(autoplayMedia, forKey: "Tweetintosh_AutoplayMedia")
+        }
+    }
+    
     var refreshColor: AppThemeColor {
         get { themeColor }
         set { themeColor = newValue }
@@ -306,6 +312,8 @@ final class ThemeManager: ObservableObject {
         } else {
             self.showPromotedPosts = false
         }
+        
+        self.autoplayMedia = UserDefaults.standard.object(forKey: "Tweetintosh_AutoplayMedia") as? Bool ?? true
         
         applyAppearance()
         watchSystemAppearance()

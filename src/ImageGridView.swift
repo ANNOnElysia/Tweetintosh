@@ -462,7 +462,7 @@ private struct MediaTile: View {
                 .frame(width: size.width, height: size.height)
                 .clipped()
             if media.isVideo {
-                VideoBadgeOverlay(media: media)
+                VideoTileOverlay(media: media)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -511,21 +511,24 @@ private struct MediaTile: View {
 // MARK: - Video Overlay Badges (Play button + Duration pill)
 struct VideoBadgeOverlay: View {
     let media: TweetMedia
+    var showsPlayIcon: Bool = true
     
     var body: some View {
         ZStack {
             // Center Play Icon
-            Circle()
-                .fill(Color.black.opacity(0.60))
-                .frame(width: 44, height: 44)
-                .overlay(
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(.white)
-                        .offset(x: 1.5)
-                )
-                .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
-                .shadow(radius: 8)
+            if showsPlayIcon {
+                Circle()
+                    .fill(Color.black.opacity(0.60))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                            .offset(x: 1.5)
+                    )
+                    .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
+                    .shadow(radius: 8)
+            }
             
             // Bottom Right Duration Pill
             VStack {

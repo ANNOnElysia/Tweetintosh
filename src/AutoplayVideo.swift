@@ -1,0 +1,292 @@
+//
+//  AutoplayVideo.swift
+//  Tweetintosh - Headless Data-driven Client
+//
+//  Plays videos and GIFs in place on the timeline and post pages, muted and looping. Each video tile holds a marker view, and one
+//  coordinator decides which of them are playing: rows are recycled and scrolled constantly, so leaving that to the
+//  tiles would start and drop players on every frame of a scroll.
+//
+
+import SwiftUI
+import AppKit
+import AVFoundation
+import Combine
+
+// MARK: - Coordinator
+
+final class AutoplayCoordinator {
+    static let shared = AutoplayCoordinator()
+
+    // Enough for what fits on screen at once; each player holds a network stream and a video decoder
+    private static let maxPlaying = 3
+    // A tile starts once this much of it is showing, so one peeking in at the edge stays still
+    private static let minVisibleFraction: CGFloat = 0.5
+
+    // How long after the last movement a scroll counts as finished
+    private static let scrollSettleDelay: TimeInterval = 0.2
+
+    private let views = NSHashTable<AutoplayVideoView>.weakObjects()
+    private let watchedClipViews = NSHashTable<NSClipView>.weakObjects()
+    private var observers: [AnyCancellable] = []
+    private var isEvaluationScheduled = false
+    private var lastScrollAt: CFTimeInterval = 0
+    private var settleTimer: Timer?
+
+    private init() {
+        let trigger: () -> Void = { [weak self] in self?.setNeedsEvaluate() }
+        observers = [
+            NavigationManager.shared.objectWillChange.sink { _ in trigger() },
+            LightboxManager.shared.objectWillChange.sink { _ in trigger() },
+            VideoLightboxManager.shared.objectWillChange.sink { _ in trigger() },
+            // Not only the timeline's scroll state: each kind of page tracks its own, and this has to cover them all
+            NotificationCenter.default.publisher(for: NSView.boundsDidChangeNotification).sink { [weak self] note in
+                self?.noteBoundsChange(of: note.object)
+            },
+            NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification).sink { _ in trigger() },
+            NSWorkspace.shared.notificationCenter
+                .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification).sink { _ in trigger() }
+        ]
+    }
+
+    func register(_ view: AutoplayVideoView) {
+        views.add(view)
+        setNeedsEvaluate()
+    }
+
+    func unregister(_ view: AutoplayVideoView) {
+        views.remove(view)
+        setNeedsEvaluate()
+    }
+
+    func watchScrolling(of clipView: NSClipView) {
+        clipView.postsBoundsChangedNotifications = true
+        watchedClipViews.add(clipView)
+    }
+
+    private func noteBoundsChange(of object: Any?) {
+        guard let clipView = object as? NSClipView, watchedClipViews.contains(clipView) else { return }
+        lastScrollAt = CACurrentMediaTime()
+        guard settleTimer == nil else { return }
+        let timer = Timer(timeInterval: Self.scrollSettleDelay, repeats: true) { [weak self] timer in
+            guard let self = self, !self.isScrolling else { return }
+            timer.invalidate()
+            self.settleTimer = nil
+            self.evaluate()
+        }
+        // Common modes: the default mode doesn't run while a scroll is being tracked
+        RunLoop.main.add(timer, forMode: .common)
+        settleTimer = timer
+    }
+
+    private var isScrolling: Bool {
+        CACurrentMediaTime() - lastScrollAt < Self.scrollSettleDelay
+    }
+
+    func setNeedsEvaluate() {
+        guard !isEvaluationScheduled else { return }
+        isEvaluationScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            self?.isEvaluationScheduled = false
+            self?.evaluate()
+        }
+    }
+
+    // Only the page in front plays. The pages behind it stay in the window, so they would otherwise carry on unseen.
+    private var frontScope: PeekScope {
+        let nav = NavigationManager.shared
+        if LightboxManager.shared.isPresented || VideoLightboxManager.shared.isPresented { return .none }
+        if nav.hasOverlay { return .overlay(nav.overlayStack.count - 1) }
+        return nav.currentTab == .home ? .timeline : .none
+    }
+
+    private func evaluate() {
+        // Moving pictures are what Reduce Motion asks an app not to start by itself
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            views.allObjects.forEach { $0.stop() }
+            return
+        }
+        let front = frontScope
+        let eligible = views.allObjects.filter { view in
+            if view.scope != front { view.stop() }
+            return view.scope == front
+        }
+        // Starting a player mid-scroll would hitch it. What is already playing carries on, and the rest is settled
+        // when the scroll ends; a tile that leaves the window has stopped itself by then.
+        guard !isScrolling else { return }
+
+        let ranked = eligible
+            .map { (view: $0, fraction: $0.visibleFraction) }
+            .filter { $0.fraction >= Self.minVisibleFraction }
+            .sorted { $0.fraction > $1.fraction }
+        let chosen = ranked.prefix(Self.maxPlaying).map(\.view)
+        for view in eligible where !chosen.contains(view) {
+            view.stop()
+        }
+        chosen.forEach { $0.start() }
+    }
+}
+
+// MARK: - Player View
+
+final class AutoplayVideoView: NSView {
+    var url: URL? {
+        didSet {
+            guard url != oldValue else { return }
+            stop()
+            AutoplayCoordinator.shared.setNeedsEvaluate()
+        }
+    }
+    var onPlayingChange: ((Bool) -> Void)?
+    var scope: PeekScope = .none
+
+    private let player = AVPlayer()
+    private let playerLayer = AVPlayerLayer()
+    private var readyObservation: NSKeyValueObservation?
+    private var loopObserver: Any?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        player.isMuted = true
+        player.preventsDisplaySleepDuringVideoPlayback = false
+        playerLayer.player = player
+        // Same crop as the thumbnail underneath, which stays visible until the first frame is ready
+        playerLayer.videoGravity = .resizeAspectFill
+        playerLayer.isHidden = true
+        layer?.addSublayer(playerLayer)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let observer = loopObserver { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    // Clicks belong to the tile's button underneath
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer.frame = bounds
+        CATransaction.commit()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { stop() }
+        if let clipView = enclosingScrollView?.contentView { AutoplayCoordinator.shared.watchScrolling(of: clipView) }
+        AutoplayCoordinator.shared.setNeedsEvaluate()
+    }
+
+    // How much of the tile is on screen, from 0 to 1. visibleRect alone can be wider than the view.
+    var visibleFraction: CGFloat {
+        guard let window = window, window.occlusionState.contains(.visible), !isHiddenOrHasHiddenAncestor,
+              bounds.width > 0, bounds.height > 0 else { return 0 }
+        let visible = bounds.intersection(visibleRect)
+        return (visible.width * visible.height) / (bounds.width * bounds.height)
+    }
+
+    func start() {
+        guard player.currentItem == nil, let url = url else { return }
+        let item = AVPlayerItem(url: url)
+        player.replaceCurrentItem(with: item)
+        readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
+            guard layer.isReadyForDisplay else { return }
+            DispatchQueue.main.async {
+                guard let self = self, self.player.currentItem != nil else { return }
+                self.playerLayer.isHidden = false
+                self.onPlayingChange?(true)
+            }
+        }
+        loopObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
+        ) { [weak self] _ in
+            self?.player.seek(to: .zero)
+            self?.player.play()
+        }
+        player.play()
+    }
+
+    func stop() {
+        guard player.currentItem != nil else { return }
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        readyObservation = nil
+        if let observer = loopObserver {
+            NotificationCenter.default.removeObserver(observer)
+            loopObserver = nil
+        }
+        playerLayer.isHidden = true
+        onPlayingChange?(false)
+    }
+}
+
+// MARK: - SwiftUI
+
+private struct AutoplayVideoRepresentable: NSViewRepresentable {
+    let url: URL
+    let scope: PeekScope
+    let onPlayingChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> AutoplayVideoView {
+        let view = AutoplayVideoView()
+        view.url = url
+        view.scope = scope
+        view.onPlayingChange = onPlayingChange
+        AutoplayCoordinator.shared.register(view)
+        return view
+    }
+
+    func updateNSView(_ view: AutoplayVideoView, context: Context) {
+        view.url = url
+        view.scope = scope
+        view.onPlayingChange = onPlayingChange
+    }
+
+    static func dismantleNSView(_ view: AutoplayVideoView, coordinator: ()) {
+        view.stop()
+        AutoplayCoordinator.shared.unregister(view)
+    }
+}
+
+// Which pages play videos by themselves; the rest show the play icon and wait for a click
+private struct AllowsVideoAutoplayKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var allowsVideoAutoplay: Bool {
+        get { self[AllowsVideoAutoplayKey.self] }
+        set { self[AllowsVideoAutoplayKey.self] = newValue }
+    }
+}
+
+private final class AutoplayState: ObservableObject {
+    @Published var isPlaying = false
+}
+
+// What sits over a video's thumbnail: the player where autoplay applies, then the play icon and duration. The icon
+// makes way once the video is moving, since a click on it still opens the full player.
+struct VideoTileOverlay: View {
+    let media: TweetMedia
+
+    @Environment(\.peekScope) private var scope
+    @Environment(\.allowsVideoAutoplay) private var allowsAutoplay
+    @ObservedObject private var theme = ThemeManager.shared
+    @StateObject private var state = AutoplayState()
+
+    var body: some View {
+        ZStack {
+            if allowsAutoplay, theme.autoplayMedia, let url = MediaHelpers.previewPlaybackURL(for: media) {
+                AutoplayVideoRepresentable(url: url, scope: scope) { [state] playing in
+                    if state.isPlaying != playing { state.isPlaying = playing }
+                }
+            }
+            VideoBadgeOverlay(media: media, showsPlayIcon: !state.isPlaying)
+        }
+    }
+}

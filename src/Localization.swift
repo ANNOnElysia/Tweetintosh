@@ -1834,6 +1834,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "内容与展示",
             .traditionalChinese: "內容與展示"
         ],
+        "autoplay_media": [
+            .english: "Autoplay Videos and GIFs",
+            .japanese: "動画とGIFを自動再生",
+            .korean: "동영상 및 GIF 자동 재생",
+            .simplifiedChinese: "自动播放视频和 GIF",
+            .traditionalChinese: "自動播放影片和 GIF"
+        ],
+        "autoplay_media_desc": [
+            .english: "Plays videos and GIFs on the timeline and post pages without sound. Click one to open it with sound.",
+            .japanese: "タイムラインとポストページの動画とGIFを消音で再生します。クリックすると音声付きで開きます。",
+            .korean: "타임라인과 게시물 페이지의 동영상과 GIF를 소리 없이 재생합니다. 클릭하면 소리와 함께 열립니다.",
+            .simplifiedChinese: "在时间线和帖子页面上静音播放视频和 GIF。点击后可带声音打开。",
+            .traditionalChinese: "在時間軸和貼文頁面上靜音播放影片和 GIF。點擊後可帶聲音開啟。"
+        ],
         "show_promoted_posts": [
             .english: "Show Promoted Posts",
             .japanese: "プロモーション（広告）を表示",

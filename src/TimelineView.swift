@@ -656,6 +656,7 @@ struct MainTimelineView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
 .environment(\.peekScope, .timeline)
+        .environment(\.allowsVideoAutoplay, true)
         .overlay(alignment: .top) {
             TimelinePullRefreshIndicatorOverlay()
         }

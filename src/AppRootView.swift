@@ -200,6 +200,7 @@ struct AppRootView: View {
                         TweetDetailView(tweet: tweet) {
                             nav.dismissTweetDetail()
                         }
+                        .environment(\.allowsVideoAutoplay, true)
                     case .profile(let user):
                         ProfileView(user: user) {
                             nav.dismissTweetDetail()
