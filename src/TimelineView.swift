@@ -22,6 +22,15 @@ final class TimelineLiveScrollState: ObservableObject {
     @Published var isLiveScrolling: Bool = false
 }
 
+// A modifier of its own, so a scroll starting or ending updates this and not the whole row
+struct PausesHitTestingWhileScrolling: ViewModifier {
+    @ObservedObject private var state = TimelineLiveScrollState.shared
+
+    func body(content: Content) -> some View {
+        content.allowsHitTesting(!state.isLiveScrolling)
+    }
+}
+
 final class TimelineScrollState: ObservableObject {
     static let shared = TimelineScrollState()
     @Published var pullDistance: CGFloat = 0.0
@@ -642,6 +651,7 @@ struct MainTimelineView: View {
             
             ForEach(viewModel.tweets, id: \.id) { tweet in
                 TweetRowView(tweet: tweet)
+                    .modifier(PausesHitTestingWhileScrolling())
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
