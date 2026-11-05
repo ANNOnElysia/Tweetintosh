@@ -44,8 +44,8 @@ Post page
 Other screens
 - `ProfileView.swift`, `ProfileAPI.swift` — profiles and their tabs; `GraphQLOperationIDs` lives in `ProfileAPI.swift`
   and discovers/repairs stale GraphQL operation ids at runtime.
-- `NotificationsView.swift`, `NotificationsViewModel.swift`, `NotificationReplies.swift` — notifications, including
-  replies and mentions reconstructed by search because X's feed omits them.
+- `NotificationsView.swift`, `NotificationsViewModel.swift` — notifications: X's All, Priority (people you follow) and
+  Mentions feeds, fetched separately.
 - `SearchView.swift`, `SearchAPI.swift`, `SearchSuggestions.swift` — search, typeahead, recent searches.
 - `Article.swift`, `ArticleReaderView.swift` — X Articles rendered natively.
 - `ListSupport.swift` — X Lists, and the shared helpers for hosting scrolling screens in a SwiftUI `List`.

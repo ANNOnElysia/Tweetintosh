@@ -642,6 +642,7 @@ final class APIClient {
     
     // MARK: - Fetch Notifications Timeline
     func fetchNotifications(
+        feed: NotificationFilter = .all,
         cursor: String? = nil,
         completion: @escaping (Result<(items: [NotificationItem], topCursor: String?, bottomCursor: String?), APIError>) -> Void
     ) {
@@ -650,7 +651,7 @@ final class APIClient {
             return
         }
         
-        var urlComponents = URLComponents(string: "https://x.com/i/api/2/notifications/all.json")!
+        var urlComponents = URLComponents(string: "https://x.com/i/api/2/notifications/\(feed.endpoint).json")!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "count", value: "35"),
             URLQueryItem(name: "include_profile_interstitial_type", value: "1"),
@@ -691,6 +692,8 @@ final class APIClient {
         request.setValue(bearerToken, forHTTPHeaderField: "authorization")
         request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
         request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("OAuth2Session", forHTTPHeaderField: "x-twitter-auth-type")
+        request.setValue("https://x.com/notifications", forHTTPHeaderField: "referer")
         request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
         request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
         request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
@@ -724,11 +727,12 @@ final class APIClient {
     // MARK: - Parse Notifications JSON
     private func parseNotificationsJSON(_ data: Data) throws -> (items: [NotificationItem], topCursor: String?, bottomCursor: String?) {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let globalObjects = json["globalObjects"] as? [String: Any],
-              let notifsDict = globalObjects["notifications"] as? [String: [String: Any]] else {
+              let globalObjects = json["globalObjects"] as? [String: Any] else {
             throw APIError.parseError
         }
         
+        // The Mentions feed holds only posts, so it has no notification records at all
+        let notifsDict = (globalObjects["notifications"] as? [String: [String: Any]]) ?? [:]
         let tweetsDict = (globalObjects["tweets"] as? [String: [String: Any]]) ?? [:]
         let usersDict = (globalObjects["users"] as? [String: [String: Any]]) ?? [:]
         
@@ -765,7 +769,13 @@ final class APIClient {
                     }
                 } else if entryId.hasPrefix("notification-") {
                     let nid = entryId.replacingOccurrences(of: "notification-", with: "")
-                    if let item = self.buildNotificationItem(nid: nid, entry: entry, notifsDict: notifsDict, tweetsDict: tweetsDict, usersDict: usersDict) {
+                    // Replies and mentions are entries that hold the post itself, with no notification record
+                    if let tweetId = ((((entry["content"] as? [String: Any])?["item"] as? [String: Any])?["content"] as? [String: Any])?["tweet"] as? [String: Any])?["id"] as? String {
+                        if let item = self.buildPostNotificationItem(entryId: nid, tweetId: tweetId, tweetsDict: tweetsDict, usersDict: usersDict),
+                           seenIds.insert(item.id).inserted {
+                            orderedItems.append(item)
+                        }
+                    } else if let item = self.buildNotificationItem(nid: nid, entry: entry, notifsDict: notifsDict, tweetsDict: tweetsDict, usersDict: usersDict) {
                         if !seenIds.contains(item.id) {
                             seenIds.insert(item.id)
                             orderedItems.append(item)
@@ -874,13 +884,17 @@ final class APIClient {
         // Target Tweet Snippet
         var targetTweetSnippet: String?
         var targetTweetId: String?
+        var thumbnailUrl: String?
         if let targetObjects = actions?["targetObjects"] as? [[String: Any]] {
             for to in targetObjects {
                 if let tweetObj = to["tweet"] as? [String: Any],
                    let tid = tweetObj["id"] as? String,
                    let tweet = tweetsDict[tid] {
-                    targetTweetSnippet = tweet["full_text"] as? String
+                    // Through the post parser, so the text loses its media links and leading @mentions
+                    let parsed = buildTweet(from: tweet, tweetsDict: tweetsDict, usersDict: usersDict, dateFormatter: Self.restDateFormatter)
+                    targetTweetSnippet = parsed?.displayBodyText ?? (tweet["full_text"] as? String)
                     targetTweetId = tid
+                    thumbnailUrl = parsed?.media.first.flatMap(Self.notificationThumbnail)
                     break
                 }
             }
@@ -893,10 +907,45 @@ final class APIClient {
             actionSummary: actionSummary,
             targetTweetSnippet: targetTweetSnippet,
             targetTweetId: targetTweetId,
+            thumbnailUrl: thumbnailUrl,
             replyBody: nil,
             createdAt: createdAt,
             iconId: iconId.isEmpty ? nil : iconId
         )
+    }
+    
+    // A reply or mention: the post itself is the notification
+    private func buildPostNotificationItem(
+        entryId: String,
+        tweetId: String,
+        tweetsDict: [String: [String: Any]],
+        usersDict: [String: [String: Any]]
+    ) -> NotificationItem? {
+        guard let tweetObj = tweetsDict[tweetId],
+              let tweet = buildTweet(from: tweetObj, tweetsDict: tweetsDict, usersDict: usersDict, dateFormatter: Self.restDateFormatter) else { return nil }
+        return NotificationItem(
+            id: entryId,
+            type: tweet.inReplyToStatusId != nil ? .reply : .mention,
+            actors: [tweet.author],
+            actionSummary: "",
+            targetTweetSnippet: nil,
+            targetTweetId: tweet.id,
+            thumbnailUrl: tweet.media.first.flatMap(Self.notificationThumbnail),
+            replyBody: tweet.displayBodyText.isEmpty ? nil : tweet.displayBodyText,
+            createdAt: tweet.createdAt
+        )
+    }
+    
+    private static let restDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+        return formatter
+    }()
+    
+    private static func notificationThumbnail(_ media: TweetMedia) -> String? {
+        let url = media.previewUrl ?? media.mediaUrl
+        return url.isEmpty ? nil : (url.contains("?") ? url : url + "?format=jpg&name=small")
     }
     
     // MARK: - JSON Parser (URT v2 Timeline)

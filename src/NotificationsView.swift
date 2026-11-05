@@ -102,10 +102,15 @@ struct NotificationsView: View {
                 onScrollView: { sv in
                     TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")
                 },
+                onNearBottom: { viewModel.loadMore() }
             ) {
                     
                     // Items List or Empty Placeholder
-                    if viewModel.filteredItems.isEmpty {
+                    if viewModel.isLoadingSelectedFeed {
+                        GrowingArcIndicator(color: ThemeManager.accent, lineWidth: 1.5, size: 20)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 48)
+                    } else if viewModel.filteredItems.isEmpty {
                         emptyFilterView
                     } else {
                         ForEach(viewModel.filteredItems) { item in
@@ -300,7 +305,7 @@ private struct NotificationRowView: View {
             }
             .padding(.top, 2)
             
-            // Center & Right Content
+            // Center Content, then the post's picture on the right
             VStack(alignment: .leading, spacing: 6) {
                 // Actor Avatar(s) & Timestamp
                 HStack(alignment: .center, spacing: 8) {
@@ -363,6 +368,14 @@ private struct NotificationRowView: View {
                                 )
                         )
                 }
+            }
+            
+            if let thumbnail = item.thumbnailUrl {
+                CachedAsyncImage(urlString: thumbnail, placeholderColor: ThemeManager.cardBackground, targetSize: CGSize(width: 64, height: 64))
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ThemeManager.border, lineWidth: 0.6))
+                    .padding(.top, 2)
             }
         }
         .padding(.horizontal, 16)

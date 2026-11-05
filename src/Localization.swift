@@ -531,19 +531,12 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "全部",
             .traditionalChinese: "全部"
         ],
-        "notif_filter_likes_reposts": [
-            .english: "Likes & Reposts",
-            .japanese: "いいねとリポスト",
-            .korean: "좋아요 및 재게시",
-            .simplifiedChinese: "赞与转推",
-            .traditionalChinese: "讚與轉推"
-        ],
-        "notif_filter_comments": [
-            .english: "Comments",
-            .japanese: "返信・コメント",
-            .korean: "답글",
-            .simplifiedChinese: "评论",
-            .traditionalChinese: "留言"
+        "notif_filter_priority": [
+            .english: "Priority",
+            .japanese: "優先",
+            .korean: "우선",
+            .simplifiedChinese: "优先",
+            .traditionalChinese: "優先"
         ],
         "notif_filter_mentions": [
             .english: "Mentions",

@@ -6,19 +6,27 @@
 import SwiftUI
 import Combine
 
+// The feeds X's own apps show. X builds each one on its server, so they are fetched separately rather than filtered
+// here: Priority is everything from people you follow, and Mentions is replies and @mentions.
 enum NotificationFilter: Int, CaseIterable, Identifiable {
     case all = 0
-    case likesAndReposts = 1
-    case comments = 2
-    case mentions = 3
+    case priority = 1
+    case mentions = 2
     
     var id: Int { rawValue }
+    
+    var endpoint: String {
+        switch self {
+        case .all: return "all"
+        case .priority: return "priority"
+        case .mentions: return "mentions"
+        }
+    }
     
     var titleKey: String {
         switch self {
         case .all: return "notif_filter_all"
-        case .likesAndReposts: return "notif_filter_likes_reposts"
-        case .comments: return "notif_filter_comments"
+        case .priority: return "notif_filter_priority"
         case .mentions: return "notif_filter_mentions"
         }
     }
@@ -26,8 +34,7 @@ enum NotificationFilter: Int, CaseIterable, Identifiable {
     var iconName: String {
         switch self {
         case .all: return "tray.fill"
-        case .likesAndReposts: return "heart.fill"
-        case .comments: return "bubble.left.and.bubble.right.fill"
+        case .priority: return "star.fill"
         case .mentions: return "at"
         }
     }
@@ -35,9 +42,8 @@ enum NotificationFilter: Int, CaseIterable, Identifiable {
     var shortcutKey: String {
         switch self {
         case .all: return "⌥Q"
-        case .likesAndReposts: return "⌥W"
-        case .comments: return "⌥E"
-        case .mentions: return "⌥R"
+        case .priority: return "⌥W"
+        case .mentions: return "⌥E"
         }
     }
 }
@@ -78,6 +84,8 @@ struct NotificationItem: Identifiable, Hashable, Codable {
     var targetTweetSnippet: String?
     // The post the notification is about, so the row can open it and list who liked or reposted it
     var targetTweetId: String? = nil
+    // The first picture of that post, for the thumbnail beside the row
+    var thumbnailUrl: String? = nil
     var replyBody: String?
     var createdAt: Date
     var iconId: String? = nil
@@ -225,25 +233,25 @@ final class NotificationsViewModel: ObservableObject {
     static let shared = NotificationsViewModel()
     
     @Published var selectedFilter: NotificationFilter = .all
-    @Published var items: [NotificationItem] = []
+    @Published private var pages: [NotificationFilter: Page] = [:]
+    @Published private var loadingFeeds: Set<NotificationFilter> = []
     @Published var isLoading: Bool = false
     @Published var isRefreshing: Bool = false
     @Published var isLoadingMore: Bool = false
     
-    private var topCursor: String?
-    private var bottomCursor: String?
+    private struct Page {
+        var items: [NotificationItem]
+        var topCursor: String?
+        var bottomCursor: String?
+    }
     
     var filteredItems: [NotificationItem] {
-        switch selectedFilter {
-        case .all:
-            return items
-        case .likesAndReposts:
-            return items.filter { $0.type == .like || $0.type == .retweet }
-        case .comments:
-            return items.filter { $0.type == .reply }
-        case .mentions:
-            return items.filter { ($0.type == .mention || $0.type == .follow) && !$0.isRecentPost }
-        }
+        pages[selectedFilter]?.items ?? []
+    }
+    
+    /// The selected feed has never loaded and is on its way, so it is not empty yet.
+    var isLoadingSelectedFeed: Bool {
+        pages[selectedFilter] == nil && loadingFeeds.contains(selectedFilter)
     }
     
     private init() {
@@ -251,9 +259,8 @@ final class NotificationsViewModel: ObservableObject {
     }
     
     func resetForSignOut() {
-        items = []
-        topCursor = nil
-        bottomCursor = nil
+        pages = [:]
+        loadingFeeds = []
         isLoading = false
         isRefreshing = false
         isLoadingMore = false
@@ -266,20 +273,21 @@ final class NotificationsViewModel: ObservableObject {
     private func loadInitialData() {
         // 1. Load cached snapshot from disk if available
         if let snapshot = NotificationCacheManager.shared.loadCachedSnapshot(), !snapshot.items.isEmpty {
-            self.items = snapshot.items
-            self.topCursor = snapshot.topCursor
-            self.bottomCursor = snapshot.bottomCursor
+            pages[.all] = Page(items: snapshot.items, topCursor: snapshot.topCursor, bottomCursor: snapshot.bottomCursor)
             prefetchMedia(for: snapshot.items)
         }
         
         // 2. Refresh live notifications from network
-        refresh(silently: !self.items.isEmpty)
+        refresh(silently: pages[.all] != nil)
     }
     
     func selectFilter(_ filter: NotificationFilter) {
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                 self.selectedFilter = filter
+            }
+            if self.pages[filter] == nil {
+                self.refresh(silently: true, feed: filter)
             }
         }
     }
@@ -298,38 +306,30 @@ final class NotificationsViewModel: ObservableObject {
         }
     }
     
-    func refresh(silently: Bool = false) {
+    func refresh(silently: Bool = false, feed: NotificationFilter? = nil) {
+        let feed = feed ?? selectedFilter
         if !silently {
             isRefreshing = true
         }
+        loadingFeeds.insert(feed)
         
         let startTime = Date()
-        APIClient.shared.fetchNotificationsWithReplies { [weak self] result in
+        APIClient.shared.fetchNotifications(feed: feed) { [weak self] result in
             let elapsed = Date().timeIntervalSince(startTime)
             let remainingDelay = max(0.0, 2.4 - elapsed)
             
             DispatchQueue.main.asyncAfter(deadline: .now() + (silently ? 0 : remainingDelay)) {
                 guard let self = self else { return }
+                self.loadingFeeds.remove(feed)
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
                     self.isRefreshing = false
                 }
                 switch result {
                 case .success(let data):
-                    if !data.items.isEmpty {
-                        self.items = data.items
-                        self.topCursor = data.topCursor
-                        self.bottomCursor = data.bottomCursor
-                        self.prefetchMedia(for: data.items)
-                        NotificationCacheManager.shared.saveSnapshot(
-                            items: data.items,
-                            topCursor: data.topCursor,
-                            bottomCursor: data.bottomCursor
-                        )
-                    } else if self.items.isEmpty {
-                        self.loadMockNotifications()
-                    }
+                    self.store(Page(items: data.items, topCursor: data.topCursor, bottomCursor: data.bottomCursor), for: feed)
+                    self.prefetchMedia(for: data.items)
                 case .failure:
-                    if self.items.isEmpty {
+                    if feed == .all && self.pages[.all] == nil {
                         self.loadMockNotifications()
                     }
                 }
@@ -338,32 +338,32 @@ final class NotificationsViewModel: ObservableObject {
     }
     
     func loadMore() {
-        guard !isLoadingMore, let cursor = bottomCursor else { return }
+        let feed = selectedFilter
+        guard !isLoadingMore, var page = pages[feed], let cursor = page.bottomCursor else { return }
         isLoadingMore = true
         
-        APIClient.shared.fetchNotifications(cursor: cursor) { [weak self] result in
+        APIClient.shared.fetchNotifications(feed: feed, cursor: cursor) { [weak self] result in
             guard let self = self else { return }
             DispatchQueue.main.async {
                 self.isLoadingMore = false
                 if case .success(let data) = result {
-                    var current = self.items
-                    var seen = Set(current.map { $0.id })
-                    for item in data.items {
-                        if !seen.contains(item.id) {
-                            seen.insert(item.id)
-                            current.append(item)
-                        }
+                    var seen = Set(page.items.map { $0.id })
+                    for item in data.items where seen.insert(item.id).inserted {
+                        page.items.append(item)
                     }
-                    self.items = current
-                    self.bottomCursor = data.bottomCursor
+                    page.bottomCursor = data.bottomCursor
+                    self.store(page, for: feed)
                     self.prefetchMedia(for: data.items)
-                    NotificationCacheManager.shared.saveSnapshot(
-                        items: current,
-                        topCursor: self.topCursor,
-                        bottomCursor: self.bottomCursor
-                    )
                 }
             }
+        }
+    }
+    
+    // Only All is kept on disk: it is the one shown on launch
+    private func store(_ page: Page, for feed: NotificationFilter) {
+        pages[feed] = page
+        if feed == .all {
+            NotificationCacheManager.shared.saveSnapshot(items: page.items, topCursor: page.topCursor, bottomCursor: page.bottomCursor)
         }
     }
     
@@ -381,7 +381,7 @@ final class NotificationsViewModel: ObservableObject {
     
     private func loadMockNotifications() {
         let now = Date()
-        self.items = [
+        let mock = [
             NotificationItem(
                 id: "notif-1",
                 type: .like,
@@ -439,5 +439,6 @@ final class NotificationsViewModel: ObservableObject {
                 createdAt: now.addingTimeInterval(-14400)
             )
         ]
+        pages[.all] = Page(items: mock, topCursor: nil, bottomCursor: nil)
     }
 }

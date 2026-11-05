@@ -424,7 +424,7 @@ final class NavigationManager: ObservableObject {
                     return nil
                 }
                 
-                // Secondary Filter Direct Shortcuts: Option + Q, W, E, R (strictly Option, NOT Cmd to preserve Cmd+Q quit)
+                // Secondary Filter Direct Shortcuts: Option + Q, W, E (strictly Option, NOT Cmd to preserve Cmd+Q quit)
                 if hasOption && !hasCmd && !hasCtrl {
                     switch keyCode {
                     case 12: // Key Q -> Home: For You; Notifications: All
@@ -435,26 +435,21 @@ final class NavigationManager: ObservableObject {
                             NotificationsViewModel.shared.selectFilter(.all)
                             return nil
                         }
-                    case 13: // Key W -> Home: Following; Notifications: Likes & Reposts
+                    case 13: // Key W -> Home: Following; Notifications: Priority
                         if self.currentTab == .home {
                             TimelineViewModel.shared.selectFeed(.following)
                             return nil
                         } else if self.currentTab == .notifications {
-                            NotificationsViewModel.shared.selectFilter(.likesAndReposts)
+                            NotificationsViewModel.shared.selectFilter(.priority)
                             return nil
                         }
-                    case 14: // Key E -> Home: List; Notifications: Comments
+                    case 14: // Key E -> Home: List; Notifications: Mentions
                         if self.currentTab == .home {
                             if !TimelineViewModel.shared.userLists.isEmpty {
                                 TimelineViewModel.shared.selectFeed(.list)
                             }
                             return nil
                         } else if self.currentTab == .notifications {
-                            NotificationsViewModel.shared.selectFilter(.comments)
-                            return nil
-                        }
-                    case 15: // Key R -> Mentions
-                        if self.currentTab == .notifications {
                             NotificationsViewModel.shared.selectFilter(.mentions)
                             return nil
                         }
