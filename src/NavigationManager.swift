@@ -53,6 +53,8 @@ final class NavigationManager: ObservableObject {
     @Published var sidebarExpanded: Bool = false {
         didSet {
             if !isContactListFolded { isContactListPeeking = false }
+            // The sidebar and the top bar each have their own search field, and only one was focused
+            if sidebarExpanded != oldValue { isSearchActive = false }
         }
     }
     @Published var isSearchActive: Bool = false
@@ -192,8 +194,6 @@ final class NavigationManager: ObservableObject {
             if isWide != isWideWindow {
                 isWideWindow = isWide
                 sidebarExpanded = isWide
-                // The search field lives in the bar the sidebar replaces
-                if isWide { isSearchActive = false }
             }
             isTooNarrowForContactList = isFolded
             if !isContactListFolded { isContactListPeeking = false }
@@ -266,9 +266,6 @@ final class NavigationManager: ObservableObject {
     func toggleSearch() {
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                if !self.isSearchActive && self.sidebarExpanded {
-                    self.sidebarExpanded = false
-                }
                 self.isSearchActive.toggle()
             }
         }

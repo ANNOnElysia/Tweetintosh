@@ -1399,20 +1399,6 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "列表",
             .traditionalChinese: "清單"
         ],
-        "select_list": [
-            .english: "Select List",
-            .japanese: "リストを選択",
-            .korean: "목록 선택",
-            .simplifiedChinese: "选择列表",
-            .traditionalChinese: "選擇清單"
-        ],
-        "switch_list": [
-            .english: "Switch",
-            .japanese: "切替",
-            .korean: "전환",
-            .simplifiedChinese: "切换",
-            .traditionalChinese: "切換"
-        ],
         "add_custom_list": [
             .english: "Add Custom List...",
             .japanese: "カスタムリストを追加...",
@@ -1847,6 +1833,20 @@ final class LocalizationManager: ObservableObject {
             .korean: "대화 목록 표시",
             .simplifiedChinese: "显示会话列表",
             .traditionalChinese: "顯示對話列表"
+        ],
+        "sidebar_feeds": [
+            .english: "Feeds",
+            .japanese: "フィード",
+            .korean: "피드",
+            .simplifiedChinese: "信息流",
+            .traditionalChinese: "動態"
+        ],
+        "sidebar_filter": [
+            .english: "Filter",
+            .japanese: "フィルター",
+            .korean: "필터",
+            .simplifiedChinese: "筛选",
+            .traditionalChinese: "篩選"
         ],
         "show_promoted_posts": [
             .english: "Show Promoted Posts",

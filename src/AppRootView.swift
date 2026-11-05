@@ -184,10 +184,12 @@ struct AppRootView: View {
             }
             
             // Suggestions under the search field (typeahead, or recent searches when it is empty)
-            if nav.isSearchActive && !nav.sidebarExpanded && !nav.hasOverlay {
+            if nav.isSearchActive && !nav.hasOverlay {
+                // Beside the sidebar's field when it is open, under the top bar's otherwise
                 SearchSuggestionsPanel()
-                    .padding(.top, 66)
-                    .frame(maxWidth: .infinity, alignment: .top)
+                    .padding(.top, nav.sidebarExpanded ? 100 : 66)
+                    .padding(.leading, nav.sidebarExpanded ? 222 : 0)
+                    .frame(maxWidth: .infinity, alignment: nav.sidebarExpanded ? .topLeading : .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                     .zIndex(101)
             }
@@ -620,6 +622,7 @@ private struct LiquidGlassSidebar: View {
     @ObservedObject var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject private var accounts = AccountManager.shared
     @Namespace private var selectionNamespace
     
     var body: some View {
@@ -671,6 +674,9 @@ private struct LiquidGlassSidebar: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
             
+            SidebarSearchRow()
+                .padding(.horizontal, 8)
+            
             // Navigation Tabs
             ForEach(AppTab.allCases) { tab in
                 let isSelected = selection == tab
@@ -682,12 +688,12 @@ private struct LiquidGlassSidebar: View {
                     HStack(spacing: 10) {
                         Image(systemName: tab.iconName)
                             .font(.system(size: 13.5, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
+                            .foregroundColor(ThemeManager.accent)
                             .frame(width: 20)
                         
                         Text(tabTitle(tab))
                             .font(theme.appFont(size: 13, weight: isSelected ? .semibold : .regular))
-                            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.80) : Color.white.opacity(0.75)))
+                            .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
                         
                         Spacer()
                         
@@ -715,25 +721,9 @@ private struct LiquidGlassSidebar: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, 8)
-                
-                // Filters under Notifications (All / Likes & Reposts / Comments / Mentions)
-                if tab == .notifications {
-                    SidebarNotificationFilterSection()
-                        .padding(.horizontal, 8)
-                        .padding(.top, 2)
-                        .padding(.bottom, 4)
-                }
-                
-                // Parallel Feed Selector under Home (推荐 / 关注中 / 列表)
-                if tab == .home {
-                    SidebarHomeFeedSection(selection: $selection)
-                        .padding(.horizontal, 8)
-                        .padding(.top, 2)
-                        .padding(.bottom, 4)
-                }
             }
             
-            SidebarListsSection(selection: $selection)
+            SidebarContextSection(selection: $selection)
             
             Spacer(minLength: 0)
             
@@ -776,18 +766,16 @@ private struct LiquidGlassSidebar: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 2)
             
-            // Bottom Settings Button
+            // The signed-in account, which is also the way into Settings
             Button(action: onOpenSettings) {
-                HStack(spacing: 10) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 12.5))
-                        .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60))
-                        .frame(width: 20)
-                    Text(loc.t("settings"))
-                        .font(theme.appFont(size: 12.5))
-                        .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.85) : Color.white.opacity(0.70))
+                HStack(spacing: 9) {
+                    CurrentUserAvatar(size: 26)
+                    Text(accounts.active?.name ?? loc.t("settings"))
+                        .font(theme.appFont(size: 13, weight: .medium))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
+                        .lineLimit(1)
                     
-                    Spacer()
+                    Spacer(minLength: 4)
                     
                     if nav.showShortcutBadges {
                         Text("⌘,")
@@ -800,18 +788,20 @@ private struct LiquidGlassSidebar: View {
                                     .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
                             )
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    } else {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 12.5))
+                            .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60))
                     }
                 }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.04))
-                )
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
+            .help(loc.t("settings"))
             .padding(.horizontal, 8)
-            .padding(.bottom, 12)
+            .padding(.bottom, 10)
         }
         .frame(maxHeight: .infinity)
         .modifier(
@@ -877,296 +867,240 @@ private struct LiquidGlassSidebar: View {
     }
 }
 
-// MARK: - Sidebar Notification Filters (the same filters as the floating bar, shown under Notifications)
-private struct SidebarNotificationFilterSection: View {
-    @ObservedObject var viewModel = NotificationsViewModel.shared
-    @ObservedObject var nav = NavigationManager.shared
-    @ObservedObject var loc = LocalizationManager.shared
-    @ObservedObject var theme = ThemeManager.shared
-    @Namespace private var filterNamespace
-    
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(NotificationFilter.allCases) { filter in
-                let isSelected = viewModel.selectedFilter == filter
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                        if nav.currentTab != .notifications { nav.currentTab = .notifications }
-                        viewModel.selectFilter(filter)
-                    }
-                } label: {
-                    VStack(spacing: 1) {
-                        Image(systemName: filter.iconName)
-                            .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                        if nav.showShortcutBadges {
-                            Text(filter.shortcutKey)
-                                .font(.system(size: 8, weight: .semibold, design: .rounded))
-                                .opacity(0.8)
-                        }
-                    }
-                    .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: nav.showShortcutBadges ? 34 : 28)
-                    .background {
-                        if isSelected {
-                            Capsule(style: .continuous)
-                                .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.24))
-                                .overlay(Capsule(style: .continuous).stroke(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 0.6))
-                                .matchedGeometryEffect(id: "sidebar-notif-filter", in: filterNamespace)
-                        }
-                    }
-                    .contentShape(Capsule(style: .continuous))
-                }
-                .buttonStyle(PlainButtonStyle())
-                .help(loc.t(filter.titleKey))
-            }
-        }
-        .padding(2.5)
-        .background(
-            Capsule(style: .continuous)
-                .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08), lineWidth: 0.6)
-                )
-        )
-        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
-    }
-}
+// MARK: - Sidebar Search
 
-// MARK: - Sidebar Home Feed Section (Parallel Feeds under Home: 推荐, 关注中, 列表)
-private struct SidebarHomeFeedSection: View {
-    @Binding var selection: AppTab
-    @ObservedObject var timelineVM = TimelineViewModel.shared
-    @ObservedObject var nav = NavigationManager.shared
-    @ObservedObject var loc = LocalizationManager.shared
-    @ObservedObject var theme = ThemeManager.shared
-    @Namespace private var feedNamespace
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 0) {
-                feedButton(type: .forYou)
-                feedButton(type: .following)
-            }
-            .pressDragSelection { (type: HomeFeedType) in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                    selection = .home
-                    timelineVM.selectFeed(type)
-                }
-            }
-            .padding(2.5)
-            .background(feedRowBackground)
-        }
-    }
-    
-    // The rounded track behind each row of feed buttons
-    private var feedRowBackground: some View {
-        Capsule(style: .continuous)
-            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08), lineWidth: 0.6)
-            )
-    }
-    
-    private func feedButton(type: HomeFeedType) -> some View {
-        let isSelected = (selection == .home && timelineVM.selectedFeed == type)
-        return HStack(spacing: 4) {
-            Image(systemName: type.iconName)
-                .font(.system(size: 10, weight: isSelected ? .bold : .medium))
-            
-            Text(loc.t(type.titleKey))
-                .font(theme.appFont(size: 11, weight: isSelected ? .semibold : .medium))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            
-            if nav.showShortcutBadges {
-                Text(type.shortcutLetter)
-                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                    .foregroundColor(isSelected ? ThemeManager.accent : ThemeManager.tertiaryText)
-                    .padding(.horizontal, 2.5)
-                    .padding(.vertical, 1)
-                    .background(
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(isSelected ? ThemeManager.accent.opacity(0.15) : Color.black.opacity(0.05))
-                    )
-            }
-        }
-        .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65)))
-        .padding(.horizontal, 5)
-        .frame(maxWidth: .infinity)
-        .frame(height: 28)
-        .background {
-            if isSelected {
-                feedActiveBackground
-            }
-        }
-        .contentShape(Capsule(style: .continuous))
-        .pressDragItem(type)
-    }
-    
-    @ViewBuilder
-    private var feedActiveBackground: some View {
-        if theme.useLiquidGlass {
-            if #available(macOS 26.0, *) {
-                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
-                let tabGlass: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.22))
-                    : .regular
-                Capsule(style: .continuous)
-                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
-                    .tweetGlass(tabGlass, in: Capsule(style: .continuous))
-                    .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
-            } else {
-                defaultFeedActiveBackground
-            }
-        } else {
-            defaultFeedActiveBackground
-        }
-    }
-    
-    private var defaultFeedActiveBackground: some View {
-        Capsule(style: .continuous)
-            .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.24))
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(ThemeManager.accent.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 0.6)
-            )
-            .matchedGeometryEffect(id: "sidebar-home-feed", in: feedNamespace)
-    }
-}
-
-// MARK: - Sidebar Lists Section
-
-private final class SidebarListsState: ObservableObject {
-    private static let key = "Tweetintosh_SidebarListsExpanded"
-    @Published var isExpanded = UserDefaults.standard.bool(forKey: SidebarListsState.key) {
-        didSet { UserDefaults.standard.set(isExpanded, forKey: Self.key) }
-    }
-}
-
-// A collapsible section, like Playlists in Music on iPad: the header folds it, and each row opens that list's feed
-private struct SidebarListsSection: View {
-    @Binding var selection: AppTab
-    @ObservedObject private var timelineVM = TimelineViewModel.shared
+// A row until it is used, then the field itself, in place. Suggestions float beside the sidebar.
+private struct SidebarSearchRow: View {
+    @ObservedObject private var nav = NavigationManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
-    @StateObject private var state = SidebarListsState()
-    
-    private var isShowingList: Bool { selection == .home && timelineVM.selectedFeed == .list }
-    private var secondary: Color { theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65) }
+    @FocusState private var isFocused: Bool
     
     var body: some View {
-        if !timelineVM.userLists.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
-                header
-                if state.isExpanded {
+        Group {
+            if nav.isSearchActive {
+                field
+            } else {
+                Button { nav.toggleSearch() } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13.5, weight: .medium))
+                            .foregroundColor(ThemeManager.accent)
+                            .frame(width: 20)
+                        Text(loc.t("tab_search"))
+                            .font(theme.appFont(size: 13))
+                            .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
+                        Spacer()
+                        if nav.showShortcutBadges {
+                            Text("⌥S")
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
+                        }
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .onChange(of: nav.isSearchActive) { _, active in
+            if active {
+                SearchSuggestionsModel.shared.update(query: nav.searchQuery)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { isFocused = true }
+            } else {
+                isFocused = false
+                SearchSuggestionsModel.shared.reset()
+            }
+        }
+    }
+    
+    private var field: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ThemeManager.accent)
+            TextField(loc.t("search_placeholder"), text: $nav.searchQuery)
+                .textFieldStyle(.plain)
+                .font(theme.appFont(size: 12.5))
+                .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
+                .focused($isFocused)
+                .onSubmit { SearchSuggestionsModel.shared.submit(typed: nav.searchQuery) }
+                .onChange(of: nav.searchQuery) { _, text in SearchSuggestionsModel.shared.update(query: text) }
+                .onKeyPress(.downArrow) {
+                    SearchSuggestionsModel.shared.move(1)
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    SearchSuggestionsModel.shared.move(-1)
+                    return .handled
+                }
+                .onExitCommand { nav.toggleSearch() }
+            if !nav.searchQuery.isEmpty {
+                Button { nav.searchQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 11)
+        .frame(height: 34)
+        .background(Capsule(style: .continuous).fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.10)))
+    }
+}
+
+// MARK: - Sidebar Context Section
+
+// What can be chosen in the feed section. Each list counts as a feed of its own.
+private enum SidebarFeedChoice: Hashable {
+    case feed(HomeFeedType)
+    case list(String)
+}
+
+// The middle of the sidebar follows the page: feeds for Home, filters for Notifications, nothing for Messages
+private struct SidebarContextSection: View {
+    @Binding var selection: AppTab
+    @ObservedObject private var timelineVM = TimelineViewModel.shared
+    @ObservedObject private var notifications = NotificationsViewModel.shared
+    @ObservedObject private var nav = NavigationManager.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+    
+    var body: some View {
+        Group {
+            switch selection {
+            case .home:
+                section(title: loc.t("sidebar_feeds")) {
                     // Scrolls only when there are too many lists for the sidebar's height
                     ViewThatFits(in: .vertical) {
-                        rows
-                        ScrollView(showsIndicators: false) { rows }
+                        feedRows
+                        ScrollView(showsIndicators: false) { feedRows }
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                .transition(.opacity)
+            case .notifications:
+                section(title: loc.t("sidebar_filter")) { filterRows }
+                    .transition(.opacity)
+            case .messages:
+                EmptyView()
+            }
+        }
+        .padding(.horizontal, 8)
+        .animation(.easeInOut(duration: 0.18), value: selection)
+    }
+    
+    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(theme.appFont(size: 12.5, weight: .semibold))
+                .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
+                .padding(.horizontal, 11)
+                .padding(.top, 10)
+            content()
+        }
+    }
+    
+    private var feedRows: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach([HomeFeedType.forYou, .following]) { type in
+                    row(title: loc.t(type.titleKey), badge: type.shortcutLetter,
+                        isSelected: timelineVM.selectedFeed == type) {
+                        iconTile(type.iconName)
+                    }
+                    .pressDragItem(SidebarFeedChoice.feed(type))
+                }
+                ForEach(timelineVM.userLists) { list in
+                    row(title: list.name, badge: nil,
+                        isSelected: timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id) {
+                        if let banner = list.bannerUrl {
+                            CachedAsyncImage(urlString: banner, targetSize: CGSize(width: 26, height: 26))
+                                .frame(width: 26, height: 26)
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        } else {
+                            iconTile(list.iconName)
+                        }
+                    }
+                    .help(list.memberCount > 0 ? "\(list.name) · \(list.memberCount)" : list.name)
+                    .pressDragItem(SidebarFeedChoice.list(list.id))
                 }
             }
-            .padding(.horizontal, 8)
-            .clipped()
-        }
-    }
-    
-    private var header: some View {
-        Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                state.isExpanded.toggle()
+            .pressDragSelection { (choice: SidebarFeedChoice) in
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                    switch choice {
+                    case .feed(let type):
+                        timelineVM.selectFeed(type)
+                    case .list(let id):
+                        if let list = timelineVM.userLists.first(where: { $0.id == id }) { timelineVM.selectList(list) }
+                    }
+                }
             }
-        } label: {
-            HStack {
-                Text(loc.t("feed_list"))
-                    .font(theme.appFont(size: 13, weight: .semibold))
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10.5, weight: .bold))
-                    .rotationEffect(.degrees(state.isExpanded ? 90 : 0))
-            }
-            // Folded away, this is the only sign that a list is what the timeline is showing
-            .foregroundColor(isShowingList && !state.isExpanded ? ThemeManager.accent : secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button(loc.t("refresh_lists")) { timelineVM.fetchUserLists() }
-        }
-    }
-    
-    private var rows: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(timelineVM.userLists) { list in
-                listRow(list)
-            }
+            
             Button {
                 if let url = URL(string: "https://x.com/i/lists") { NSWorkspace.shared.open(url) }
             } label: {
-                rowContent(title: loc.t("manage_lists_on_x"), color: ThemeManager.accent) {
-                    iconTile("arrow.up.forward", color: ThemeManager.accent)
+                row(title: loc.t("manage_lists_on_x"), badge: nil, isSelected: false, titleColor: ThemeManager.accent) {
+                    iconTile("arrow.up.forward")
                 }
             }
             .buttonStyle(.plain)
+            .contextMenu {
+                Button(loc.t("refresh_lists")) { timelineVM.fetchUserLists() }
+            }
         }
     }
     
-    private func listRow(_ list: TwitterList) -> some View {
-        let isSelected = isShowingList && timelineVM.selectedListId == list.id
-        return Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                selection = .home
-                timelineVM.selectList(list)
-            }
-        } label: {
-            rowContent(title: list.name, color: isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.88))) {
-                if let banner = list.bannerUrl {
-                    CachedAsyncImage(urlString: banner, targetSize: CGSize(width: 26, height: 26))
-                        .frame(width: 26, height: 26)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                } else {
-                    iconTile(list.iconName, color: secondary)
+    private var filterRows: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(NotificationFilter.allCases) { filter in
+                row(title: loc.t(filter.titleKey), badge: filter.shortcutKey,
+                    isSelected: notifications.selectedFilter == filter) {
+                    iconTile(filter.iconName)
                 }
-            }
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14))
-                }
+                .pressDragItem(filter)
             }
         }
-        .buttonStyle(.plain)
-        .help(list.memberCount > 0 ? "\(list.name) · \(list.memberCount)" : list.name)
+        .pressDragSelection { (filter: NotificationFilter) in
+            notifications.selectFilter(filter)
+        }
     }
     
-    private func rowContent<Icon: View>(title: String, color: Color, @ViewBuilder icon: () -> Icon) -> some View {
+    private func row<Icon: View>(title: String, badge: String?, isSelected: Bool, titleColor: Color? = nil,
+                                 @ViewBuilder icon: () -> Icon) -> some View {
         HStack(spacing: 9) {
             icon()
             Text(title)
                 .font(theme.appFont(size: 13))
-                .foregroundColor(color)
+                .foregroundColor(titleColor ?? (theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92)))
                 .lineLimit(1)
             Spacer(minLength: 0)
+            if nav.showShortcutBadges, let badge = badge {
+                Text(badge)
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14))
+            }
+        }
         .contentShape(Rectangle())
     }
     
-    private func iconTile(_ symbol: String, color: Color) -> some View {
+    private func iconTile(_ symbol: String) -> some View {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
             .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
             .frame(width: 26, height: 26)
             .overlay(
                 Image(systemName: symbol)
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundColor(color)
+                    .foregroundColor(ThemeManager.accent)
             )
     }
 }
