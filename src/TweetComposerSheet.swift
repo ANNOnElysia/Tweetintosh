@@ -156,6 +156,7 @@ struct TweetComposerSheet: View {
             .font(theme.appFont(size: 14.5))
             .foregroundColor(ThemeManager.primaryText)
             .lineLimit(quotedTweet != nil ? 4...8 : 7...14)
+            .returnStartsNewLine()
             .frame(minHeight: quotedTweet != nil ? 90 : 160, alignment: .topLeading)
         }
         .padding(.horizontal, 16)
@@ -369,6 +370,23 @@ struct TweetComposerSheet: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// A multi-line TextField on macOS treats Return as "finished" and only starts a new line on Option+Return, which nobody
+// would guess in a box for writing posts. Return and Shift+Return start one here; Command+Return still reaches the
+// post button.
+extension View {
+    func returnStartsNewLine() -> some View {
+        // The keypad's Enter key is a separate character from Return
+        onKeyPress(keys: [.return, KeyEquivalent("\u{3}")], phases: .down) { press in
+            guard !press.modifiers.contains(.command),
+                  let editor = NSApp.keyWindow?.firstResponder as? NSTextView,
+                  // Return is confirming a Chinese or Japanese word still being composed
+                  !editor.hasMarkedText() else { return .ignored }
+            editor.insertNewlineIgnoringFieldEditor(nil)
+            return .handled
         }
     }
 }

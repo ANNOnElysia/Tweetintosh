@@ -169,6 +169,7 @@ struct ReplyComposerSheet: View {
             .font(.system(size: 14))
             .foregroundColor(ThemeManager.primaryText)
             .lineLimit(5...10)
+            .returnStartsNewLine()
             .frame(minHeight: 110, alignment: .topLeading)
         }
         .padding(.horizontal, 16)
