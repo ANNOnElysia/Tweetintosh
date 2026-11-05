@@ -39,6 +39,8 @@ enum PeekScope: Equatable {
     case timeline
     case notifications
     case messages
+    // The contact list slid over the chat, which it takes the presses from
+    case contactListOverlay
     // A full-pane page; the index is its depth in the navigation stack
     case overlay(Int)
 }
@@ -368,14 +370,15 @@ final class PeekCoordinator: ObservableObject {
     private func activeScope() -> PeekScope {
         let nav = NavigationManager.shared
         if LightboxManager.shared.isPresented || VideoLightboxManager.shared.isPresented
-            || nav.isShowingCompose || nav.replyTargetTweet != nil {
+            || nav.isShowingCompose || nav.replyTargetTweet != nil || DMMessageMenuManager.shared.active != nil
+            || TweetOptionsMenuManager.shared.activeMenu != nil {
             return .none
         }
         if nav.hasOverlay { return .overlay(nav.overlayStack.count - 1) }
         switch nav.currentTab {
         case .home: return .timeline
         case .notifications: return .notifications
-        case .messages: return .messages
+        case .messages: return nav.isContactListPeeking ? .contactListOverlay : .messages
         default: return .none
         }
     }

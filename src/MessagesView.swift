@@ -62,16 +62,19 @@ struct MessagesView: View {
                     .zIndex(10)
                 
                 HStack(spacing: 0) {
-                    if theme.usesGlassMessages {
-                        DMConversationListView()
-                            .frame(width: 290)
-                            .modifier(DMContactPanel())
-                    } else {
-                        DMConversationListView()
-                            .frame(width: 290)
-                            .background(ThemeManager.background.ignoresSafeArea())
-                            .shadow(color: Color.black.opacity(theme.isLight ? 0.18 : 0.5), radius: 16, x: 4)
+                    Group {
+                        if theme.usesGlassMessages {
+                            DMConversationListView()
+                                .frame(width: 290)
+                                .modifier(DMContactPanel())
+                        } else {
+                            DMConversationListView()
+                                .frame(width: 290)
+                                .background(ThemeManager.background.ignoresSafeArea())
+                                .shadow(color: Color.black.opacity(theme.isLight ? 0.18 : 0.5), radius: 16, x: 4)
+                        }
                     }
+                    .environment(\.peekScope, .contactListOverlay)
                     Spacer(minLength: 0)
                 }
                 .transition(.move(edge: .leading))

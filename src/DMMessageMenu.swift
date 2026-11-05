@@ -158,7 +158,9 @@ final class DMMessageMenuManager: ObservableObject {
 
     private func anchor(at event: NSEvent) -> Anchor? {
         let nav = NavigationManager.shared
+        // Messages behind the slide-over contact list or a profile preview are out of reach: only what is in front answers
         guard nav.currentTab == .messages, !nav.hasOverlay, !nav.isShowingCompose,
+              !nav.isContactListPeeking, PeekCoordinator.shared.target == nil,
               !DMViewModel.shared.showPasscodeSheet,
               event.window?.attachedSheet == nil,
               let p = point(for: event), viewport.contains(p) else { return nil }
