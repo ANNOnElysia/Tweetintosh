@@ -282,6 +282,9 @@ final class TrackpadPullCoordinator {
     // Which page attached the current scroll view. On a tab switch SwiftUI attaches the new page's scroll view
     // before the old page's onDisappear runs, so stopMonitoring must only detach a scroll view its own page attached.
     private var scrollViewOwner: String?
+    // A scroll view reported before its page became active, in case it gets no chance to report again
+    private weak var waitingScrollView: NSScrollView?
+    private var waitingOwner: String?
 
     var onPullProgress: ((CGFloat) -> Void)?
     var onTriggerRefresh: (() -> Void)?
@@ -297,6 +300,13 @@ final class TrackpadPullCoordinator {
     private var pullTriggered = false
     
     func attachScrollView(_ sv: NSScrollView, owner: String) {
+        // The page being left can still report its scroll view once more after the new page has reported its own.
+        // Taking that report would leave the new page's pull dead until its first scroll made it report again.
+        guard owner == activeOwner else {
+            waitingScrollView = sv
+            waitingOwner = owner
+            return
+        }
         scrollViewOwner = owner
         if registeredScrollView === sv { return }
         registeredScrollView = sv
@@ -365,6 +375,7 @@ final class TrackpadPullCoordinator {
     
     func startMonitoring(owner: String = "default") {
         activeOwner = owner
+        if waitingOwner == owner, let sv = waitingScrollView { attachScrollView(sv, owner: owner) }
         guard eventMonitor == nil else { return }
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self = self else { return event }
