@@ -104,9 +104,7 @@ struct TweetRowView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 // A deep press on a link previews it; its release must not also open the browser
                                 .handlesTweetLinks()
-                                .peekable { [tweet] point, size in
-                                    PeekTextLinks.target(at: point, size: size, text: tweet.displayBodyText, links: tweet.displayLinks)
-                                }
+                                .peeksText(of: tweet, fontSize: 14.5, lineSpacing: theme.lineSpacing())
                         }
                         
                         // Media Photo / Video Grid

@@ -74,6 +74,7 @@ struct QuotedTweetCard: View {
                     .foregroundColor(ThemeManager.primaryText.opacity(0.92))
                     .lineLimit(4)
                     .fixedSize(horizontal: false, vertical: true)
+                    .peeksText(of: tweet, fontSize: 13, lineSpacing: theme.lineSpacing() * 0.8)
             }
             
             // 3. Media Preview (reusing ImageGridView with isQuoted scaling)

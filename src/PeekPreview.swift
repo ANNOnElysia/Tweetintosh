@@ -13,6 +13,7 @@
 import SwiftUI
 import AppKit
 import AVFoundation
+import CoreServices
 import WebKit
 
 // MARK: - Targets & Scope
@@ -22,6 +23,14 @@ enum PeekTarget: Equatable {
     case video(TweetMedia)
     case profile(TweetUser)
     case link(URL)
+    // Not a card: a press on an ordinary word opens the system dictionary
+    case word(PeekWord)
+}
+
+struct PeekWord: Equatable {
+    let text: NSAttributedString
+    // Where the word's baseline starts: local to the item when resolved, in window coordinates once found
+    var baseline: CGPoint
 }
 
 // Which surface a peekable belongs to, so presses only match items on the surface currently in front
@@ -59,9 +68,12 @@ final class PeekRegistry {
             .filter { $0.scope == scope && $0.visiblyContains(windowPoint: point) }
             .sorted { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
         for anchor in hits {
-            if let target = anchor.resolve?(anchor.topLeftPoint(fromWindowPoint: point), anchor.bounds.size) {
-                return target
+            guard let target = anchor.resolve?(anchor.topLeftPoint(fromWindowPoint: point), anchor.bounds.size) else { continue }
+            if case .word(var word) = target {
+                word.baseline = anchor.windowPoint(fromTopLeftPoint: word.baseline)
+                return .word(word)
             }
+            return target
         }
         return nil
     }
@@ -82,6 +94,10 @@ fileprivate final class PeekAnchorView: NSView {
         // visibleRect alone can be wider than the view: views no longer clip to their bounds by default, so it
         // spans the whole row
         return bounds.intersection(visibleRect).contains(convert(windowPoint, from: nil))
+    }
+
+    func windowPoint(fromTopLeftPoint point: CGPoint) -> CGPoint {
+        convert(CGPoint(x: point.x, y: isFlipped ? point.y : bounds.height - point.y), to: nil)
     }
 
     func topLeftPoint(fromWindowPoint windowPoint: CGPoint) -> CGPoint {
@@ -131,25 +147,29 @@ extension View {
     func peekable(resolve: @escaping (CGPoint, CGSize) -> PeekTarget?) -> some View {
         modifier(PeekableModifier(resolve: resolve))
     }
+
+    // For a post's body text: a deep press previews a link or @mention, and looks up any other word
+    func peeksText(of tweet: Tweet, fontSize: CGFloat, lineSpacing: CGFloat) -> some View {
+        peekable { [tweet] point, size in
+            PeekTextLinks.target(at: point, size: size, text: tweet.displayBodyText, links: tweet.displayLinks,
+                                 fontSize: fontSize, lineSpacing: lineSpacing)
+        }
+    }
 }
 
 // MARK: - Link Hit Testing
 
 enum PeekTextLinks {
-    // Finds the link or @mention under a point in tweet body text by laying the text out with TextKit using the same
-    // font, line spacing and width as the SwiftUI Text. A body with a single link and no mentions previews that link
-    // from anywhere on the text.
-    static func target(at point: CGPoint, size: CGSize, text: String, links: [DisplayLink]) -> PeekTarget? {
-        let mentions = TweetText.mentionRanges(in: text, excluding: links)
-        guard !links.isEmpty || !mentions.isEmpty else { return nil }
-        if links.count == 1 && mentions.isEmpty { return URL(string: links[0].url).map(PeekTarget.link) }
-
+    // Finds what is under a point in tweet body text by laying the text out with TextKit using the same font, line
+    // spacing and width as the SwiftUI Text: a link, an @mention, or else the word to look up.
+    static func target(at point: CGPoint, size: CGSize, text: String, links: [DisplayLink],
+                       fontSize: CGFloat, lineSpacing: CGFloat) -> PeekTarget? {
         let theme = ThemeManager.shared
         let font: NSFont = theme.fontType == .mincho
-            ? (NSFont(name: theme.activeSerifFontName, size: 15) ?? .systemFont(ofSize: 14.5))
-            : .systemFont(ofSize: 14.5)
+            ? (NSFont(name: theme.activeSerifFontName, size: fontSize + 0.5) ?? .systemFont(ofSize: fontSize))
+            : .systemFont(ofSize: fontSize)
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = theme.lineSpacing()
+        paragraph.lineSpacing = lineSpacing
 
         let storage = NSTextStorage(string: text, attributes: [.font: font, .paragraphStyle: paragraph])
         let layout = NSLayoutManager()
@@ -167,10 +187,29 @@ enum PeekTextLinks {
         if let hit = links.first(where: { index >= $0.location && index < $0.location + $0.length }) {
             return URL(string: hit.url).map(PeekTarget.link)
         }
+        let mentions = TweetText.mentionRanges(in: text, excluding: links)
         if let mention = mentions.first(where: { NSLocationInRange(index, $0.range) }) {
             return .profile(TweetUser(id: "", name: mention.name, screenName: mention.name, avatarUrl: nil, isVerified: false))
         }
-        return nil
+
+        let range = wordRange(in: storage, at: index)
+        let word = (text as NSString).substring(with: range)
+        guard word.rangeOfCharacter(from: .alphanumerics) != nil else { return nil }
+        let start = layout.glyphIndexForCharacter(at: range.location)
+        let line = layout.lineFragmentRect(forGlyphAt: start, effectiveRange: nil)
+        let location = layout.location(forGlyphAt: start)
+        return .word(PeekWord(text: NSAttributedString(string: word, attributes: [.font: font]),
+                              baseline: CGPoint(x: line.minX + location.x, y: line.minY + location.y)))
+    }
+
+    // The dictionary's own idea of the term first, which is what splits Chinese and Japanese into words. Text it has
+    // no term for still gets the word a double-click would select.
+    private static func wordRange(in storage: NSTextStorage, at index: Int) -> NSRange {
+        let term = DCSGetTermRangeInString(nil, storage.string as CFString, index)
+        if term.location != kCFNotFound, term.length > 0 {
+            return NSRange(location: term.location, length: term.length)
+        }
+        return storage.doubleClick(at: index)
     }
 }
 
@@ -194,6 +233,7 @@ final class PeekCoordinator: ObservableObject {
     // The peek belongs to the press in progress and closes when that press is released
     private var closesOnRelease = false
     private var pressPeekEndedAt: CFTimeInterval = 0
+    private var wordShownAt: CFTimeInterval = 0
 
     // The release that ends a deep press still reaches SwiftUI as a click on the item underneath. Opening the
     // lightbox, video player, tweet detail or a link checks this, so a peek never also triggers them.
@@ -216,8 +256,15 @@ final class PeekCoordinator: ObservableObject {
 
     // Called by the root hosting view for system Look Up (three-finger tap, or Force Click when Look Up uses it)
     func quickLook(with event: NSEvent) -> Bool {
+        // With Look Up set to Force Click, one press arrives here as well as through the pressure events
+        guard CACurrentMediaTime() - wordShownAt > 1 else { return true }
         guard target == nil, let found = targetAt(event) else { return target != nil }
         let mouseIsDown = NSEvent.pressedMouseButtons & 1 != 0
+        if case .word(let word) = found {
+            showDefinition(word)
+            if mouseIsDown { closesOnRelease = true }
+            return true
+        }
         present(found, sticky: !mouseIsDown)
         if mouseIsDown { closesOnRelease = true }
         return true
@@ -228,6 +275,12 @@ final class PeekCoordinator: ObservableObject {
         target = nil
         pressure = 0
         isSticky = false
+    }
+
+    private func showDefinition(_ word: PeekWord) {
+        guard let host = hostingView else { return }
+        wordShownAt = CACurrentMediaTime()
+        host.showDefinition(for: word.text, at: host.convert(word.baseline, from: nil))
     }
 
     private func present(_ newTarget: PeekTarget, sticky: Bool) {
@@ -241,7 +294,11 @@ final class PeekCoordinator: ObservableObject {
         case .pressure:
             let stage = event.stage
             if stage >= 2 && lastStage < 2 && target == nil, let found = targetAt(event) {
-                present(found, sticky: false)
+                if case .word(let word) = found {
+                    showDefinition(word)
+                } else {
+                    present(found, sticky: false)
+                }
                 closesOnRelease = true
             }
             if target != nil && !isSticky && stage >= 2 {
@@ -386,6 +443,8 @@ private struct PeekCard: View {
         case .link(let url):
             PeekLinkCard(url: url)
                 .frame(width: min(container.width * 0.86, 920), height: container.height * 0.76)
+        case .word:
+            EmptyView()
         }
     }
 

@@ -459,6 +459,7 @@ struct TweetDetailView: View {
                     .foregroundColor(ThemeManager.primaryText)
                     .lineSpacing(5)
                     .textSelection(.enabled)
+                    .peeksText(of: viewModel.focalTweet, fontSize: 17, lineSpacing: 5)
             }
             
             // An X Article attached to the post: opens the reader
@@ -680,6 +681,7 @@ struct TweetDetailView: View {
                         .font(theme.appFont(size: 13.5))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineSpacing(theme.lineSpacing() * 0.7)
+                        .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
                 }
                 
                 if !tweet.media.isEmpty {
@@ -828,6 +830,7 @@ struct TweetDetailView: View {
                             .font(theme.appFont(size: 13.5))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineSpacing(theme.lineSpacing() * 0.7)
+                            .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
                     }
                     
                     // Media
