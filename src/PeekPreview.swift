@@ -5,10 +5,9 @@
 //  Deep-press (Force Click) peek previews for media, links and profiles.
 //
 //  A Force Touch trackpad reports NSEvent.pressure events: stage 1 is a normal click, stage 2 the deep press.
-//  Views opt in with `.peekable(...)`, which only records their frame in a registry (no AppKit view per row,
-//  which would cost scrolling performance). On stage 2 the coordinator looks up the item under the pointer and
-//  shows a card; releasing the press closes it. Three-finger-tap Look Up (`quickLook(with:)`) opens the same
-//  card, which then stays until a click outside, Esc or a scroll.
+//  Views opt in with `.peekable(...)`, which places an empty marker view behind them. On stage 2 the coordinator
+//  looks up the marker under the pointer and shows a card; releasing the press closes it. Three-finger-tap Look Up
+//  (`quickLook(with:)`) opens the same card, which then stays until a click outside, Esc or a scroll.
 //
 
 import SwiftUI
@@ -29,6 +28,7 @@ enum PeekTarget: Equatable {
 enum PeekScope: Equatable {
     case none
     case timeline
+    case notifications
     // A full-pane page; the index is its depth in the navigation stack
     case overlay(Int)
 }
@@ -49,31 +49,17 @@ extension EnvironmentValues {
 final class PeekRegistry {
     static let shared = PeekRegistry()
 
-    struct Entry {
-        var frame: CGRect
-        var scope: PeekScope
-        // Point is local to the frame; lets text pick the link under the pointer
-        var resolve: (CGPoint, CGSize) -> PeekTarget?
-    }
+    fileprivate let anchors = NSHashTable<PeekAnchorView>.weakObjects()
 
-    private var entries: [ObjectIdentifier: Entry] = [:]
-
-    func update(_ key: ObjectIdentifier, entry: Entry) {
-        entries[key] = entry
-    }
-
-    func remove(_ key: ObjectIdentifier) {
-        entries.removeValue(forKey: key)
-    }
-
-    // Most specific (smallest) matching item wins, e.g. an avatar over its surrounding row
-    func target(at point: CGPoint, scope: PeekScope) -> PeekTarget? {
-        let hits = entries.values
-            .filter { $0.scope == scope && $0.frame.contains(point) }
-            .sorted { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
-        for entry in hits {
-            let local = CGPoint(x: point.x - entry.frame.minX, y: point.y - entry.frame.minY)
-            if let target = entry.resolve(local, entry.frame.size) {
+    // Most specific (smallest) matching item wins, e.g. an avatar over its surrounding row. Positions come from
+    // AppKit at the moment of the press: inside a List the frames SwiftUI reports stop being updated as soon as the
+    // table scrolls, so they would point at wherever a row was when it was laid out.
+    func target(atWindowPoint point: CGPoint, scope: PeekScope) -> PeekTarget? {
+        let hits = anchors.allObjects
+            .filter { $0.scope == scope && $0.visiblyContains(windowPoint: point) }
+            .sorted { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
+        for anchor in hits {
+            if let target = anchor.resolve?(anchor.topLeftPoint(fromWindowPoint: point), anchor.bounds.size) {
                 return target
             }
         }
@@ -81,27 +67,58 @@ final class PeekRegistry {
     }
 }
 
-private final class PeekRegistration: ObservableObject {}
+// Marks where a peekable item is. It draws nothing and takes no clicks, and only gets read when a press happens, so
+// scrolling does no work for it.
+fileprivate final class PeekAnchorView: NSView {
+    var scope: PeekScope = .none
+    // Point is local to the item, from its top left; lets text pick the link under the pointer
+    var resolve: ((CGPoint, CGSize) -> PeekTarget?)?
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    // The visible part only, so a row scrolled underneath the header doesn't answer for a press on the header
+    func visiblyContains(windowPoint: CGPoint) -> Bool {
+        guard window != nil else { return false }
+        // visibleRect alone can be wider than the view: views no longer clip to their bounds by default, so it
+        // spans the whole row
+        return bounds.intersection(visibleRect).contains(convert(windowPoint, from: nil))
+    }
+
+    func topLeftPoint(fromWindowPoint windowPoint: CGPoint) -> CGPoint {
+        let local = convert(windowPoint, from: nil)
+        return CGPoint(x: local.x, y: isFlipped ? local.y : bounds.height - local.y)
+    }
+}
+
+private struct PeekAnchor: NSViewRepresentable {
+    let scope: PeekScope
+    let resolve: (CGPoint, CGSize) -> PeekTarget?
+
+    func makeNSView(context: Context) -> PeekAnchorView {
+        let view = PeekAnchorView()
+        PeekRegistry.shared.anchors.add(view)
+        return view
+    }
+
+    func updateNSView(_ view: PeekAnchorView, context: Context) {
+        view.scope = scope
+        view.resolve = resolve
+    }
+
+    static func dismantleNSView(_ view: PeekAnchorView, coordinator: ()) {
+        PeekRegistry.shared.anchors.remove(view)
+    }
+}
 
 private struct PeekableModifier: ViewModifier {
     let resolve: (CGPoint, CGSize) -> PeekTarget?
     @Environment(\.peekScope) private var scope
-    @StateObject private var registration = PeekRegistration()
 
     func body(content: Content) -> some View {
         if scope == .none {
             content
         } else {
-            let key = ObjectIdentifier(registration)
-            content
-                .onGeometryChange(for: CGRect.self) { proxy in
-                    proxy.frame(in: .global)
-                } action: { [scope, resolve] frame in
-                    PeekRegistry.shared.update(key, entry: .init(frame: frame, scope: scope, resolve: resolve))
-                }
-                .onDisappear {
-                    PeekRegistry.shared.remove(key)
-                }
+            content.background(PeekAnchor(scope: scope, resolve: resolve))
         }
     }
 }
@@ -280,10 +297,10 @@ final class PeekCoordinator: ObservableObject {
 
     private func targetAt(_ event: NSEvent) -> PeekTarget? {
         guard let window = event.window, window === NSApp.mainWindow, window.attachedSheet == nil,
-              let point = swiftUIPoint(for: event) else { return nil }
+              let host = hostingView, window === host.window else { return nil }
         let scope = activeScope()
         guard scope != .none else { return nil }
-        return PeekRegistry.shared.target(at: point, scope: scope)
+        return PeekRegistry.shared.target(atWindowPoint: event.locationInWindow, scope: scope)
     }
 
     private func activeScope() -> PeekScope {
@@ -293,7 +310,11 @@ final class PeekCoordinator: ObservableObject {
             return .none
         }
         if nav.hasOverlay { return .overlay(nav.overlayStack.count - 1) }
-        return nav.currentTab == .home ? .timeline : .none
+        switch nav.currentTab {
+        case .home: return .timeline
+        case .notifications: return .notifications
+        default: return .none
+        }
     }
 }
 
@@ -465,7 +486,8 @@ private final class PeekProfileLoader: ObservableObject {
     }
 
     func loadIfNeeded() {
-        guard user.id.isEmpty else { return }
+        // Only a handle (an @mention), or a person from a notification, who comes without a bio or banner
+        guard user.id.isEmpty || (user.bio == nil && user.bannerUrl == nil) else { return }
         let handle = user.screenName
         if let profile = ProfilePreloader.shared.cached(handle)?.profile {
             user = profile.user

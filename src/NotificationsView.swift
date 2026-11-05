@@ -134,6 +134,7 @@ struct NotificationsView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
             .coordinateSpace(name: "notifScrollViewSpace")
+            .environment(\.peekScope, .notifications)
             .overlay(alignment: .top) {
                 NotificationsPullRefreshIndicatorOverlay()
             }
@@ -249,6 +250,37 @@ private struct NotificationFilterCapsuleBar: View {
     }
 }
 
+// MARK: - Avatar Pile
+
+/// Up to four of the people behind a notification, overlapping with the first on top. Clicking one opens their profile
+/// and a deep press previews it.
+private struct NotificationAvatarPile: View {
+    let actors: [TweetUser]
+
+    private static let size: CGFloat = 26
+    private static let overlap: CGFloat = 8
+
+    var body: some View {
+        let shown = Array(actors.prefix(4))
+        HStack(spacing: -Self.overlap) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, actor in
+                CachedAsyncImage(urlString: actor.avatarUrl, targetSize: CGSize(width: Self.size, height: Self.size))
+                    .frame(width: Self.size, height: Self.size)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(ThemeManager.background, lineWidth: shown.count > 1 ? 1.5 : 0))
+                    // A press finds its target by frame, so each one claims only the part of it that is visible
+                    .overlay(alignment: .trailing) {
+                        Color.clear
+                            .frame(width: index == 0 ? Self.size : Self.size - Self.overlap)
+                            .peekable(.profile(actor))
+                    }
+                    .opensProfile(actor)
+                    .zIndex(Double(shown.count - index))
+            }
+        }
+    }
+}
+
 // MARK: - Individual Notification Row View
 private struct NotificationRowView: View {
     var item: NotificationItem
@@ -309,14 +341,7 @@ private struct NotificationRowView: View {
             VStack(alignment: .leading, spacing: 6) {
                 // Actor Avatar(s) & Timestamp
                 HStack(alignment: .center, spacing: 8) {
-                    if let firstActor = item.actors.first, let avatarUrl = firstActor.avatarUrl, !avatarUrl.isEmpty {
-                        CachedAsyncImage(urlString: avatarUrl)
-                            .frame(width: 26, height: 26)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
-                            .peekable(.profile(firstActor))
-                            .opensProfile(firstActor)
-                    } else {
+                    if item.actors.isEmpty {
                         Circle()
                             .fill(theme.isLight ? Color.black.opacity(0.08) : Color(white: 0.16))
                             .frame(width: 26, height: 26)
@@ -325,6 +350,8 @@ private struct NotificationRowView: View {
                                     .font(.system(size: 11))
                                     .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.7))
                             )
+                    } else {
+                        NotificationAvatarPile(actors: item.actors)
                     }
                     
                     // Summary text
