@@ -88,7 +88,10 @@ enum MediaAttachments {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
+        // A free-standing panel stays key after it closes, leaving the window that opened it deaf to the keyboard
+        let opener = NSApp.keyWindow
         let finish: (NSApplication.ModalResponse) -> Void = { response in
+            if parent == nil { opener?.makeKey() }
             completion(response == .OK ? panel.urls : [])
         }
         if let parent = parent {
@@ -103,24 +106,40 @@ enum MediaAttachments {
     // Files copied in Finder, or an image copied from anywhere (a screenshot, "Copy Image" in a browser). Plain text,
     // even alongside an image, stays a normal paste unless the text is just the image's address.
     static func pastedMedia(from pasteboard: NSPasteboard) -> [URL] {
+        switch pastable(on: pasteboard) {
+        case .files(let urls):
+            return urls
+        case .image(let image):
+            guard let png = pngData(from: image) else { return [] }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("pasted-\(UUID().uuidString.prefix(6)).png")
+            guard (try? png.write(to: url)) != nil else { return [] }
+            return [url]
+        case nil:
+            return []
+        }
+    }
+
+    // Asked on every Command+V, so it only looks: the temporary file is made once the paste really happens
+    static func hasPastableMedia(_ pasteboard: NSPasteboard) -> Bool {
+        pastable(on: pasteboard) != nil
+    }
+
+    private enum Pastable {
+        case files([URL])
+        case image(NSImage)
+    }
+
+    private static func pastable(on pasteboard: NSPasteboard) -> Pastable? {
         let fileURLs = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         let supported = fileURLs.filter { url in
             UTType(filenameExtension: url.pathExtension.lowercased()).map { type in pickerTypes.contains { type.conforms(to: $0) } } ?? false
         }
-        if !supported.isEmpty { return supported }
-        guard fileURLs.isEmpty else { return [] }
+        if !supported.isEmpty { return .files(supported) }
+        guard fileURLs.isEmpty else { return nil }
 
         if let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty,
-           !(text.hasPrefix("http") && !text.contains(" ") && !text.contains("\n")) { return [] }
-        guard let image = NSImage(pasteboard: pasteboard), let png = pngData(from: image) else { return [] }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("pasted-\(UUID().uuidString.prefix(6)).png")
-        guard (try? png.write(to: url)) != nil else { return [] }
-        return [url]
-    }
-
-    static func hasPastableMedia(_ pasteboard: NSPasteboard) -> Bool {
-        if pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) { return !pastedMedia(from: pasteboard).isEmpty }
-        return pasteboard.canReadObject(forClasses: [NSImage.self], options: nil) && !pastedMedia(from: pasteboard).isEmpty
+           !(text.hasPrefix("http") && !text.contains(" ") && !text.contains("\n")) { return nil }
+        return NSImage(pasteboard: pasteboard).map(Pastable.image)
     }
 
     // Checks the file against the supported formats and X's size limits and prepares it for upload

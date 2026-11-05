@@ -334,6 +334,17 @@ final class NavigationManager: ObservableObject {
                 
                 // If Esc key is pressed
                 if keyCode == 53 {
+                    // These keep their own Esc: a file picker closes itself, and Esc cancels a Chinese or Japanese word
+                    // still being composed
+                    if let panel = event.window as? NSSavePanel, panel.isVisible { return event }
+                    if (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
+                    // Handled here because a text field takes Esc before the Cancel button's shortcut can: an empty one
+                    // opens the system's word completion list. It also comes first, or Esc would close a post page
+                    // underneath the reply box.
+                    if self.isReplyComposerOpen {
+                        NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_CancelReply"), object: nil)
+                        return nil
+                    }
                     if self.isShowingCompose {
                         self.dismissComposer()
                         return nil

@@ -73,6 +73,9 @@ struct ReplyComposerSheet: View {
         .frame(width: 520, height: 340 + (state.attachments.isEmpty ? 0 : 110))
         .background(ThemeManager.background)
         .onAppear { NavigationManager.shared.isReplyComposerOpen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_CancelReply"))) { _ in
+            dismiss()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_AttachMedia"))) { _ in
             chooseMedia()
         }
