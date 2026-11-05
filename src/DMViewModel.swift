@@ -324,14 +324,9 @@ final class DMViewModel: ObservableObject {
                 }
                 
                 // Update conversation's last message if newer
-                if let idx = self.conversations.firstIndex(where: { $0.id == event.conversationId }) {
-                    if let last = self.conversations[idx].lastMessage {
-                        if event.createdAt > last.createdAt {
-                            self.conversations[idx].lastMessage = event
-                        }
-                    } else {
-                        self.conversations[idx].lastMessage = event
-                    }
+                if let idx = self.conversations.firstIndex(where: { $0.id == event.conversationId }),
+                   let latest = DMMessage.latestListed(in: self.messagesByConv[event.conversationId] ?? []) {
+                    self.conversations[idx].lastMessage = latest
                 }
             }
         }
@@ -434,7 +429,7 @@ final class DMViewModel: ObservableObject {
             messagesByConv[convId] = updatedMsgs
             
             if let idx = conversations.firstIndex(where: { $0.id == convId }) {
-                conversations[idx].lastMessage = updatedMsgs.last(where: { $0.isListed })
+                conversations[idx].lastMessage = DMMessage.latestListed(in: updatedMsgs)
                 conversations[idx].hasEncryptedMessages = hasEncrypted
             }
         }
@@ -467,7 +462,7 @@ final class DMViewModel: ObservableObject {
                         }
                     }
                     self.messagesByConv[conversationId] = current.sorted { $0.createdAt < $1.createdAt }
-                    if let last = self.messagesByConv[conversationId]?.last(where: { $0.isListed }),
+                    if let last = DMMessage.latestListed(in: self.messagesByConv[conversationId] ?? []),
                        let idx = self.conversations.firstIndex(where: { $0.id == conversationId }) {
                         self.conversations[idx].lastMessage = last
                     }
@@ -601,8 +596,9 @@ final class DMViewModel: ObservableObject {
         let messageId = UUID().uuidString.lowercased()
         let optimistic = placeholder(messageId, keys.conversationKeyVersion)
         messagesByConv[convId, default: []].append(optimistic)
-        if optimistic.isListed, let idx = conversations.firstIndex(where: { $0.id == convId }) {
-            conversations[idx].lastMessage = optimistic
+        if let idx = conversations.firstIndex(where: { $0.id == convId }),
+           let latest = DMMessage.latestListed(in: messagesByConv[convId] ?? []) {
+            conversations[idx].lastMessage = latest
         }
         
         DMAPI.shared.sendXChatEntry(entry, conversationId: convId, messageId: messageId, keys: keys) { [weak self] result in
@@ -614,15 +610,16 @@ final class DMViewModel: ObservableObject {
                     current[i] = stored
                 }
                 self.messagesByConv[convId] = current
-                if stored.isListed, let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
-                    self.conversations[idx].lastMessage = stored
+                if let idx = self.conversations.firstIndex(where: { $0.id == convId }),
+                   let latest = DMMessage.latestListed(in: current) {
+                    self.conversations[idx].lastMessage = latest
                 }
                 onSuccess?()
             case .failure(let error):
                 current.removeAll { $0.id == messageId }
                 self.messagesByConv[convId] = current
                 if let idx = self.conversations.firstIndex(where: { $0.id == convId }) {
-                    self.conversations[idx].lastMessage = current.last(where: { $0.isListed })
+                    self.conversations[idx].lastMessage = DMMessage.latestListed(in: current)
                 }
                 onFailure?()
                 AppToastManager.shared.show(

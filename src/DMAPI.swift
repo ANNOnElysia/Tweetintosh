@@ -761,7 +761,7 @@ final class DMAPI {
                 }
             }
             
-            let lastMsg = parsedMsgs.last(where: { $0.isListed })
+            let lastMsg = DMMessage.latestListed(in: parsedMsgs)
             let hasEncrypted = parsedMsgs.contains { $0.isEncrypted }
             
             convList.append(

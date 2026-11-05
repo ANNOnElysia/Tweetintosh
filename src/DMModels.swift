@@ -201,6 +201,25 @@ struct DMMessage: Identifiable, Codable, Equatable {
     /// Whether the conversation list may show this as the latest thing that happened.
     var isListed: Bool { entryKind == .message || entryKind == .reaction }
     
+    /// What the conversation list shows for these entries (oldest first): the newest message or reaction, passing over
+    /// reactions that were taken back, deleted messages, and messages with nothing to show. A reaction and its removal
+    /// can share a timestamp, so they are compared by time, not by position.
+    static func latestListed(in entries: [DMMessage]) -> DMMessage? {
+        let removals = entries.filter { $0.entryKind == .reactionRemove }
+        let deleted = Set(entries.filter { $0.entryKind == .delete }.flatMap { $0.deletedSequenceIds ?? [] })
+        return entries.last { entry in
+            guard entry.isListed else { return false }
+            if entry.isReaction {
+                return !removals.contains {
+                    $0.senderId == entry.senderId && $0.targetSequenceId == entry.targetSequenceId
+                        && $0.emoji == entry.emoji && $0.createdAt >= entry.createdAt
+                }
+            }
+            if let seq = entry.sequenceId, deleted.contains(seq) { return false }
+            return !entry.text.isEmpty || entry.mediaUrl != nil || entry.isEncrypted
+        }
+    }
+    
     /// The same message showing an edit's text.
     func edited(to text: String, at date: Date) -> DMMessage {
         var copy = DMMessage(
