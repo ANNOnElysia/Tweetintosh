@@ -322,6 +322,10 @@ final class PeekCoordinator: ObservableObject {
                 dismiss()
                 return nil
             }
+            // A deep press starts as a click, which gives the profile preview a head start
+            if target == nil, case .profile(let user)? = targetAt(event) {
+                ProfilePreloader.shared.preloadCard(user)
+            }
             return event
 
         case .keyDown:

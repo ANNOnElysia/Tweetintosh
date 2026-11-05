@@ -108,6 +108,43 @@ final class ProfilePreloader {
         }
     }
 
+    // What a profile preview shows, without the posts: a click that starts a deep press usually goes no further, so
+    // this has to stay cheap. Fetched only for people who came without a bio or banner, as the preview itself would.
+    func preloadCard(_ user: TweetUser) {
+        let name = key(user.screenName)
+        guard !name.isEmpty else { return }
+        if user.bio != nil || user.bannerUrl != nil {
+            warmCardImages(user)
+            return
+        }
+        if let profile = cached(name)?.profile {
+            warmCardImages(profile.user)
+            return
+        }
+        guard !inFlight.contains(name), inFlight.count < maxInFlight else { return }
+        inFlight.insert(name)
+        preloadLog.notice("preload card @\(user.screenName, privacy: .public)")
+        APIClient.shared.fetchUserProfile(screenName: user.screenName) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.inFlight.remove(name)
+                if case .success(let profile) = result {
+                    self.store(Entry(profile: profile, posts: nil, fetchedAt: Date()), for: name)
+                    self.warmCardImages(profile.user)
+                }
+            }
+        }
+    }
+
+    // The same addresses the preview asks for, so they are waiting in the cache when it opens
+    private func warmCardImages(_ user: TweetUser) {
+        let urls = [
+            user.bannerUrl.map { $0 + "/600x200" },
+            user.avatarUrl?.replacingOccurrences(of: "_bigger", with: "_400x400")
+        ].compactMap { $0 }
+        MediaCacheManager.shared.prefetchImages(urls: urls)
+    }
+
     private func store(_ entry: Entry, for name: String) {
         entries[name] = entry
         if entries.count > maxEntries {
