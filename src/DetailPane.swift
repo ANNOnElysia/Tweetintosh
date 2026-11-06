@@ -8,7 +8,6 @@
 
 import SwiftUI
 import AppKit
-import Combine
 
 // Published apart from the stack: the columns depend only on this, so opening a post doesn't touch the timeline's views
 final class DetailPaneLayout: ObservableObject {
@@ -202,42 +201,5 @@ private struct PaneLayer: ViewModifier {
             .allowsHitTesting(isFront)
             .accessibilityHidden(!isFront)
             .environment(\.peekScope, isFront ? .timeline : .paneHidden)
-    }
-}
-
-// MARK: - Open Post Highlight
-
-// Subscribes once and publishes only when this row's answer changes, so opening a post updates the row losing the highlight
-// and the one gaining it. Subscribing from the view would start over at every redraw, and each start publishes.
-private final class OpenPostHighlightState: ObservableObject {
-    @Published private(set) var isOpen = false
-    private var subscription: AnyCancellable?
-
-    init(tweetId: String) {
-        subscription = DetailPane.shared.$stack
-            .map { $0.first?.tweet.id == tweetId }
-            .removeDuplicates()
-            .sink { [weak self] open in
-                if self?.isOpen != open { self?.isOpen = open }
-            }
-    }
-}
-
-struct HighlightsOpenPost: ViewModifier {
-    @StateObject private var state: OpenPostHighlightState
-    @ObservedObject private var theme = ThemeManager.shared
-
-    init(tweetId: String) {
-        _state = StateObject(wrappedValue: OpenPostHighlightState(tweetId: tweetId))
-    }
-
-    func body(content: Content) -> some View {
-        content.overlay {
-            if state.isOpen {
-                Rectangle()
-                    .fill(ThemeManager.accent.opacity(theme.isLight ? 0.07 : 0.10))
-                    .allowsHitTesting(false)
-            }
-        }
     }
 }

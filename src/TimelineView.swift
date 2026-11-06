@@ -652,7 +652,6 @@ struct MainTimelineView: View {
             ForEach(viewModel.tweets, id: \.id) { tweet in
                 TweetRowView(tweet: tweet)
                     .modifier(PausesHitTestingWhileScrolling())
-                    .modifier(HighlightsOpenPost(tweetId: tweet.id))
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
