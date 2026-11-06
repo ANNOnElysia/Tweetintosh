@@ -118,7 +118,8 @@ final class AutoplayCoordinator {
         let ranked = eligible
             .map { (view: $0, fraction: $0.visibleFraction) }
             .filter { $0.fraction >= Self.minVisibleFraction }
-            .sorted { $0.fraction > $1.fraction }
+            // The post being read in the detail pane comes before anything in the timeline beside it
+            .sorted { ($0.view.isPreferred ? 1 : 0, $0.fraction) > ($1.view.isPreferred ? 1 : 0, $1.fraction) }
         let chosen = ranked.prefix(Self.maxPlaying).map(\.view)
         for view in eligible where !chosen.contains(view) {
             view.stop()
@@ -139,6 +140,7 @@ final class AutoplayVideoView: NSView {
     }
     var onPlayingChange: ((Bool) -> Void)?
     var scope: PeekScope = .none
+    var isPreferred = false
 
     private let player = AVPlayer()
     private let playerLayer = AVPlayerLayer()
@@ -231,12 +233,14 @@ final class AutoplayVideoView: NSView {
 private struct AutoplayVideoRepresentable: NSViewRepresentable {
     let url: URL
     let scope: PeekScope
+    let isPreferred: Bool
     let onPlayingChange: (Bool) -> Void
 
     func makeNSView(context: Context) -> AutoplayVideoView {
         let view = AutoplayVideoView()
         view.url = url
         view.scope = scope
+        view.isPreferred = isPreferred
         view.onPlayingChange = onPlayingChange
         AutoplayCoordinator.shared.register(view)
         return view
@@ -245,6 +249,7 @@ private struct AutoplayVideoRepresentable: NSViewRepresentable {
     func updateNSView(_ view: AutoplayVideoView, context: Context) {
         view.url = url
         view.scope = scope
+        view.isPreferred = isPreferred
         view.onPlayingChange = onPlayingChange
     }
 
@@ -259,7 +264,16 @@ private struct AllowsVideoAutoplayKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct PrefersVideoAutoplayKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
+    var prefersVideoAutoplay: Bool {
+        get { self[PrefersVideoAutoplayKey.self] }
+        set { self[PrefersVideoAutoplayKey.self] = newValue }
+    }
+
     var allowsVideoAutoplay: Bool {
         get { self[AllowsVideoAutoplayKey.self] }
         set { self[AllowsVideoAutoplayKey.self] = newValue }
@@ -277,13 +291,14 @@ struct VideoTileOverlay: View {
 
     @Environment(\.peekScope) private var scope
     @Environment(\.allowsVideoAutoplay) private var allowsAutoplay
+    @Environment(\.prefersVideoAutoplay) private var prefersAutoplay
     @ObservedObject private var theme = ThemeManager.shared
     @StateObject private var state = AutoplayState()
 
     var body: some View {
         ZStack {
             if allowsAutoplay, theme.autoplayMedia, let url = MediaHelpers.previewPlaybackURL(for: media) {
-                AutoplayVideoRepresentable(url: url, scope: scope) { [state] playing in
+                AutoplayVideoRepresentable(url: url, scope: scope, isPreferred: prefersAutoplay) { [state] playing in
                     if state.isPlaying != playing { state.isPlaying = playing }
                 }
             }

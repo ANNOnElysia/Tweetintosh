@@ -205,6 +205,11 @@ struct ImageGridView: View {
     var isQuoted: Bool = false
     @ObservedObject var layout = TimelineLayoutState.shared
     @ObservedObject var theme = ThemeManager.shared
+    @Environment(\.mediaColumnWidth) private var mediaColumnWidth
+    
+    private var columnWidth: CGFloat {
+        max(180, min(mediaColumnWidth ?? .infinity, layout.availableColumnWidth))
+    }
     
     private func thumbUrl(_ original: String) -> String {
         if original.contains("pbs.twimg.com/media") {
@@ -255,7 +260,7 @@ struct ImageGridView: View {
     private func calculateSingleDimensions(_ media: TweetMedia) -> (width: CGFloat, height: CGFloat) {
         // 读取当前 Apple 设备物理渲染分辨率的长宽各 1/2（转换为 points）
         let ref = AppleDisplayManager.shared.halfPhysicalReferencePoints
-        let maxBoxW = min(isQuoted ? max(180, layout.availableColumnWidth - 24) : layout.availableColumnWidth, ref.width)
+        let maxBoxW = min(isQuoted ? max(180, columnWidth - 24) : columnWidth, ref.width)
         // 引用帖严格限制最大高度小于主帖（主帖限制为 min(windowHeight/3.0, 260)），主帖单图默认保持物理分辨率参考高度
         let maxBoxH = isQuoted ? min(layout.windowHeight / 3.5, 200) : ref.height
         
@@ -289,7 +294,7 @@ struct ImageGridView: View {
     
     // MARK: - 2. Two Images (Side-by-side, Left & Right rounded, exact height)
     private func twoImagesView(_ items: [TweetMedia]) -> some View {
-        let availableWidth = isQuoted ? max(180, layout.availableColumnWidth - 24) : layout.availableColumnWidth
+        let availableWidth = isQuoted ? max(180, columnWidth - 24) : columnWidth
         let spacing: CGFloat = 8
         let singleWidth = (availableWidth - spacing) / 2.0
         let height: CGFloat = isQuoted ? min(layout.windowHeight / 3.5, 180) : min(layout.windowHeight / 3.0, 260)

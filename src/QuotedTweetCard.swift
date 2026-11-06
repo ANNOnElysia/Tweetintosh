@@ -11,6 +11,7 @@ final class QuotedCardState: ObservableObject {
 }
 
 struct QuotedTweetCard: View {
+    @Environment(\.isInDetailPane) private var isInDetailPane
     let tweet: Tweet
     var isInteractive: Bool = true
     @ObservedObject var theme = ThemeManager.shared
@@ -100,7 +101,7 @@ struct QuotedTweetCard: View {
         }
         .onTapGesture {
             if isInteractive {
-                NavigationManager.shared.openTweetDetail(tweet)
+                NavigationManager.shared.openTweetDetail(tweet, fromPane: isInDetailPane)
             }
         }
     }

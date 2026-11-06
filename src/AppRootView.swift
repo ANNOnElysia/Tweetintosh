@@ -270,8 +270,10 @@ struct AppRootView: View {
     @ViewBuilder private var destination: some View {
         switch nav.currentTab {
         case .home:
-            NavigationStack {
-                MainTimelineView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
+            HomeColumns {
+                NavigationStack {
+                    MainTimelineView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
+                }
             }
         case .notifications:
             NavigationStack {

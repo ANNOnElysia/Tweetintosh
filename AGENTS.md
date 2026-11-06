@@ -39,6 +39,7 @@ Feeds and posts
 Post page
 - `TweetDetailView.swift`, `TweetDetailViewModel.swift` — the post page: ancestors, replies grouped into threads,
   quick reply dock, pull-to-refresh.
+- `DetailPane.swift` — the post pane beside the timeline in wide windows, and the column layout around it.
 - `Preloading.swift`, `PeekPreview.swift` — hover prefetch and the deep-press peek card.
 
 Other screens

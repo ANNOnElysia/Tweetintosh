@@ -97,14 +97,18 @@ final class TweetDetailState: ObservableObject {
 struct TweetDetailView: View {
     @StateObject var viewModel: TweetDetailViewModel
     var onDismiss: () -> Void
+    // The pane closes where a full page goes back
+    var backIcon = "chevron.left"
+    @Environment(\.isInDetailPane) private var isInDetailPane
     
     @StateObject private var state = TweetDetailState()
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @FocusState private var isDockInputFocused: Bool
     
-    init(tweet: Tweet, onDismiss: @escaping () -> Void) {
+    init(tweet: Tweet, backIcon: String = "chevron.left", onDismiss: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: TweetDetailViewModel(focalTweet: tweet))
+        self.backIcon = backIcon
         self.onDismiss = onDismiss
     }
     
@@ -230,7 +234,9 @@ struct TweetDetailView: View {
         }
         // Command+R refreshes the page in front, like it does the timeline
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_RefreshTimeline"))) { _ in
-            if case .tweet(let page)? = NavigationManager.shared.overlayStack.last?.page, page.id == viewModel.focalTweet.id {
+            if isInDetailPane {
+                viewModel.refresh()
+            } else if case .tweet(let page)? = NavigationManager.shared.overlayStack.last?.page, page.id == viewModel.focalTweet.id {
                 viewModel.refresh()
             }
         }
@@ -256,7 +262,7 @@ struct TweetDetailView: View {
         HStack {
             // Liquid Glass Back Button (Only left arrow icon, standalone circular glass droplet)
             Button(action: onDismiss) {
-                Image(systemName: "chevron.left")
+                Image(systemName: backIcon)
                     .font(.system(size: 13.5, weight: .bold))
                     .foregroundColor(ThemeManager.primaryText)
                     .frame(width: 36, height: 36)
@@ -344,10 +350,12 @@ struct TweetDetailView: View {
             // Back Button
             Button(action: onDismiss) {
                 HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: backIcon)
                         .font(.system(size: 13, weight: .bold))
-                    Text(loc.t("nav_back"))
-                        .font(.system(size: 13, weight: .medium))
+                    if !isInDetailPane {
+                        Text(loc.t("nav_back"))
+                            .font(.system(size: 13, weight: .medium))
+                    }
                 }
                 .foregroundColor(ThemeManager.primaryText)
                 .padding(.horizontal, 10)
@@ -631,7 +639,7 @@ struct TweetDetailView: View {
                     let onReplyPage = viewModel.focalTweet.inReplyToStatusId != nil
                     let opensInPlace = onReplyPage || (root.replyCount <= 1 && tail.replyCount <= 1)
                     guard opensInPlace else {
-                        NavigationManager.shared.openTweetDetail(root.replyCount > 1 ? root : tail)
+                        NavigationManager.shared.openTweetDetail(root.replyCount > 1 ? root : tail, fromPane: isInDetailPane)
                         return
                     }
                     let expand = {
@@ -763,7 +771,7 @@ struct TweetDetailView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                NavigationManager.shared.openTweetDetail(tweet)
+                NavigationManager.shared.openTweetDetail(tweet, fromPane: isInDetailPane)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)

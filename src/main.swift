@@ -257,6 +257,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         updateLayout(for: window)
     }
     
+    // The size a full-screen transition ends at can arrive only with the end of the transition
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === mainWindow { updateLayout(for: window) }
+    }
+    
+    func windowDidExitFullScreen(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === mainWindow { updateLayout(for: window) }
+    }
+    
     func windowDidResize(_ notification: Notification) {
         if let window = notification.object as? NSWindow, window === mainWindow { updateLayout(for: window) }
     }

@@ -75,6 +75,7 @@ final class NavigationManager: ObservableObject {
     // Back to a clean Home page, as after launching: used when the active account changes
     func resetForAccountChange() {
         overlayStack = []
+        DetailPane.shared.clear()
         currentTab = .home
         isShowingCompose = false
         composeQuotedTweet = nil
@@ -110,9 +111,13 @@ final class NavigationManager: ObservableObject {
         }
     }
     
-    func openTweetDetail(_ tweet: Tweet) {
+    func openTweetDetail(_ tweet: Tweet, fromPane: Bool = false) {
         guard !PeekCoordinator.shared.suppressesActivation else { return }
-        push(.tweet(tweet))
+        if DetailPane.shared.isAvailable && currentTab == .home && !hasOverlay {
+            DetailPane.shared.open(tweet, fromPane: fromPane)
+        } else {
+            push(.tweet(tweet))
+        }
     }
     
     // The profile page, when it is the page in front
@@ -187,6 +192,22 @@ final class NavigationManager: ObservableObject {
     // the contact list together, and macOS can make it slightly wider than half, so the line sits at 51%. Both lines are
     // shares of the screen the window is on, so they hold on any display.
     func updateLayout(windowWidth: CGFloat, screenWidth: CGFloat) {
+        // Open posts move with the layout: to full pages when the pane goes away, and into the pane when it arrives, or
+        // a post open as a full page would hide the three columns. Anything else on the stack stays a full page.
+        if DetailPane.shared.updateAvailability(windowWidth: windowWidth, screenWidth: screenWidth), currentTab == .home {
+            if DetailPane.shared.isAvailable {
+                let tweets = overlayStack.compactMap { entry -> Tweet? in
+                    if case .tweet(let tweet) = entry.page { return tweet }
+                    return nil
+                }
+                if tweets.count == overlayStack.count && !tweets.isEmpty {
+                    DetailPane.shared.adopt(tweets)
+                    overlayStack = []
+                }
+            } else {
+                overlayStack.append(contentsOf: DetailPane.shared.takeStack().map { OverlayEntry(page: .tweet($0)) })
+            }
+        }
         let isWide = windowWidth >= screenWidth * 0.51
         let isFolded = windowWidth < (screenWidth * 2 / 5).rounded(.down)
         guard isWide != isWideWindow || isFolded != isTooNarrowForContactList else { return }
@@ -359,6 +380,10 @@ final class NavigationManager: ObservableObject {
                     }
                     if self.isSearchActive {
                         self.toggleSearch()
+                        return nil
+                    }
+                    if self.currentTab == .home && DetailPane.shared.isOpen {
+                        DetailPane.shared.goBack()
                         return nil
                     }
                 }

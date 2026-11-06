@@ -36,6 +36,39 @@ private struct NotificationsPullRefreshIndicatorOverlay: View {
     }
 }
 
+// What the detail pane shows while no post is open, so the column is never empty
+struct NotificationsGlanceView: View {
+    @ObservedObject private var viewModel = NotificationsViewModel.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+    
+    var body: some View {
+        ScrollContainer(topSpacer: 8) {
+            Text(loc.t("tab_notifications"))
+                .font(theme.appFont(size: 15, weight: .bold))
+                .foregroundColor(ThemeManager.primaryText)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            if viewModel.filteredItems.isEmpty {
+                LoadingIndicator(active: viewModel.isLoadingSelectedFeed)
+                    .padding(.vertical, 24)
+            } else {
+                ForEach(viewModel.filteredItems) { item in
+                    VStack(spacing: 0) {
+                        NotificationRowView(item: item)
+                        Rectangle()
+                            .fill(ThemeManager.divider)
+                            .frame(height: 0.5)
+                    }
+                    .id(item.id)
+                }
+            }
+        }
+    }
+}
+
 struct NotificationsView: View {
     @ObservedObject var viewModel = NotificationsViewModel.shared
     @ObservedObject var nav = NavigationManager.shared
