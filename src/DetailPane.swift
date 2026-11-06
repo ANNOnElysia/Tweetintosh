@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AppKit
 import Combine
 
 // Published apart from the stack: the columns depend only on this, so opening a post doesn't touch the timeline's views
@@ -122,17 +123,46 @@ struct HomeColumns<Timeline: View>: View {
                     .frame(width: timelineWidth)
                     .environment(\.mediaColumnWidth, timelineWidth - Self.mediaInset)
                 if layout.isAvailable {
-                    Rectangle()
-                        .fill(ThemeManager.divider)
-                        .frame(width: 0.5)
-                        .ignoresSafeArea()
-                    DetailPaneColumn(sidebarExpanded: sidebarExpanded)
-                        .frame(width: paneWidth)
-                        .environment(\.mediaColumnWidth, paneWidth - Self.mediaInset)
+                    PaneSlideIn {
+                        HStack(spacing: 0) {
+                            Rectangle()
+                                .fill(ThemeManager.divider)
+                                .frame(width: 0.5)
+                                .ignoresSafeArea()
+                            DetailPaneColumn(sidebarExpanded: sidebarExpanded)
+                                .frame(width: paneWidth)
+                                .environment(\.mediaColumnWidth, paneWidth - Self.mediaInset)
+                        }
+                    }
                 }
             }
             .frame(width: width, height: proxy.size.height)
         }
+    }
+}
+
+private final class PaneArrival: ObservableObject {
+    @Published var hasLanded = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+}
+
+// Glides and fades the pane in when it arrives, and not at all under Reduce Motion. It starts on screen and almost
+// transparent: a table builds its rows only once it is on screen, and SwiftUI doesn't render anything at zero opacity, so
+// sliding from the window's edge stalls at the moment it comes into view and the slide is over by the time it draws.
+private struct PaneSlideIn<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @StateObject private var arrival = PaneArrival()
+
+    var body: some View {
+        content()
+            .opacity(arrival.hasLanded ? 1 : 0.01)
+            .offset(x: arrival.hasLanded ? 0 : 56)
+            .onAppear {
+                guard !arrival.hasLanded else { return }
+                // Long enough for the first layout, which runs on the display cycle after this
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.95)) { arrival.hasLanded = true }
+                }
+            }
     }
 }
 
