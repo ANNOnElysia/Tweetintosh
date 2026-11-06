@@ -259,6 +259,10 @@ final class NavigationManager: ObservableObject {
         }
     }
     
+    func closeAllPages() {
+        if hasOverlay { overlayStack = [] }
+    }
+    
     // Arriving from outside the window: the tab has to end up on screen, so any page open over it closes
     func showTab(_ tab: AppTab) {
         overlayStack = []
@@ -367,6 +371,11 @@ final class NavigationManager: ObservableObject {
                         self.dismissComposer()
                         return nil
                     }
+                    // First, because a search opened from the sidebar sits over any page beside it
+                    if self.isSearchActive {
+                        self.toggleSearch()
+                        return nil
+                    }
                     if self.hasOverlay {
                         self.dismissTweetDetail()
                         return nil
@@ -376,10 +385,6 @@ final class NavigationManager: ObservableObject {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                             self.isContactListPeeking = false
                         }
-                        return nil
-                    }
-                    if self.isSearchActive {
-                        self.toggleSearch()
                         return nil
                     }
                     if self.currentTab == .home && DetailPane.shared.isOpen {

@@ -184,14 +184,15 @@ struct AppRootView: View {
             }
             
             // Suggestions under the search field (typeahead, or recent searches when it is empty)
-            if nav.isSearchActive && !nav.hasOverlay {
+            if nav.isSearchActive && (nav.sidebarExpanded || !nav.hasOverlay) {
                 // Beside the sidebar's field when it is open, under the top bar's otherwise
                 SearchSuggestionsPanel()
                     .padding(.top, nav.sidebarExpanded ? 100 : 66)
                     .padding(.leading, nav.sidebarExpanded ? 222 : 0)
                     .frame(maxWidth: .infinity, alignment: nav.sidebarExpanded ? .topLeading : .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-                    .zIndex(101)
+                    // Above any page open beside the sidebar
+                    .zIndex(950)
             }
             
             // Full-pane pages (tweet detail, profiles), stacked newest on top
@@ -222,6 +223,8 @@ struct AppRootView: View {
                     }
                 }
                 .environment(\.peekScope, .overlay(index))
+                // Beside the sidebar when it is open, whose rows stay usable and lead back out of the page
+                .padding(.leading, nav.sidebarExpanded ? 234 : 0)
                 .transition(
                     .asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -684,6 +687,7 @@ private struct LiquidGlassSidebar: View {
                 let isSelected = selection == tab
                 Button {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+                        nav.closeAllPages()
                         selection = tab
                     }
                 } label: {
@@ -1031,6 +1035,7 @@ private struct SidebarContextSection: View {
             }
             .pressDragSelection { (choice: SidebarFeedChoice) in
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                    nav.closeAllPages()
                     switch choice {
                     case .feed(let type):
                         timelineVM.selectFeed(type)
@@ -1065,6 +1070,7 @@ private struct SidebarContextSection: View {
             }
         }
         .pressDragSelection { (filter: NotificationFilter) in
+            nav.closeAllPages()
             notifications.selectFilter(filter)
         }
     }
