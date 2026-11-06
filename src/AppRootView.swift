@@ -270,7 +270,7 @@ struct AppRootView: View {
     @ViewBuilder private var destination: some View {
         switch nav.currentTab {
         case .home:
-            HomeColumns {
+            HomeColumns(sidebarExpanded: nav.sidebarExpanded) {
                 NavigationStack {
                     MainTimelineView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
                 }

@@ -235,7 +235,7 @@ struct TweetDetailView: View {
         // Command+R refreshes the page in front, like it does the timeline
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_RefreshTimeline"))) { _ in
             if isInDetailPane {
-                viewModel.refresh()
+                if DetailPane.shared.stack.last?.tweet.id == viewModel.focalTweet.id { viewModel.refresh() }
             } else if case .tweet(let page)? = NavigationManager.shared.overlayStack.last?.page, page.id == viewModel.focalTweet.id {
                 viewModel.refresh()
             }

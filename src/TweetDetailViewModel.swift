@@ -14,13 +14,18 @@ final class TweetDetailViewModel: ObservableObject {
     @Published var focalTweet: Tweet
     @Published var ancestors: [Tweet] = []
     @Published var replies: [Tweet] = [] {
-        didSet { DebugSupport.repliesDidChange(focal: focalTweet, replies: replies, threads: replyThreads) }
+        didSet {
+            replyThreads = groupedReplies()
+            DebugSupport.repliesDidChange(focal: focalTweet, replies: replies, threads: replyThreads)
+        }
     }
+    // Worked out when the replies change, because the page reads it every time it redraws
+    private(set) var replyThreads: [[Tweet]] = []
     
     // Replies grouped into conversations by who they answer, wherever X happens to list them: each reply to the
     // post (or to something that isn't loaded) starts one, and every reply that answers a reply in it, directly or
     // further down, belongs to it. Within a conversation the replies keep the order X sent them in.
-    var replyThreads: [[Tweet]] {
+    private func groupedReplies() -> [[Tweet]] {
         let byId = Dictionary(replies.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var rootOf: [String: String] = [:]
         func root(of tweet: Tweet, visiting: Set<String>) -> String {
@@ -114,17 +119,21 @@ final class TweetDetailViewModel: ObservableObject {
     func loadDetail() {
         guard !isLoading else { return }
         
-        // A detail page warmed by hovering opens already filled in; it is only refetched if it has gone stale
-        var hasCached = false
+        error = nil
+        
+        // A detail page warmed by hovering opens already filled in; it is only refetched if it has gone stale. This
+        // happens before the page's first frame on purpose: filling it in afterwards lays the whole table out twice.
         if let cached = TweetDetailPrefetcher.shared.cached(focalTweet.id) {
             detailLogger.notice("detail opened from prefetch cache \(self.focalTweet.id, privacy: .public)")
             applyDetail(cached.detail)
-            hasCached = true
-            if Date().timeIntervalSince(cached.fetchedAt) < 30 { return }
+            if Date().timeIntervalSince(cached.fetchedAt) >= 30 { fetchDetail(hasCached: true) }
+            return
         }
-        if !hasCached { isLoading = true }
-        error = nil
-        
+        isLoading = true
+        fetchDetail(hasCached: false)
+    }
+    
+    private func fetchDetail(hasCached: Bool) {
         apiClient.fetchTweetDetail(tweetId: focalTweet.id) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }

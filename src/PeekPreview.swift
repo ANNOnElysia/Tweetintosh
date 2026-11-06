@@ -41,6 +41,8 @@ enum PeekScope: Equatable {
     case messages
     // The contact list slid over the chat, which it takes the presses from
     case contactListOverlay
+    // A page in the detail pane with another on top of it
+    case paneHidden
     // A full-pane page; the index is its depth in the navigation stack
     case overlay(Int)
 }

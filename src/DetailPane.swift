@@ -7,6 +7,12 @@
 //
 
 import SwiftUI
+import Combine
+
+// Published apart from the stack: the columns depend only on this, so opening a post doesn't touch the timeline's views
+final class DetailPaneLayout: ObservableObject {
+    @Published var isAvailable = false
+}
 
 final class DetailPane: ObservableObject {
     static let shared = DetailPane()
@@ -20,7 +26,8 @@ final class DetailPane: ObservableObject {
     // The three columns need this much with the sidebar open, whatever share of a small screen that is
     private static let minimumWindowWidth: CGFloat = 1094
 
-    @Published private(set) var isAvailable = false
+    let layout = DetailPaneLayout()
+    var isAvailable: Bool { layout.isAvailable }
     // The posts opened in the pane, newest last, so a reply opened from a post can go back to it
     @Published private(set) var stack: [Entry] = []
 
@@ -30,27 +37,23 @@ final class DetailPane: ObservableObject {
     func updateAvailability(windowWidth: CGFloat, screenWidth: CGFloat) -> Bool {
         let available = windowWidth >= max(screenWidth * 2 / 3, Self.minimumWindowWidth)
         guard available != isAvailable else { return false }
-        isAvailable = available
+        layout.isAvailable = available
         return true
     }
 
     // A post chosen from inside the pane stacks on the one showing; one from the timeline starts afresh
     func open(_ tweet: Tweet, fromPane: Bool) {
         guard stack.last?.tweet.id != tweet.id else { return }
-        withAnimation(.easeInOut(duration: 0.16)) {
-            if fromPane {
-                stack.append(Entry(tweet: tweet))
-            } else {
-                stack = [Entry(tweet: tweet)]
-            }
+        if fromPane {
+            stack.append(Entry(tweet: tweet))
+        } else {
+            stack = [Entry(tweet: tweet)]
         }
     }
 
     func goBack() {
         guard !stack.isEmpty else { return }
-        withAnimation(.easeInOut(duration: 0.16)) {
-            _ = stack.removeLast()
-        }
+        stack.removeLast()
     }
 
     // Hands over what was open, for when the window has become too narrow to show it here
@@ -95,8 +98,9 @@ extension EnvironmentValues {
 // The timeline is held to a comfortable reading width. It keeps the same place in the view tree whether or not the pane
 // is showing, so resizing the window doesn't rebuild it and lose the scroll position.
 struct HomeColumns<Timeline: View>: View {
+    let sidebarExpanded: Bool
     @ViewBuilder let timeline: () -> Timeline
-    @ObservedObject private var pane = DetailPane.shared
+    @ObservedObject private var layout = DetailPane.shared.layout
 
     // Alone, the timeline stops at a reading width. Beside the pane it takes the larger share, and the pane fills what is
     // left, so the columns meet the window's edges with nothing blank around them.
@@ -109,7 +113,7 @@ struct HomeColumns<Timeline: View>: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let timelineWidth = pane.isAvailable
+            let timelineWidth = layout.isAvailable
                 ? min(Self.besidePaneMaxWidth, width * 0.6, width - Self.paneMinWidth)
                 : min(Self.aloneWidth, width)
             let paneWidth = width - timelineWidth
@@ -117,12 +121,12 @@ struct HomeColumns<Timeline: View>: View {
                 timeline()
                     .frame(width: timelineWidth)
                     .environment(\.mediaColumnWidth, timelineWidth - Self.mediaInset)
-                if pane.isAvailable {
+                if layout.isAvailable {
                     Rectangle()
                         .fill(ThemeManager.divider)
                         .frame(width: 0.5)
                         .ignoresSafeArea()
-                    DetailPaneColumn()
+                    DetailPaneColumn(sidebarExpanded: sidebarExpanded)
                         .frame(width: paneWidth)
                         .environment(\.mediaColumnWidth, paneWidth - Self.mediaInset)
                 }
@@ -132,46 +136,74 @@ struct HomeColumns<Timeline: View>: View {
     }
 }
 
+// Every page stays mounted, with only the top one receiving input. Going back then needs no reload and keeps the scroll
+// position, and opening a post doesn't rebuild the notifications table on closing it, which was most of the cost.
 private struct DetailPaneColumn: View {
+    let sidebarExpanded: Bool
     @ObservedObject private var pane = DetailPane.shared
-    @ObservedObject private var nav = NavigationManager.shared
 
     var body: some View {
-        Group {
-            if let entry = pane.stack.last {
-                TweetDetailView(
-                    tweet: entry.tweet,
-                    backIcon: pane.stack.count > 1 ? "chevron.left" : "xmark"
-                ) {
+        ZStack {
+            NotificationsGlanceView()
+                .modifier(PaneLayer(isFront: pane.stack.isEmpty))
+            ForEach(Array(pane.stack.enumerated()), id: \.element.id) { index, entry in
+                TweetDetailView(tweet: entry.tweet, backIcon: index > 0 ? "chevron.left" : "xmark") {
                     pane.goBack()
                 }
-                .id(entry.id)
                 .environment(\.allowsVideoAutoplay, true)
                 .environment(\.prefersVideoAutoplay, true)
-                .transition(.opacity)
-            } else {
-                NotificationsGlanceView()
-                    .transition(.opacity)
+                .modifier(PaneLayer(isFront: index == pane.stack.count - 1))
             }
         }
         .environment(\.isInDetailPane, true)
-        .environment(\.peekScope, .timeline)
         // The floating bar sits across the top of the window while the sidebar is closed
-        .padding(.top, nav.sidebarExpanded ? 0 : 52)
+        .padding(.top, sidebarExpanded ? 0 : 52)
+    }
+}
+
+// A page underneath is covered by the opaque one on top rather than faded out: SwiftUI stops rendering anything at zero
+// opacity, so bringing it back would rebuild its views and redraw its text. It also leaves the front scope, which stops
+// its videos and keeps deep presses from finding it.
+private struct PaneLayer: ViewModifier {
+    let isFront: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .allowsHitTesting(isFront)
+            .accessibilityHidden(!isFront)
+            .environment(\.peekScope, isFront ? .timeline : .paneHidden)
     }
 }
 
 // MARK: - Open Post Highlight
 
-// A modifier of its own, so opening a post updates this and not every row of the timeline
+// Subscribes once and publishes only when this row's answer changes, so opening a post updates the row losing the highlight
+// and the one gaining it. Subscribing from the view would start over at every redraw, and each start publishes.
+private final class OpenPostHighlightState: ObservableObject {
+    @Published private(set) var isOpen = false
+    private var subscription: AnyCancellable?
+
+    init(tweetId: String) {
+        subscription = DetailPane.shared.$stack
+            .map { $0.first?.tweet.id == tweetId }
+            .removeDuplicates()
+            .sink { [weak self] open in
+                if self?.isOpen != open { self?.isOpen = open }
+            }
+    }
+}
+
 struct HighlightsOpenPost: ViewModifier {
-    let tweetId: String
-    @ObservedObject private var pane = DetailPane.shared
+    @StateObject private var state: OpenPostHighlightState
     @ObservedObject private var theme = ThemeManager.shared
+
+    init(tweetId: String) {
+        _state = StateObject(wrappedValue: OpenPostHighlightState(tweetId: tweetId))
+    }
 
     func body(content: Content) -> some View {
         content.overlay {
-            if pane.isOpen && pane.stack.first?.tweet.id == tweetId {
+            if state.isOpen {
                 Rectangle()
                     .fill(ThemeManager.accent.opacity(theme.isLight ? 0.07 : 0.10))
                     .allowsHitTesting(false)
