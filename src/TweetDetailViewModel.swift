@@ -301,6 +301,11 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
         TimelineViewModel.shared.mutateTweet(id: id, transform: transform)
     }
 
+    func copy(of id: String) -> Tweet? {
+        if focalTweet.canonicalId == id { return focalTweet }
+        return (ancestors + replies).first { $0.canonicalId == id }
+    }
+
     func applyMutation(id: String, transform: (inout Tweet) -> Void) {
         if focalTweet.canonicalId == id {
             transform(&focalTweet)
@@ -377,6 +382,7 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
             t.isBookmarked = willBookmark
             t.bookmarkCount = max(0, t.bookmarkCount + (willBookmark ? 1 : -1))
         }
+        TimelineViewModel.shared.bookmarkStateChanged(postId: postId, isBookmarked: willBookmark)
         
         let settle: (Result<Void, APIError>) -> Void = {
             EngagementGuard.settle($0, kind: .bookmark, turnedOn: willBookmark, postId: postId)

@@ -82,6 +82,12 @@ extension APIClient {
 // Liking it in one must update the others, so those pages register here and receive every post mutation.
 protocol TweetMutationTarget: AnyObject {
     func applyMutation(id: String, transform: (inout Tweet) -> Void)
+    // This page's copy of a post, if it has one
+    func copy(of id: String) -> Tweet?
+}
+
+extension TweetMutationTarget {
+    func copy(of id: String) -> Tweet? { nil }
 }
 
 final class TweetMutationHub {
@@ -93,6 +99,13 @@ final class TweetMutationHub {
         targets.add(target)
     }
     
+    func copy(of id: String) -> Tweet? {
+        for case let target as TweetMutationTarget in targets.allObjects {
+            if let tweet = target.copy(of: id) { return tweet }
+        }
+        return nil
+    }
+
     func apply(id: String, transform: (inout Tweet) -> Void) {
         for case let target as TweetMutationTarget in targets.allObjects {
             target.applyMutation(id: id, transform: transform)
@@ -158,7 +171,13 @@ extension EngagementGuard {
             TimelineViewModel.shared.mutateTweet(id: postId) { tweet in
                 kind.apply(to: &tweet, on: alreadyThere ? turnedOn : !turnedOn, countDelta: turnedOn ? -1 : 1)
             }
-            if !alreadyThere { reportFailure(error) }
+            if !alreadyThere {
+                // The Bookmarks feed changed when the button was pressed; put it back too
+                if kind == .bookmark {
+                    TimelineViewModel.shared.bookmarkStateChanged(postId: postId, isBookmarked: !turnedOn)
+                }
+                reportFailure(error)
+            }
         }
     }
 }

@@ -692,6 +692,39 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Bookmarks Feed
+
+    // Where posts taken out of Bookmarks were, so a refused un-bookmark can put them back in their place
+    private var removedBookmarks: [String: (tweet: Tweet, index: Int)] = [:]
+
+    // Called as soon as a post is bookmarked or un-bookmarked, from any screen, and again with the opposite value if X
+    // refuses. Un-bookmarking takes the post out of Bookmarks at once, as X's own page does; bookmarking puts it at the
+    // top. A refresh of the feed replaces all of this with X's own list anyway.
+    func bookmarkStateChanged(postId: String, isBookmarked: Bool) {
+        if isBookmarked {
+            guard !bookmarkTweets.contains(where: { $0.canonicalId == postId }) else { return }
+            let removed = removedBookmarks.removeValue(forKey: postId)
+            guard var tweet = removed?.tweet ?? onScreenCopy(of: postId) else { return }
+            tweet.isBookmarked = true
+            bookmarkTweets.insert(tweet, at: min(removed?.index ?? 0, bookmarkTweets.count))
+        } else {
+            guard let index = bookmarkTweets.firstIndex(where: { $0.canonicalId == postId }) else { return }
+            removedBookmarks[postId] = (bookmarkTweets[index], index)
+            bookmarkTweets.remove(at: index)
+        }
+        if selectedFeed == .bookmarks { updateActiveTweets() }
+        TimelineCacheManager.shared.saveSnapshot(feed: .bookmarks, tweets: bookmarkTweets,
+                                                 topCursor: bookmarksTopCursor, bottomCursor: bookmarksBottomCursor)
+    }
+
+    // The freshest copy of a post the timeline holds, for adding it to Bookmarks
+    private func onScreenCopy(of postId: String) -> Tweet? {
+        let match: (Tweet) -> Bool = { $0.canonicalId == postId }
+        return tweets.first(where: match) ?? forYouTweets.first(where: match) ?? followingTweets.first(where: match)
+            ?? listTweets.values.lazy.compactMap { $0.first(where: match) }.first
+            ?? TweetMutationHub.shared.copy(of: postId)
+    }
+
     // MARK: - Optimistic Engagement Actions
     
     func toggleLike(for tweet: Tweet) {
@@ -752,6 +785,7 @@ final class TimelineViewModel: ObservableObject {
             t.isBookmarked = willBookmark
             t.bookmarkCount = max(0, t.bookmarkCount + (willBookmark ? 1 : -1))
         }
+        bookmarkStateChanged(postId: postId, isBookmarked: willBookmark)
         
         let settle: (Result<Void, APIError>) -> Void = {
             EngagementGuard.settle($0, kind: .bookmark, turnedOn: willBookmark, postId: postId)
