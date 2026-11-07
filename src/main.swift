@@ -99,8 +99,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // which fetches as soon as it exists
     private func showWelcome() {
         welcomeController = WelcomeWindowController { [weak self] in
-            self?.welcomeController = nil
-            self?.startApp()
+            guard let self = self else { return }
+            self.welcomeController = nil
+            self.startApp()
+            // A first launch goes straight on to signing in. After an agreement update there is usually an account
+            // already, and then nothing more is asked.
+            if CredentialsManager.shared.loadCredentials() == nil {
+                DispatchQueue.main.async { self.startLoginFlow() }
+            }
         }
         welcomeController?.show()
     }
