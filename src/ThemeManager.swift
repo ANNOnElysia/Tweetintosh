@@ -253,17 +253,24 @@ final class ThemeManager: ObservableObject {
     }
     
     func applyAppearance() {
+        // At once when possible, so the first window already draws in the right appearance. The announcement still waits a
+        // turn: this also runs while ThemeManager.shared is being created, and listeners read it back.
+        if Thread.isMainThread { setAppAppearance() }
         DispatchQueue.main.async {
-            switch self.appearance {
-            case .dark:
-                NSApp?.appearance = NSAppearance(named: .darkAqua)
-            case .light:
-                NSApp?.appearance = NSAppearance(named: .aqua)
-            case .system:
-                NSApp?.appearance = nil
-            }
+            self.setAppAppearance()
             self.objectWillChange.send()
             NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
+        }
+    }
+
+    private func setAppAppearance() {
+        switch appearance {
+        case .dark:
+            NSApp?.appearance = NSAppearance(named: .darkAqua)
+        case .light:
+            NSApp?.appearance = NSAppearance(named: .aqua)
+        case .system:
+            NSApp?.appearance = nil
         }
     }
     
@@ -272,7 +279,8 @@ final class ThemeManager: ObservableObject {
            let app = AppThemeAppearance(savedValue: savedApp) {
             self.appearance = app
         } else {
-            self.appearance = .dark
+            // A new install looks like the rest of the Mac until the reader picks something else
+            self.appearance = .system
         }
         
         if let savedTone = UserDefaults.standard.string(forKey: "Tweetintosh_ThemeTone"),

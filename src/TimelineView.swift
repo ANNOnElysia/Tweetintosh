@@ -707,7 +707,7 @@ struct MainTimelineView: View {
             
             Text(loc.t("sign_in_required"))
                 .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundColor(ThemeManager.primaryText)
             
             Button(action: onLoginRequest) {
                 Text(loc.t("sign_in_button"))

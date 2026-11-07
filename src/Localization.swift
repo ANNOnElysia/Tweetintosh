@@ -40,15 +40,17 @@ final class LocalizationManager: ObservableObject {
            let lang = AppLanguage(rawValue: saved) {
             self.currentLanguage = lang
         } else {
-            // Intelligent System Locale Detection
+            // The first of the Mac's preferred languages that the app has, in the order the reader ranked them; English
+            // when none of them is one of ours
             let matched = Locale.preferredLanguages.compactMap { pref -> AppLanguage? in
+                if pref.hasPrefix("en") { return .english }
                 if pref.hasPrefix("zh-Hans") || pref.hasPrefix("zh-CN") { return .simplifiedChinese }
                 if pref.hasPrefix("zh-Hant") || pref.hasPrefix("zh-TW") || pref.hasPrefix("zh-HK") { return .traditionalChinese }
                 if pref.hasPrefix("ja") { return .japanese }
                 if pref.hasPrefix("ko") { return .korean }
                 return nil
             }.first
-            self.currentLanguage = matched ?? .simplifiedChinese
+            self.currentLanguage = matched ?? .english
         }
     }
     
