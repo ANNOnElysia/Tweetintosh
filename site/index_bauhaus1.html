@@ -149,7 +149,7 @@
       <pre tabindex="0"><code>./build.sh
 open Tweetintosh.app</code></pre>
       <p class="small">Tweetintosh authenticates with your existing X session and talks directly to private GraphQL and REST endpoints. This page is an interactive style study, unaffiliated with any historical Bauhaus institution.</p>
-      <button class="again" id="again" type="button">Download from GitHub</button>
+      <a class="again" id="again" href="https://github.com/ANNOnElysia/Tweetintosh/releases/tag/v0.1.0" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;">Download from GitHub</a>
     </section>
   </main>
 </div>
@@ -541,9 +541,7 @@ open Tweetintosh.app</code></pre>
     });
   });
 
-  document.getElementById("again").addEventListener("click", function () {
-    window.scrollTo({ top: 0, behavior: calm ? "auto" : "smooth" });
-  });
+
 
   measure();
 })();
