@@ -8,8 +8,9 @@
 *.dSYM/
 *.dia
 
-# Compiled Application Bundle (Rebuildable via ./build.sh)
+# Compiled Application Bundle & Installers (Rebuildable via ./build.sh)
 Tweetintosh.app/
+*.dmg
 
 # Editor & Temporary Files
 *.swp
