@@ -97,7 +97,11 @@ final class ImageLoader: ObservableObject {
         guard let urlString = urlString else { return nil }
         let request = Request(url: urlString, targetSize: targetSize)
         if shown == request { return loadedImage }
-        return MediaCacheManager.shared.memoryImage(for: urlString, targetPixelSize: request.pixelSize).flatMap(Self.cgImage(of:))
+        if let exact = MediaCacheManager.shared.memoryImage(for: urlString, targetPixelSize: request.pixelSize).flatMap(Self.cgImage(of:)) {
+            return exact
+        }
+        // The same picture at another size (its tile is being resized) is drawn scaled until the right size is ready
+        return shown?.url == urlString ? loadedImage : nil
     }
 
     func load(urlString: String?, targetSize: CGSize?) {
@@ -118,6 +122,26 @@ final class ImageLoader: ObservableObject {
             return
         }
         
+        // Only the size changed, as when the column is animating to a new width: the picture already decoded is drawn at
+        // the new size meanwhile, and decoded again once, when the size has stopped changing, rather than on every frame
+        if shown?.url == urlStr, loadedImage != nil {
+            resizeWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self, self.current == request else { return }
+                self.fetch(request)
+            }
+            resizeWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+            return
+        }
+        fetch(request)
+    }
+
+    private var resizeWork: DispatchWorkItem?
+
+    private func fetch(_ request: Request) {
+        let urlStr = request.url
+        let targetPixelSize = request.pixelSize
         guard inFlight != request else { return }
         inFlight = request
         

@@ -489,7 +489,7 @@ struct TimelineTableView: NSViewRepresentable {
             if heights.context.rowWidth == 0 || tweets.isEmpty {
                 applyHeightContext()
             } else {
-                scheduleWidthSettle()
+                followWidth()
             }
             applyTopSpacer(view.topSpacerHeight)
             applyTweets(view.tweets)
@@ -598,9 +598,36 @@ struct TimelineTableView: NSViewRepresentable {
         private static let textColumnInset: CGFloat = 82
         private var widthSettleWork: DispatchWorkItem?
 
-        // Opening or closing the sidebar animates the width a frame at a time. Re-measuring every row on each of those
-        // frames was most of the animation's cost and left rows half-updated; the cells follow the width as it moves, clipped
-        // to their old heights, and the rows are measured once when it stops.
+        // Opening or closing the sidebar animates the width a frame at a time. On each frame the posts on screen take an
+        // estimated height for the width they now have, which is cheap and within a point or two, so they grow and shrink
+        // with the column instead of jumping when it stops. Once it has stopped, every row is measured properly.
+        private var followedWidth: CGFloat = 0
+
+        private func followWidth() {
+            let context = currentHeightContext()
+            guard context.rowWidth != followedWidth, context != heights.context, !tweets.isEmpty else { return }
+            followedWidth = context.rowWidth
+            let anchor = captureAnchor()
+            var changed = IndexSet()
+            for row in visibleTweetRows() {
+                let tweet = tweets[row - 1]
+                let height = TimelineRowEstimator.height(of: tweet, context: context)
+                if height != rowHeights[row - 1] {
+                    rowHeights[row - 1] = height
+                    changed.insert(row)
+                }
+                (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineTweetCell)?.show(content(for: tweet))
+            }
+            if !changed.isEmpty {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    tableView.noteHeightOfRows(withIndexesChanged: changed)
+                }
+            }
+            restore(anchor)
+            scheduleWidthSettle()
+        }
+
         private func scheduleWidthSettle() {
             guard currentHeightContext() != heights.context else { return }
             widthSettleWork?.cancel()
@@ -636,7 +663,7 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         func widthDidChange() {
-            scheduleWidthSettle()
+            followWidth()
         }
 
         // MARK: Scroll Anchoring
@@ -661,8 +688,11 @@ struct TimelineTableView: NSViewRepresentable {
         private func restore(_ anchor: Anchor?) {
             guard let anchor = anchor, let index = ids.firstIndex(of: anchor.id) else { return }
             let clip = scrollView.contentView
-            let y = tableView.rect(ofRow: index + 1).minY + anchor.offset
-            guard abs(y - clip.bounds.minY) > 0.25 else { return }
+            // On whole device pixels, and corrected however small the difference: skipping the small ones let them add up
+            // into a visible creep after the sidebar's animation, a pixel at a time
+            let scale = scrollView.window?.backingScaleFactor ?? 2
+            let y = ((tableView.rect(ofRow: index + 1).minY + anchor.offset) * scale).rounded() / scale
+            guard y != clip.bounds.minY else { return }
             if let clip = clip as? TimelineClipView {
                 clip.scrollExactly(to: NSPoint(x: clip.bounds.minX, y: y))
             } else {
@@ -747,7 +777,7 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         private func content(for tweet: Tweet) -> TimelineRowContent {
-            TimelineRowContent(tweet: tweet, mediaColumnWidth: heights.context.mediaColumnWidth)
+            TimelineRowContent(tweet: tweet, mediaColumnWidth: currentHeightContext().mediaColumnWidth)
         }
 
         // MARK: NSTableViewDataSource & Delegate
