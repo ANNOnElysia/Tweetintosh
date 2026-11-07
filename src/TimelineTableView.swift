@@ -283,7 +283,41 @@ final class TimelineNSScrollView: NSScrollView {
     }
 }
 
-private final class TimelineTweetCell: NSView {
+// Cells size their hosting view themselves, on every layout. Autoresizing drifted: after the sidebar's animation changed
+// the column's width a frame at a time, hosting views were left wider or shorter than their cells, so a post's actions slid
+// under the next row and a too-wide post shifted sideways under the sidebar. Cells also clip, so a post whose height is
+// still being worked out never draws over its neighbour.
+private class TimelineCellBase: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    var hostedView: NSView? { nil }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        hostedView?.frame = bounds
+    }
+
+    override func layout() {
+        super.layout()
+        if let hosted = hostedView, hosted.frame != bounds { hosted.frame = bounds }
+    }
+
+    func install(_ hosted: NSView) {
+        hosted.translatesAutoresizingMaskIntoConstraints = true
+        hosted.autoresizingMask = []
+        hosted.frame = bounds
+        addSubview(hosted)
+    }
+}
+
+private final class TimelineTweetCell: TimelineCellBase {
     static let identifier = NSUserInterfaceItemIdentifier("TimelineTweetCell")
     private(set) var content: TimelineRowContent?
     private var host: FocusCachingHostingView<TimelineRowContent>?
@@ -292,6 +326,8 @@ private final class TimelineTweetCell: NSView {
         PeekRegistry.shared.register(geometry)
         return geometry
     }()
+
+    override var hostedView: NSView? { host }
 
     func show(_ row: TimelineRowContent) {
         // Nothing to do when a page is only being asked to refresh: comparing here spares SwiftUI the whole row
@@ -306,19 +342,18 @@ private final class TimelineTweetCell: NSView {
             // No measuring of its own and no titlebar inset: the table sets the frame, and the titlebar is the spacer's job
             host.sizingOptions = []
             host.safeAreaRegions = []
-            host.translatesAutoresizingMaskIntoConstraints = true
-            host.autoresizingMask = [.width, .height]
-            host.frame = bounds
-            addSubview(host)
+            install(host)
             self.host = host
             geometry.hostView = host
         }
     }
 }
 
-private final class TimelineFooterCell: NSView {
+private final class TimelineFooterCell: TimelineCellBase {
     static let identifier = NSUserInterfaceItemIdentifier("TimelineFooterCell")
     private var host: NSHostingView<LoadingIndicator>?
+
+    override var hostedView: NSView? { host }
 
     func show(active: Bool) {
         if let host = host {
@@ -327,10 +362,7 @@ private final class TimelineFooterCell: NSView {
             let host = NSHostingView(rootView: LoadingIndicator(active: active))
             host.sizingOptions = []
             host.safeAreaRegions = []
-            host.translatesAutoresizingMaskIntoConstraints = true
-            host.autoresizingMask = [.width, .height]
-            host.frame = bounds
-            addSubview(host)
+            install(host)
             self.host = host
         }
     }
@@ -453,7 +485,12 @@ struct TimelineTableView: NSViewRepresentable {
         // MARK: Data Updates
 
         func update(from view: TimelineTableView) {
-            applyHeightContext(mediaColumnWidth: view.mediaColumnWidth)
+            // The first layout needs heights at once; after that, a change of width waits until it stops changing
+            if heights.context.rowWidth == 0 || tweets.isEmpty {
+                applyHeightContext()
+            } else {
+                scheduleWidthSettle()
+            }
             applyTopSpacer(view.topSpacerHeight)
             applyTweets(view.tweets)
             if view.isLoadingMore != isLoadingMore {
@@ -544,29 +581,62 @@ struct TimelineTableView: NSViewRepresentable {
             }
         }
 
-        private func applyHeightContext(mediaColumnWidth: CGFloat?) {
-            let width = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : (mediaColumnWidth.map { $0 + 82 } ?? 760)
-            let newContext = TimelineRowHeights.Context(
+        // Everything a row's height depends on, read from the table's real width. The media column is derived from it too,
+        // so no cell is ever given picture sizes meant for a different width.
+        private func currentHeightContext() -> TimelineRowHeights.Context {
+            let clipWidth = scrollView.contentView.bounds.width
+            let width = clipWidth > 0 ? clipWidth : ((parent?.mediaColumnWidth).map { $0 + Self.textColumnInset } ?? 760)
+            return TimelineRowHeights.Context(
                 rowWidth: width,
-                mediaColumnWidth: mediaColumnWidth,
+                mediaColumnWidth: width - Self.textColumnInset,
                 fontType: ThemeManager.shared.fontType,
                 language: LocalizationManager.shared.currentLanguage
             )
+        }
+
+        // Margins, avatar and spacing beside a post's text and media
+        private static let textColumnInset: CGFloat = 82
+        private var widthSettleWork: DispatchWorkItem?
+
+        // Opening or closing the sidebar animates the width a frame at a time. Re-measuring every row on each of those
+        // frames was most of the animation's cost and left rows half-updated; the cells follow the width as it moves, clipped
+        // to their old heights, and the rows are measured once when it stops.
+        private func scheduleWidthSettle() {
+            guard currentHeightContext() != heights.context else { return }
+            widthSettleWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.applyHeightContext() }
+            widthSettleWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+        }
+
+        private func applyHeightContext() {
+            widthSettleWork?.cancel()
+            widthSettleWork = nil
+            let newContext = currentHeightContext()
             guard newContext != heights.context else { return }
             heights.setContext(newContext)
+            if let column = tableView.tableColumns.first, column.width != newContext.rowWidth { column.width = newContext.rowWidth }
             guard !tweets.isEmpty else { return }
             let anchor = captureAnchor()
-            rowHeights = tweets.map { heights.height(for: $0) }
-            tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 1..<(tweets.count + 1)))
-            for row in visibleTweetRows() {
+            // What is on screen is measured for real now, so it lands right; the rest starts on estimates and is measured
+            // a row per tick as before
+            let visible = Set(visibleTweetRows())
+            rowHeights = tweets.enumerated().map { index, tweet in
+                visible.contains(index + 1) ? heights.measure(tweet) : heights.height(for: tweet)
+            }
+            for row in visible {
                 (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineTweetCell)?.show(content(for: tweets[row - 1]))
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 1..<(tweets.count + 1)))
             }
             restore(anchor)
             scheduleMeasuring()
         }
 
         func widthDidChange() {
-            applyHeightContext(mediaColumnWidth: parent?.mediaColumnWidth)
+            scheduleWidthSettle()
         }
 
         // MARK: Scroll Anchoring
