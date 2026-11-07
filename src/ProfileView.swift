@@ -318,6 +318,8 @@ struct ProfileView: View {
     @Namespace private var tabNamespace
 
     private let bannerHeight: CGFloat = 250
+    private static let bannerFadeHeight: CGFloat = 96
+    private static let bannerCornerRadius: CGFloat = 22
 
     init(user: TweetUser, onDismiss: @escaping () -> Void) {
         _vm = StateObject(wrappedValue: ProfileViewModel(user: user))
@@ -357,9 +359,18 @@ struct ProfileView: View {
             // Pulling down past the top stretches the banner instead of revealing a gap
             let stretch = max(0, geo.frame(in: .named("profileScroll")).minY)
             ZStack(alignment: .bottom) {
+                // Fades in from the top, so the window's top edge and the floating back and edit buttons sit on the page's
+                // own background rather than on a hard image edge. A fixed fade length, so stretching doesn't lengthen it.
                 banner
                     .frame(width: geo.size.width, height: bannerHeight + stretch)
                     .clipped()
+                    .mask(
+                        VStack(spacing: 0) {
+                            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                                .frame(height: Self.bannerFadeHeight)
+                            Color.black
+                        }
+                    )
 
                 LinearGradient(colors: [.clear, Color.black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
                     .allowsHitTesting(false)
@@ -376,6 +387,9 @@ struct ProfileView: View {
                 .padding(.bottom, 16)
             }
             .frame(width: geo.size.width, height: bannerHeight + stretch)
+            // Rounded on both sides of its lower edge, with the same radius as the sidebar's glass beside it
+            .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: Self.bannerCornerRadius,
+                                              bottomTrailingRadius: Self.bannerCornerRadius, style: .continuous))
             .offset(y: -stretch)
         }
         .frame(height: bannerHeight)
