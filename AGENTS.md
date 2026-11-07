@@ -14,6 +14,9 @@ swift build -c release      # compile check, ~50 s; warnings about CommandLineTo
 open Tweetintosh.app        # run
 ```
 
+The app icon is drawn in code: `swift tools/make-app-icon.swift` rewrites `src/AppIcon.icns`. Change the drawing there
+rather than editing the `.icns` by hand.
+
 `build.sh` removes `.build` at the end, so a `swift build` after it is always a full rebuild.
 
 Runtime state lives in `~/Library/Application Support/Tweetintosh/` (accounts, credentials, timeline and
