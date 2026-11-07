@@ -661,25 +661,13 @@ final class TimelineViewModel: ObservableObject {
             t.favoriteCount = max(0, t.favoriteCount + (willFavorite ? 1 : -1))
         }
         
-        let completion: (Result<Void, APIError>) -> Void = { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if case .failure(let error) = result {
-                    // Rollback on failure
-                    self.mutateTweet(id: postId) { t in
-                        t.isFavorited = !willFavorite
-                        t.favoriteCount = max(0, t.favoriteCount + (!willFavorite ? 1 : -1))
-                    }
-                    self.errorMessage = error.localizedDescription
-                    EngagementGuard.reportFailure(error)
-                }
-            }
+        let settle: (Result<Void, APIError>) -> Void = {
+            EngagementGuard.settle($0, kind: .like, turnedOn: willFavorite, postId: postId)
         }
-        
         if willFavorite {
-            APIClient.shared.favoriteTweet(id: tweetId, completion: completion)
+            APIClient.shared.favoriteTweet(id: tweetId, completion: settle)
         } else {
-            APIClient.shared.unfavoriteTweet(id: tweetId, completion: completion)
+            APIClient.shared.unfavoriteTweet(id: tweetId, completion: settle)
         }
     }
     
@@ -696,24 +684,13 @@ final class TimelineViewModel: ObservableObject {
             t.retweetCount = max(0, t.retweetCount + (willRetweet ? 1 : -1))
         }
         
-        let completion: (Result<Void, APIError>) -> Void = { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if case .failure(let error) = result {
-                    self.mutateTweet(id: postId) { t in
-                        t.isRetweeted = !willRetweet
-                        t.retweetCount = max(0, t.retweetCount + (!willRetweet ? 1 : -1))
-                    }
-                    self.errorMessage = error.localizedDescription
-                    EngagementGuard.reportFailure(error)
-                }
-            }
+        let settle: (Result<Void, APIError>) -> Void = {
+            EngagementGuard.settle($0, kind: .repost, turnedOn: willRetweet, postId: postId)
         }
-        
         if willRetweet {
-            APIClient.shared.retweet(id: tweetId, completion: completion)
+            APIClient.shared.retweet(id: tweetId, completion: settle)
         } else {
-            APIClient.shared.unretweet(id: tweetId, completion: completion)
+            APIClient.shared.unretweet(id: tweetId, completion: settle)
         }
     }
     
@@ -730,24 +707,13 @@ final class TimelineViewModel: ObservableObject {
             t.bookmarkCount = max(0, t.bookmarkCount + (willBookmark ? 1 : -1))
         }
         
-        let completion: (Result<Void, APIError>) -> Void = { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if case .failure(let error) = result {
-                    self.mutateTweet(id: postId) { t in
-                        t.isBookmarked = !willBookmark
-                        t.bookmarkCount = max(0, t.bookmarkCount + (!willBookmark ? 1 : -1))
-                    }
-                    self.errorMessage = error.localizedDescription
-                    EngagementGuard.reportFailure(error)
-                }
-            }
+        let settle: (Result<Void, APIError>) -> Void = {
+            EngagementGuard.settle($0, kind: .bookmark, turnedOn: willBookmark, postId: postId)
         }
-        
         if willBookmark {
-            APIClient.shared.bookmark(id: tweetId, completion: completion)
+            APIClient.shared.bookmark(id: tweetId, completion: settle)
         } else {
-            APIClient.shared.unbookmark(id: tweetId, completion: completion)
+            APIClient.shared.unbookmark(id: tweetId, completion: settle)
         }
     }
     

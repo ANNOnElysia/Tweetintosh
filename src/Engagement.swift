@@ -99,3 +99,66 @@ final class TweetMutationHub {
         }
     }
 }
+
+// MARK: - Settling an Engagement
+
+enum EngagementKind {
+    case like, repost, bookmark
+
+    // Sets the post's own flag and moves its count by `delta`
+    fileprivate func apply(to tweet: inout Tweet, on: Bool, countDelta delta: Int) {
+        switch self {
+        case .like:
+            tweet.isFavorited = on
+            tweet.favoriteCount = max(0, tweet.favoriteCount + delta)
+        case .repost:
+            tweet.isRetweeted = on
+            tweet.retweetCount = max(0, tweet.retweetCount + delta)
+        case .bookmark:
+            tweet.isBookmarked = on
+            tweet.bookmarkCount = max(0, tweet.bookmarkCount + delta)
+        }
+    }
+}
+
+extension APIError {
+    // X refuses a like, repost or bookmark that is already there ("has already favorited tweet", "You have already
+    // retweeted this Tweet"), and an undo of one that isn't. Either way the post is already as the reader asked.
+    func saysAlready(on: Bool) -> Bool {
+        let text: String
+        switch self {
+        case .refused(let code, let message):
+            if on, code == 139 || code == 327 { return true }
+            text = message ?? ""
+        case .serverError(let message):
+            text = message
+        default:
+            return false
+        }
+        let lower = text.lowercased()
+        if on {
+            return lower.contains("already favorited") || lower.contains("already retweeted")
+                || lower.contains("already bookmarked") || lower.contains("already reposted")
+                || lower.contains("already liked")
+        }
+        return lower.contains("not favorited") || lower.contains("not retweeted") || lower.contains("not bookmarked")
+            || lower.contains("not reposted") || lower.contains("not liked")
+    }
+}
+
+extension EngagementGuard {
+    // What follows X's answer to a like, repost or bookmark that the screen already shows as done. Success leaves it.
+    // A refusal saying it was already so leaves the flag as asked, because that is where the post really is, and gives
+    // back the count the tap added, which X's count already included; nothing is shown. Any other refusal puts the post
+    // back as it was and says why.
+    static func settle(_ result: Result<Void, APIError>, kind: EngagementKind, turnedOn: Bool, postId: String) {
+        guard case .failure(let error) = result else { return }
+        DispatchQueue.main.async {
+            let alreadyThere = error.saysAlready(on: turnedOn)
+            TimelineViewModel.shared.mutateTweet(id: postId) { tweet in
+                kind.apply(to: &tweet, on: alreadyThere ? turnedOn : !turnedOn, countDelta: turnedOn ? -1 : 1)
+            }
+            if !alreadyThere { reportFailure(error) }
+        }
+    }
+}
