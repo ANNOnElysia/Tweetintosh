@@ -16,3 +16,10 @@ Tweetintosh.app/
 *~
 .idea/
 .vscode/
+
+# Media recordings & raw capture assets
+*.mov
+site/*.mov
+site/Pasted*
+*.tmp
+

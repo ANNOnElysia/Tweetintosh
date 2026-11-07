@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tweetintosh</title>
+<meta name="description" content="Tweetintosh is an unofficial native Mac client for X, drawn in SwiftUI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script>
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("live");
+</script>
+<style>
+  /* Layout concept: one vertical shaft, read top to bottom like a building section. The parts of the
+     app hang from steel joists on real cables, cast shadows on a paper wall, and bolt into place as
+     you lower the hoist. Single deliberate look: red, black and paper white with bare materials. */
+  :root {
+    color-scheme: light;
+    --wall: #e9e5da;
+    --sheet: #f7f4ec;
+    --ink: #131211;
+    --red: #d11a12;
+    --steel: #85888a;
+    --ply: #d4b488;
+    --sans: "Jost", "Century Gothic", "Futura", "PingFang SC", "Hiragino Sans", "Apple SD Gothic Neo", sans-serif;
+    --mono: "IBM Plex Mono", "Courier New", monospace;
+    --g-l: max(30px, env(safe-area-inset-left, 0px));
+    --g-r: max(30px, env(safe-area-inset-right, 0px));
+    --step--1: 0.75rem;
+    --step-0: 1.0625rem;
+    --step-1: clamp(1.2rem, 1rem + 0.8vw, 1.55rem);
+    --step-2: clamp(2.4rem, 1.5rem + 4vw, 4.4rem);
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--ink); }
+  body { margin: 0; background: var(--ink); color: var(--ink); font-family: var(--sans); font-size: var(--step-0); line-height: 1.42; -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  h2 { font-size: var(--step-2); font-weight: 900; line-height: 0.95; letter-spacing: -0.005em; text-transform: uppercase; text-wrap: balance; }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* ---------- The shaft ---------- */
+  .shaft {
+    container-type: inline-size;
+    position: relative;
+    width: min(100%, 900px);
+    margin-inline: auto;
+    background-color: var(--wall);
+    background-image: var(--t-paper, none);
+    background-size: 384px;
+    --lx: 0.2; --ly: 0.9; --sway: 0deg;
+  }
+  .rail { position: absolute; top: 0; bottom: 0; width: 14px; z-index: 9; pointer-events: none;
+    background: radial-gradient(circle at 50% 50%, #e5e5e2 0 2.2px, #2b2b2b 2.6px 3.1px, transparent 3.4px) center top / 14px 96px repeat-y, var(--t-steel, none), var(--steel);
+    box-shadow: 2px 0 5px rgba(0,0,0,0.45), -2px 0 5px rgba(0,0,0,0.45); }
+  .rail.l { left: 0; } .rail.r { right: 0; }
+  .floor { position: relative; overflow: clip; padding: 86px var(--g-r) 96px var(--g-l); display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 28px 12px; align-content: start; }
+  .joist { position: absolute; z-index: 5; left: 0; right: 0; top: 0; height: 34px; display: flex; justify-content: space-between; align-items: center; padding: 0 28px; font-family: var(--mono); font-size: var(--step--1); letter-spacing: 0.06em; text-transform: uppercase; color: #f4f2ea;
+    background: var(--t-steel, none), #4a4c4e; background-blend-mode: multiply; box-shadow: 0 7px 9px -3px rgba(0,0,0,0.5); }
+
+  /* ---------- Anything hung in real space ---------- */
+  .mod {
+    --rot: calc(var(--a, 0deg) + var(--r, 0deg) * var(--q, 0) + var(--sway, 0deg) * var(--swing, 0));
+    position: relative;
+    transform: translate3d(calc(var(--dx, 0px) * var(--q, 0)), calc(var(--dy, 0px) * var(--q, 0)), 0) rotate(var(--rot));
+    transform-origin: var(--o, 50% 0);
+    min-width: 0;
+  }
+  .shade {
+    --d: calc(var(--z, 14) * (1 + var(--q, 0)) * 1px);
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background: rgba(14, 11, 8, 0.42);
+    filter: blur(calc(2px + var(--z, 14) * 0.22px));
+    transform: translate3d(
+      calc((var(--lx) * cos(var(--rot)) + var(--ly) * sin(var(--rot))) * var(--d)),
+      calc((var(--ly) * cos(var(--rot)) - var(--lx) * sin(var(--rot))) * var(--d)), 0);
+  }
+  .round > .shade { border-radius: 50%; }
+  .face { position: relative; z-index: 1; }
+  .cable {
+    position: absolute; z-index: 0; bottom: 100%; left: var(--cx, 50%);
+    width: 4px; margin-left: -2px; height: var(--ch, 70cqw);
+    transform-origin: 50% 100%;
+    transform: rotate(calc(var(--rot) * -1));
+    background: repeating-linear-gradient(62deg, #2a2a2a 0 2px, #a0a2a3 2px 3px, #4c4d4e 3px 5px);
+    box-shadow: 5px 3px 3px rgba(14, 11, 8, 0.28);
+  }
+  .bolt {
+    position: absolute; z-index: 3; width: var(--b, 15px); aspect-ratio: 1; border-radius: 50%;
+    background: conic-gradient(#f0f0ec, #6b6d6e, #dedfdb, #55575a, #f0f0ec);
+    box-shadow: 1px 2px 3px rgba(0,0,0,0.65), inset 0 0 0 1px rgba(0,0,0,0.35);
+    transform: rotate(calc(var(--q, 0) * -540deg + 24deg));
+  }
+  .bolt::after { content: ""; position: absolute; left: 14%; right: 14%; top: 50%; height: 2px; margin-top: -1px; background: #17171a; }
+  .bolt.tl { left: 8px; top: 8px; } .bolt.tr { right: 8px; top: 8px; } .bolt.bl { left: 8px; bottom: 8px; } .bolt.br { right: 8px; bottom: 8px; }
+
+  /* Materials */
+  .m-ply { background-color: var(--ply); background-image: var(--t-ply, none); background-size: 512px 256px; }
+  .m-red { background-color: var(--red); background-image: var(--t-ply, none); background-size: 512px 256px; background-blend-mode: multiply; color: var(--sheet); }
+  .m-black { background-color: #1b1b1c; background-image: var(--t-steel, none); background-size: 512px 128px; background-blend-mode: soft-light; color: var(--sheet); }
+  .m-steel { background-color: #9a9c9d; background-image: var(--t-steel, none); background-size: 512px 128px; background-blend-mode: multiply; }
+  .edge { box-shadow: 0 9px 0 -1px #a8875a, 0 3px 0 -1px #efdcb9, 0 6px 0 -1px #8d6e44; }
+  .edge-red { box-shadow: 0 9px 0 -1px #6e0d09, 0 3px 0 -1px #efdcb9, 0 6px 0 -1px #a8875a; }
+
+  /* Primary text layer: printing ink on paper, always level and always unbroken */
+  .sheet { position: relative; z-index: 6; min-width: 0; padding: 18px 20px 20px; background-color: var(--sheet); background-image: var(--t-paper, none); background-size: 384px; box-shadow: 3px 7px 12px rgba(14, 11, 8, 0.32); }
+  .sheet p { max-width: 44ch; }
+  .sheet h2 + p { margin-top: 12px; }
+  .spec { margin-top: 12px; padding-top: 8px; border-top: 2px solid var(--ink); font-family: var(--mono); font-size: 0.8125rem; line-height: 1.35; }
+  .pin { position: absolute; z-index: 7; top: -7px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff6a5f, var(--red) 55%, #6e0d09); box-shadow: 2px 4px 4px rgba(0,0,0,0.5); }
+
+  .beam { position: absolute; z-index: 1; left: var(--bl, -20cqw); top: var(--bt, 50%); width: 150cqw; height: var(--bh, 4cqw); --o: 50% 50%; --swing: 0; }
+  .beam .face { height: 100%; background-size: 512px 128px; }
+  .beam .face::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, #eceae3 0 2px, #1d1d1d 2.5px 3px, transparent 3.5px) 0 0 / 64px 100% repeat-x; }
+
+  /* ---------- Level 6: title ---------- */
+  .hero { min-height: max(720px, 100vh); min-height: max(720px, 100svh); align-content: end; padding-bottom: 40px; }
+  .plank { position: absolute; z-index: 3; left: var(--pl); top: var(--pt); width: var(--pw); --swing: 1; }
+  .plank .face { padding: 1.4cqw 5cqw 0.6cqw; font-weight: 900; font-size: var(--fs); line-height: 1; letter-spacing: 0.005em; white-space: nowrap; }
+  .plank-a { --pl: -7cqw; --pt: 24%; --pw: 112cqw; --fs: 14.5cqw; --a: -17deg; --r: -13deg; --dx: -6cqw; --z: 26; --o: 44% 50%; }
+  .plank-a .face { padding-left: 12cqw; }
+  .plank-b { --pl: 14cqw; --pt: 44%; --pw: 100cqw; --fs: 14.5cqw; --a: -11deg; --r: 19deg; --dx: 4cqw; --z: 18; --o: 34% 50%; z-index: 4; }
+  .disc { position: absolute; z-index: 2; right: -9cqw; top: 3%; width: 54cqw; aspect-ratio: 1; --z: 34; --dy: 26cqw; --swing: 0.4; }
+  .disc .face { width: 100%; height: 100%; border-radius: 50%; }
+  .disc-x { position: absolute; z-index: 2; left: 6cqw; bottom: 22%; width: 30cqw; height: 42cqw; --a: 24deg; --r: -30deg; --z: 30; --swing: -0.5; }
+  .disc-x .face { height: 100%; }
+  .hero .sheet { grid-column: 1 / span 7; }
+  .hero .sheet p { font-size: var(--step-1); line-height: 1.22; font-weight: 500; }
+  .cue { margin-top: 12px; font-family: var(--mono); font-size: var(--step--1); letter-spacing: 0.05em; text-transform: uppercase; }
+
+  /* ---------- Level 5: window ---------- */
+  .f-window .pane { grid-column: 2 / span 10; --dx: 16cqw; --dy: 8cqw; --r: 7deg; --z: 22; --swing: 0.7; z-index: 3; margin-top: 24cqw; }
+  .frame { padding: 0 14px 14px; color: var(--sheet); }
+  .frame-bar { height: 40px; display: flex; align-items: center; justify-content: space-between; padding-inline: 18px; font-family: var(--mono); font-size: 0.8125rem; }
+  .glass { position: relative; overflow: hidden; aspect-ratio: 2300 / 1688; background: #fff; }
+  /* The screenshot carries its own window shadow, so the crop keeps only the window */
+  .glass img { display: block; width: 109.6%; max-width: none; height: auto; margin: -3.33% 0 0 -4.8%; }
+  .glass::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(112deg, rgba(255,255,255,0.34) 0 8%, rgba(210,228,226,0.04) 8% 22%, rgba(255,255,255,0.2) 22% 27%, rgba(205,226,224,0.04) 27% 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65), inset 0 0 26px rgba(120,160,155,0.3); }
+  .f-window .sheet { grid-column: 6 / span 7; margin-top: -9cqw; }
+
+  /* ---------- Level 4: buttons ---------- */
+  .f-buttons .sheet { grid-column: 1 / span 7; }
+  .btns { grid-column: 3 / span 10; min-height: 60cqw; position: relative; z-index: 3; }
+  .pb { position: absolute; left: var(--x); top: var(--y); width: var(--w); --z: 13; --swing: 0; }
+  .pb button {
+    appearance: none; display: block; width: 100%; position: relative; z-index: 1; border: 0; cursor: pointer;
+    font: 900 var(--fs) var(--sans); letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink);
+    padding: 0.5em 0.7em 0.5em; text-align: left; transition: transform 70ms linear, box-shadow 70ms linear;
+  }
+  .pb button.m-red { color: var(--sheet); }
+  .pb button:active { transform: translate(2px, 8px); box-shadow: 0 1px 0 -1px #a8875a; }
+  .pb button:focus-visible, .carriage input:focus-visible, .act:focus-visible { outline: 4px solid var(--ink); outline-offset: 5px; }
+  .pb .bolt { z-index: 2; pointer-events: none; }
+  .tally { grid-column: 1 / span 7; font-family: var(--mono); font-size: 0.875rem; }
+
+  /* ---------- Level 3: lamp ---------- */
+  .f-lamp .sheet { grid-column: 7 / span 6; align-self: center; }
+  .card { grid-column: 1 / span 6; z-index: 3; margin-top: 12cqw; --dx: -10cqw; --r: -5deg; --z: 18; --swing: 0.8; }
+  .card .frame { padding: 0 10px 10px; }
+  .crop { overflow: hidden; aspect-ratio: 890 / 725; background: #fff; }
+  .crop.dark { background: #1c1c1e; }
+  .crop img { display: block; width: 133%; max-width: none; height: auto; margin: -88.4% 0 0 -16.5%; }
+  .dusk[hidden] { display: none; }
+  .dusk { position: fixed; z-index: 19; inset: 0; pointer-events: none; mix-blend-mode: multiply; background: #0d1020; opacity: var(--dusk, 0); }
+  .carriage { grid-column: 1 / -1; position: relative; z-index: 3; --a: -7deg; --r: 8deg; --dx: -12cqw; --z: 17; --o: 50% 50%; margin: 14cqw 3cqw 9cqw; }
+  .carriage .face { padding: 22px 34px; }
+  .carriage input { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 50px; margin: 0; background: transparent; cursor: grab; }
+  .carriage input:active { cursor: grabbing; }
+  .carriage input::-webkit-slider-runnable-track { height: 12px; background: #111; box-shadow: inset 0 2px 2px #000, 0 1px 0 rgba(255,255,255,0.3); }
+  .carriage input::-moz-range-track { height: 12px; background: #111; }
+  .carriage input::-webkit-slider-thumb { -webkit-appearance: none; width: 74px; height: 50px; margin-top: -19px; border: 0; background: var(--red) var(--t-ply, none); background-size: 256px 128px; background-blend-mode: multiply; box-shadow: 3px 7px 6px rgba(0,0,0,0.6), 0 5px 0 -1px #6e0d09; }
+  .carriage input::-moz-range-thumb { width: 74px; height: 50px; border: 0; border-radius: 0; background: var(--red); box-shadow: 3px 7px 6px rgba(0,0,0,0.6); }
+  .lampread { margin-top: 6px; display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: 0.8125rem; color: var(--sheet); }
+  label { display: block; }
+
+  /* ---------- Level 2: menu ---------- */
+  .cloth { --hide: 46cqw; grid-column: 2 / span 6; height: 104cqw; --z: 12; --swing: 1.5; --dy: -8cqw; z-index: 3; margin-top: 9cqw; }
+  .dowel { position: absolute; z-index: 3; left: -6%; right: -6%; height: 2.6cqw; border-radius: 99px; background: linear-gradient(#caa877, #8d6e44 60%, #5f4827); box-shadow: 3px 7px 7px rgba(14,11,8,0.5); }
+  .dowel.top { top: -1.3cqw; }
+  .dowel.low { top: calc(100% - 1.3cqw); transform: translateY(calc(var(--q, 0) * var(--hide) * -1)); }
+  .cloth > .shade { bottom: calc(var(--q, 0) * var(--hide)); }
+  .cloth .face { height: 100%; padding: 6cqw 5cqw; color: var(--sheet); background-color: var(--red); background-image: var(--t-weave, none); background-size: 8px; clip-path: inset(0 0 calc(var(--q, 0) * var(--hide)) 0);
+    display: flex; flex-direction: column; justify-content: space-between; font-weight: 900; font-size: clamp(1.5rem, 8.2cqw, 4.7rem); line-height: 1; text-transform: uppercase; outline: 2px dashed rgba(247,244,236,0.72); outline-offset: -10px; }
+  .cloth button { appearance: none; border: 0; padding: 0.06em 0.16em; margin-left: -0.16em; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; width: max-content; max-width: 100%; }
+  .cloth button:hover { background: rgba(19,18,17,0.3); }
+  .cloth button[aria-pressed="true"] { background: var(--ink); }
+  .cloth button:focus-visible { outline: 4px solid var(--sheet); outline-offset: 3px; }
+  .cloth .face { font-size: clamp(1.4rem, 7cqw, 4rem); }
+  .f-menu .sheet { grid-column: 7 / span 6; align-self: end; margin-bottom: 8cqw; margin-left: -5cqw; }
+
+  /* ---------- Level 1: dial ---------- */
+  .f-dial .sheet { grid-column: 1 / span 6; margin-top: 8cqw; align-self: start; }
+  .mount { grid-column: 2 / span 11; position: relative; z-index: 3; aspect-ratio: 1; margin-top: -15cqw; margin-right: -5cqw; --z: 26; --r: 8deg; --dx: 14cqw; --swing: 0.3; --a: 45deg; --o: 50% 50%; }
+  .mount .face { position: absolute; inset: 11%; }
+  .knob { position: absolute; z-index: 4; left: 22%; top: 22%; width: 56%; aspect-ratio: 1; border-radius: 50%; transform: rotate(calc(var(--dial, 0deg) - 45deg)); box-shadow: 6px 10px 14px rgba(14,11,8,0.55); overflow: hidden; background: var(--sheet); }
+  .knob canvas { display: block; width: 100%; height: 100%; }
+  .scale-lab { position: absolute; z-index: 4; left: 50%; top: 50%; font-family: var(--mono); font-weight: 500; font-size: clamp(0.75rem, 2.4cqw, 1rem); color: var(--sheet); transform: rotate(calc(var(--t) - 45deg)) translateY(-31cqw) rotate(calc(var(--t) * -1)); width: 2em; margin-left: -1em; text-align: center; }
+  .reading { grid-column: 6 / span 7; position: relative; z-index: 6; justify-self: end; font-family: var(--mono); font-size: 0.875rem; padding: 6px 12px; background: var(--ink); color: var(--sheet); font-variant-numeric: tabular-nums; }
+
+  /* ---------- Level 0: assembly ---------- */
+  .assembly { display: block; padding: 0; }
+  .stage { padding: 54px var(--g-r) 22px var(--g-l); display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px 20px; align-items: center; position: relative; }
+  .live .assembly { height: 300vh; overflow: visible; }
+  .live .stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: clip; }
+  .board { justify-self: center; position: relative; z-index: 3; height: min(84vh, 118cqw); height: min(84svh, 118cqw); aspect-ratio: 3 / 5; max-width: 100%; --z: 16; --swing: 0.4; --o: 50% 0; }
+  .board .face { position: absolute; inset: 0; }
+  .part { position: absolute; left: var(--l); top: var(--t); width: var(--w); height: var(--h); z-index: 2;
+    transform: translate3d(calc(var(--open, 0) * var(--xx)), calc(var(--open, 0) * var(--xy)), 0) rotate(calc(var(--open, 0) * var(--rr)));
+    box-shadow: calc(2px + var(--open, 0) * 14px) calc(4px + var(--open, 0) * 22px) calc(4px + var(--open, 0) * 14px) rgba(14,11,8,0.42); }
+  .p-title { font-family: var(--mono); font-size: 0.7rem; color: var(--sheet); display: flex; align-items: center; padding-inline: 10px; }
+  .p-glass { background: linear-gradient(112deg, rgba(255,255,255,0.75) 0 16%, rgba(214,231,229,0.5) 16% 40%, rgba(255,255,255,0.68) 40% 47%, rgba(214,231,229,0.42) 47%); outline: 5px solid #555759; outline-offset: -5px; padding: 12% 9%; display: grid; align-content: start; gap: 9%; }
+  .p-glass b { display: block; height: 2px; background: var(--ink); }
+  .p-menu { background-color: var(--red); background-image: var(--t-weave, none); background-size: 6px; color: var(--sheet); display: grid; align-content: space-evenly; padding-inline: 10px; font-weight: 900; font-size: clamp(0.65rem, 1.8cqw, 0.95rem); line-height: 1; text-transform: uppercase; }
+  .p-dial { border-radius: 50%; background-color: #bbb; background-image: var(--t-dial, none); background-size: cover; }
+  .p-rail { background: #111; }
+  .p-rail::after { content: ""; position: absolute; left: 38%; top: -55%; width: 22%; height: 210%; background: var(--red); box-shadow: 2px 3px 3px rgba(0,0,0,0.5); }
+  .act { appearance: none; border: 0; cursor: pointer; padding: 14px 22px; font: 900 var(--step-1) var(--sans); letter-spacing: 0.02em; text-transform: uppercase; color: var(--sheet); box-shadow: 0 8px 0 -1px #6e0d09, 5px 16px 14px rgba(14,11,8,0.42); transition: transform 70ms linear, box-shadow 70ms linear; }
+  .act:active { transform: translateY(7px); box-shadow: 0 1px 0 -1px #6e0d09; }
+  .act:focus-visible { outline-color: var(--ink); }
+  .stage .sheet .act { margin-top: 18px; }
+  .stage h2 { font-size: 5.3cqw; }
+
+  /* ---------- End ---------- */
+  .ground { background: var(--ink); color: var(--sheet); padding: 64px var(--g-r) 72px var(--g-l); position: relative; display: grid; gap: 26px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; min-width: 34rem; border-collapse: collapse; font-family: var(--mono); font-size: 0.875rem; }
+  th, td { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid #5d5f62; vertical-align: top; }
+  th { color: #bdbfc1; font-weight: 400; text-transform: uppercase; font-size: var(--step--1); letter-spacing: 0.06em; }
+  td:last-child, th:last-child { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; }
+  pre { margin: 0; padding: 16px 18px; background: #232324; border-left: 8px solid var(--red); font: 0.9375rem/1.6 var(--mono); overflow-x: auto; }
+  .ground p.lead { max-width: 44ch; font-size: var(--step-1); line-height: 1.22; font-weight: 500; }
+  .endrow { display: flex; flex-wrap: wrap; gap: 24px; align-items: end; justify-content: space-between; }
+  .colophon { font-family: var(--mono); font-size: var(--step--1); color: #bdbfc1; max-width: 48ch; }
+  .ground .act:focus-visible { outline-color: var(--sheet); }
+
+  /* ---------- Fixed instruments ---------- */
+  .light { position: fixed; z-index: 20; inset: 0 -30vw; pointer-events: none; mix-blend-mode: multiply; background: radial-gradient(ellipse 50% 90% at 50% 34%, rgba(255,255,255,0) 44%, rgba(36,30,22,0.22) 100%); transform: translate3d(var(--lamp-x, 0), 0, 0); }
+  .hoist { position: fixed; z-index: 30; top: 0; left: calc(50% + min(50vw, 450px) - 7px); width: 0; height: 0; pointer-events: none; }
+  .hoist i { position: absolute; left: -1.5px; top: 0; width: 3px; height: 1px; background: #111; transform-origin: 0 0; transform: scaleY(var(--drop, 120)); }
+  .hoist b { position: absolute; left: -11px; top: 0; width: 22px; height: 30px; background: var(--red); clip-path: polygon(50% 0, 100% 100%, 0 100%); transform: translate3d(0, calc(var(--drop, 120) * 1px), 0); }
+  .aside { display: none; position: fixed; z-index: 30; top: 0; bottom: 0; width: calc((100vw - 900px) / 2); color: var(--sheet); pointer-events: none; font-family: var(--mono); }
+  .gauge { left: 0; }
+  .parts { right: 0; }
+  .gauge-n { position: absolute; left: 50%; top: 50%; font-family: var(--sans); font-weight: 900; font-size: 6.2rem; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; transform: translate(-50%, -50%) rotate(-90deg); }
+  .gauge-l { position: absolute; left: 28px; top: 26px; font-size: var(--step--1); letter-spacing: 0.06em; text-transform: uppercase; color: #bdbfc1; }
+  .parts ol { list-style: none; position: absolute; left: 28px; right: 22px; top: 50%; transform: translateY(-50%); margin: 0; padding: 0; display: grid; gap: 7px; font-size: 0.8125rem; }
+  .parts li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 7px; color: #9fa2a4; }
+  .parts li.on { background: var(--red); color: var(--sheet); }
+  .hud { position: fixed; z-index: 30; top: 0; right: 0; padding: 6px 12px; background: var(--ink); color: var(--sheet); font-family: var(--mono); font-size: var(--step--1); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; pointer-events: none; }
+  @media (min-width: 1240px) {
+    .aside { display: block; }
+    .hud { display: none; }
+  }
+
+  /* ---------- Narrow shaft ---------- */
+  @container (max-width: 640px) {
+    .floor { padding-inline: 24px 22px; grid-template-columns: minmax(0, 1fr); padding-bottom: 72px; }
+    .floor > * { grid-column: 1 !important; }
+    .assembly { padding: 0; }
+    .plank-a { --pt: 13%; }
+    .plank-b { --pt: 27%; --pl: 10cqw; }
+    .disc { top: 34%; width: 74cqw; right: -24cqw; }
+    .disc-x { display: none; }
+    .f-window .pane { margin-top: 30cqw; }
+    .glass { min-height: 56cqw; padding: 12px; }
+    .f-window .sheet { margin-top: 0; }
+    .btns { min-height: 86cqw; }
+    .carriage .face { padding: 16px 20px; }
+    .carriage { margin: 10cqw 0 12cqw; }
+    .cloth { width: 74%; height: 134cqw; --hide: 62cqw; margin-top: 8cqw; }
+    .cloth .face { font-size: 10cqw; }
+    .f-menu .sheet { margin: 0; }
+    .f-dial .sheet { margin-top: 0; }
+    .mount { margin-top: 14cqw; margin-right: 0; }
+    .scale-lab { transform: rotate(calc(var(--t) - 45deg)) translateY(-35cqw) rotate(calc(var(--t) * -1)); }
+    .reading { justify-self: start; }
+    .stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); padding-inline: 24px 22px; padding-top: 44px; }
+    .board { height: 100%; max-height: 112cqw; }
+    .stage .sheet { padding: 12px 14px 14px; }
+    .stage .sheet p { font-size: 0.9375rem; }
+    .stage .sheet .act { margin-top: 10px; padding: 9px 14px; font-size: 1rem; }
+    .stage h2 { font-size: 2rem; }
+    .ground { padding-inline: 24px 22px; }
+  }
+  html:not(.live) .board { height: auto; width: min(100%, 22rem); }
+  @media (prefers-reduced-motion: reduce) {
+    .pb button, .act { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="aside gauge" aria-hidden="true">
+  <div class="gauge-l">Elevation, metres</div>
+  <div class="gauge-n" id="gauge">+24.0</div>
+</div>
+<div class="aside parts" aria-hidden="true">
+  <ol id="partlist">
+    <li><span>Title</span><span>+24 m</span></li>
+    <li><span>Window</span><span>+20 m</span></li>
+    <li><span>Actions</span><span>+16 m</span></li>
+    <li><span>Appearance</span><span>+12 m</span></li>
+    <li><span>Languages</span><span>+8 m</span></li>
+    <li><span>New posts</span><span>+4 m</span></li>
+    <li><span>Assembly</span><span>0 m</span></li>
+  </ol>
+</div>
+<div class="hud" id="hud" aria-hidden="true">+24.0 M · TITLE</div>
+<div class="light" id="light" aria-hidden="true"></div>
+<div class="dusk" id="dusk" aria-hidden="true" hidden></div>
+<div class="hoist" id="hoist" aria-hidden="true"><i></i><b></b></div>
+
+<main class="shaft" id="shaft">
+  <span class="rail l" aria-hidden="true"></span>
+  <span class="rail r" aria-hidden="true"></span>
+
+  <!-- LEVEL 6 -->
+  <section class="floor hero" data-floor aria-labelledby="t">
+    <h1 class="sr-only" id="t">Tweetintosh</h1>
+    <div class="joist" aria-hidden="true"><span>Level 6</span><span>+24.0 m</span></div>
+
+    <div class="mod disc round" data-scrollaway aria-hidden="true">
+      <span class="shade"></span><span class="cable" style="--ch:30cqw"></span>
+      <div class="face m-ply"></div><i class="bolt" style="--b:22px;left:calc(50% - 11px);top:calc(50% - 11px)"></i>
+    </div>
+    <div class="mod disc-x" data-scrollaway aria-hidden="true">
+      <span class="shade"></span><span class="cable" style="--ch:150cqw;--cx:50%"></span>
+      <div class="face m-steel"></div><i class="bolt tl"></i><i class="bolt br"></i>
+    </div>
+
+    <div class="mod plank plank-a" data-scrollaway aria-hidden="true">
+      <span class="shade"></span>
+      <span class="cable" style="--cx:32%;--ch:190cqw"></span><span class="cable" style="--cx:68%;--ch:190cqw"></span>
+      <div class="face m-red edge-red">TWEETIN</div>
+    </div>
+    <div class="mod plank plank-b" data-scrollaway aria-hidden="true">
+      <span class="shade"></span>
+      <span class="cable" style="--cx:42%;--ch:190cqw"></span>
+      <div class="face m-black">TOSH</div>
+      <i class="bolt" style="--b:26px;left:22%;top:-13px"></i>
+    </div>
+
+    <div class="sheet">
+      <i class="pin"></i>
+      <p>A native Mac client for X, shown here part by part. Unofficial, and not made by or affiliated with X Corp. or Apple.</p>
+      <p class="cue">Scroll to lower the hoist ↓</p>
+    </div>
+  </section>
+
+  <!-- LEVEL 5 -->
+  <section class="floor f-window" data-floor aria-labelledby="s5">
+    <div class="joist" aria-hidden="true"><span>Level 5</span><span>+20.0 m</span></div>
+    <div class="mod beam" style="--a:-28deg;--r:-6deg;--bt:42cqw;--bh:5cqw;--z:9" data-hoist aria-hidden="true"><span class="shade"></span><div class="face m-red"></div></div>
+    <div class="mod beam" style="--a:58deg;--bl:-28cqw;--bt:50cqw;--bh:1.7cqw;--z:6" data-hoist aria-hidden="true"><span class="shade"></span><div class="face m-black"></div></div>
+
+    <div class="mod pane" data-hoist>
+      <span class="shade"></span>
+      <span class="cable" style="--cx:14%;--ch:40cqw"></span><span class="cable" style="--cx:86%;--ch:40cqw"></span>
+      <div class="face m-steel frame">
+        <div class="frame-bar"><span>tweetintosh</span><span>macOS 15+</span></div>
+        <div class="glass"><img src="visual_light.png" width="2522" height="1914" alt="The Tweetintosh window: a floating sidebar with Home, Notifications, Messages and feeds, beside a timeline of photo posts"></div>
+      </div>
+      <i class="bolt tl"></i><i class="bolt tr"></i><i class="bolt bl"></i><i class="bolt br"></i>
+    </div>
+
+    <div class="sheet">
+      <h2 id="s5">The window is glass in a frame.</h2>
+      <p>Every timeline, post and profile is drawn in SwiftUI. In a wide window, a post opens in a pane beside the list, so your feed stays where you left it.</p>
+      <p class="spec">SwiftUI and AppKit · Liquid Glass on macOS 26 · about 5 MB</p>
+    </div>
+  </section>
+
+  <!-- LEVEL 4 -->
+  <section class="floor f-buttons" data-floor aria-labelledby="s4">
+    <div class="joist" aria-hidden="true"><span>Level 4</span><span>+16.0 m</span></div>
+    <div class="mod beam" style="--a:18deg;--bt:66cqw;--bh:3cqw;--z:8" data-hoist aria-hidden="true"><span class="shade"></span><div class="face m-black"></div></div>
+
+    <div class="sheet">
+      <h2 id="s4">Every action is a block of ply.</h2>
+      <p>Press one and every copy of that post on screen updates with it. These three only count your presses, so nothing gets posted.</p>
+      <p class="spec">Reply, repost, like, bookmark, share · one evenly spaced row</p>
+    </div>
+
+    <div class="btns">
+      <div class="mod pb" data-hoist style="--x:0;--y:6cqw;--w:62%;--fs:clamp(2rem,9.5cqw,5.2rem);--dx:-14cqw;--r:-5deg">
+        <span class="shade"></span>
+        <button class="m-ply edge" type="button" data-count="Reply">Reply</button>
+        <i class="bolt tr"></i>
+      </div>
+      <div class="mod pb" data-hoist style="--x:38%;--y:28cqw;--w:44%;--fs:clamp(1.5rem,6.5cqw,3.6rem);--dx:15cqw;--r:6deg">
+        <span class="shade"></span>
+        <button class="m-ply edge" type="button" data-count="Repost">Repost</button>
+        <i class="bolt tr"></i>
+      </div>
+      <div class="mod pb" data-hoist style="--x:62%;--y:44cqw;--w:38%;--fs:clamp(1.4rem,6.5cqw,3.6rem);--dx:9cqw;--dy:10cqw;--r:-8deg">
+        <span class="shade"></span>
+        <button class="m-red edge-red" type="button" data-count="Like">Like</button>
+        <i class="bolt tr"></i>
+      </div>
+    </div>
+    <p class="tally" id="tally" aria-live="polite">Nothing pressed yet.</p>
+  </section>
+
+  <!-- LEVEL 3 -->
+  <section class="floor f-lamp" data-floor aria-labelledby="s3">
+    <div class="joist" aria-hidden="true"><span>Level 3</span><span>+12.0 m</span></div>
+    <div class="mod beam" style="--a:-46deg;--bl:-30cqw;--bt:40cqw;--bh:4cqw;--z:7" data-hoist aria-hidden="true"><span class="shade"></span><div class="face m-red"></div></div>
+
+    <div class="mod card" data-hoist>
+      <span class="shade"></span>
+      <span class="cable" style="--cx:18%;--ch:30cqw"></span><span class="cable" style="--cx:82%;--ch:30cqw"></span>
+      <div class="face m-steel frame">
+        <div class="frame-bar"><span>settings</span><span>appearance</span></div>
+        <div class="crop" id="crop"><img id="cropImg" src="native_settings_light.png" width="1184" height="1944" alt="The Appearance section of Settings: Dark, Light and System, a choice of typeface, Liquid Glass and tint switches, and a theme colour menu"></div>
+      </div>
+      <i class="bolt tl"></i><i class="bolt tr"></i>
+    </div>
+
+    <div class="sheet">
+      <h2 id="s3">The look is a lamp on a rail.</h2>
+      <p>This one works. Slide the carriage left for dark and right for light. The settings panel changes with it, and every shadow in the shaft follows.</p>
+      <p class="spec">Dark, Light or System · typeface, tint and theme colour</p>
+    </div>
+
+    <div class="mod carriage" data-hoist>
+      <span class="shade"></span>
+      <div class="face m-black">
+        <label for="lamp" class="sr-only">Appearance, from dark to light</label>
+        <input id="lamp" type="range" min="0" max="100" value="62">
+        <div class="lampread" aria-hidden="true"><span>Dark</span><span id="lampval">Now: Light</span><span>Light</span></div>
+      </div>
+      <i class="bolt tl"></i><i class="bolt tr"></i><i class="bolt bl"></i><i class="bolt br"></i>
+    </div>
+  </section>
+
+  <!-- LEVEL 2 -->
+  <section class="floor f-menu" data-floor aria-labelledby="s2">
+    <div class="joist" aria-hidden="true"><span>Level 2</span><span>+8.0 m</span></div>
+    <div class="mod beam" style="--a:9deg;--bt:22cqw;--bh:2cqw;--z:5" data-hoist aria-hidden="true"><span class="shade"></span><div class="face m-black"></div></div>
+
+    <div class="mod cloth" data-hoist>
+      <span class="shade"></span>
+      <span class="cable" style="--cx:16%;--ch:30cqw"></span><span class="cable" style="--cx:84%;--ch:30cqw"></span>
+      <span class="dowel top" aria-hidden="true"></span>
+      <div class="face" id="langs" role="group" aria-label="Language"></div>
+      <span class="dowel low" aria-hidden="true"></span>
+    </div>
+
+    <div class="sheet">
+      <h2 id="s2">Five languages on one canvas.</h2>
+      <p>Change the language in Settings and the whole interface follows, with no restart. Press a name to read the app's own labels in it.</p>
+      <p class="spec" id="labels" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- LEVEL 1 -->
+  <section class="floor f-dial" id="dialfloor" data-floor aria-labelledby="s1">
+    <div class="joist" aria-hidden="true"><span>Level 1</span><span>+4.0 m</span></div>
+
+    <div class="sheet">
+      <h2 id="s1">New posts wait on the dial.</h2>
+      <p>Scroll and it turns, one post at a stop. They collect behind a pill at the top and stay there until you ask, so your place never jumps.</p>
+      <p class="spec">Opens on an offline snapshot · older posts load at the bottom</p>
+    </div>
+
+    <div class="mod mount" data-hoist id="mount" aria-hidden="true">
+      <span class="shade" style="inset:11%"></span>
+      <div class="face m-red edge-red"></div>
+      <i class="bolt" style="left:15%;top:48%"></i><i class="bolt" style="left:80%;top:48%"></i><i class="bolt" style="left:48%;top:15%"></i><i class="bolt" style="left:48%;top:80%"></i>
+      <div class="knob"><canvas id="knob" width="640" height="640"></canvas></div>
+    </div>
+    <p class="reading" id="reading">↑ 1 new post</p>
+  </section>
+
+  <!-- LEVEL 0 -->
+  <section class="floor assembly" id="assembly" data-floor aria-labelledby="s0">
+    <div class="stage">
+      <div class="joist" aria-hidden="true"><span>Level 0</span><span>0.0 m</span></div>
+      <div class="sheet">
+        <h2 id="s0">Bolt the parts together.</h2>
+        <p>The same modules make one window. Take it apart to see how little is in it.</p>
+        <button class="act m-red" id="apart" type="button" aria-pressed="false">Take it apart</button>
+      </div>
+
+      <div class="mod board" id="board" aria-label="A complete window built from a title bar, a timeline, a sidebar, a dial, a rail and three blocks" role="img">
+        <span class="shade"></span>
+        <span class="cable" style="--cx:22%;--ch:80cqw"></span><span class="cable" style="--cx:78%;--ch:80cqw"></span>
+        <div class="face m-ply edge"></div>
+        <div class="part m-black p-title" style="--l:6%;--t:4%;--w:88%;--h:7%;--xx:-14cqw;--xy:-9cqw;--rr:-14deg">tweetintosh</div>
+        <div class="part p-glass" style="--l:6%;--t:13%;--w:88%;--h:33%;--xx:20cqw;--xy:-5cqw;--rr:11deg"><b></b><b></b><b></b><b></b></div>
+        <div class="part p-menu" style="--l:6%;--t:48%;--w:30%;--h:48%;--xx:-26cqw;--xy:7cqw;--rr:-19deg"><span>Home</span><span>Search</span><span>Feeds</span><span>Lists</span><span>Post</span></div>
+        <div class="part p-dial" style="--l:40%;--t:48%;--w:54%;--h:32.4%;--xx:30cqw;--xy:12cqw;--rr:35deg"></div>
+        <div class="part p-rail" style="--l:40%;--t:83%;--w:54%;--h:2%;--xx:-11cqw;--xy:18cqw;--rr:13deg"></div>
+        <div class="part m-ply" style="--l:40%;--t:88%;--w:16%;--h:8%;--xx:-6cqw;--xy:31cqw;--rr:-22deg"></div>
+        <div class="part m-ply" style="--l:59%;--t:88%;--w:16%;--h:8%;--xx:9cqw;--xy:27cqw;--rr:15deg"></div>
+        <div class="part m-red" style="--l:78%;--t:88%;--w:16%;--h:8%;--xx:25cqw;--xy:24cqw;--rr:28deg"></div>
+        <i class="bolt tl"></i><i class="bolt tr"></i><i class="bolt bl"></i><i class="bolt br"></i>
+      </div>
+    </div>
+  </section>
+
+  <!-- PARTS LIST -->
+  <section class="ground" aria-labelledby="bom">
+    <h2 id="bom">Parts list</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th scope="col">Part</th><th scope="col">What it is</th><th scope="col">Source</th><th scope="col">Qty</th></tr></thead>
+        <tbody>
+          <tr><td>Feeds</td><td>For You, Following, Lists</td><td>TimelineView.swift</td><td>3</td></tr>
+          <tr><td>Post actions</td><td>Reply, repost, like, bookmark, share</td><td>Engagement.swift</td><td>5</td></tr>
+          <tr><td>Appearances</td><td>Dark, Light, System</td><td>ThemeManager.swift</td><td>3</td></tr>
+          <tr><td>Languages</td><td>English, 日本語, 한국어, 简体中文, 繁體中文</td><td>Localization.swift</td><td>5</td></tr>
+          <tr><td>Web views on screen</td><td>None in the main interface</td><td>AppRootView.swift</td><td>0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lead">Build it yourself. You need macOS 15 or later and the Swift command line tools. Xcode is not required.</p>
+    <pre tabindex="0"><code>./build.sh
+open Tweetintosh.app</code></pre>
+    <div class="endrow">
+      <button class="act m-red" id="up" type="button">Raise the hoist to the top</button>
+      <p class="colophon">Tweetintosh signs in with your own X session and uses X's private endpoints, which can change without notice. The shaft is a style study. Set in Jost and IBM Plex Mono.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var live = root.classList.contains("live");
+  var shaft = document.getElementById("shaft");
+  var clamp = function (v, a, b) { return Math.min(b, Math.max(a, v)); };
+
+  function rng(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s + 0x6d2b79f5) >>> 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------- Bare materials, generated once ---------- */
+  function texture(w, h, paint) {
+    var c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    var x = c.getContext("2d");
+    var d = x.createImageData(w, h);
+    paint(d.data, w, h, rng(w * 31 + h));
+    x.putImageData(d, 0, 0);
+    return "url(" + c.toDataURL("image/png") + ")";
+  }
+  root.style.setProperty("--t-ply", texture(512, 256, function (a, w, h, r) {
+    /* Birch: long wavering grain, wide bands, fine pores */
+    var phase = []; for (var k = 0; k < 6; k++) phase.push(r() * 6.28);
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+      var u = x / w * 6.283, wob = 7 * Math.sin(u + phase[0]) + 3 * Math.sin(2 * u + phase[1]);
+      var g = Math.sin((y + wob) * 0.098 + phase[2]) * 0.5 + Math.sin((y + wob * 1.6) * 0.31 + phase[3]) * 0.3 + Math.sin((y + wob * 0.7) * 0.74 + phase[4]) * 0.2;
+      var v = 214 + g * 26 + (r() - 0.5) * 13;
+      var i = (y * w + x) * 4;
+      a[i] = v; a[i + 1] = v * 0.93; a[i + 2] = v * 0.82; a[i + 3] = 255;
+    }
+  }));
+  root.style.setProperty("--t-steel", texture(512, 128, function (a, w, h, r) {
+    /* Brushed plate: horizontal streaks */
+    var row = new Float32Array(h);
+    for (var y = 0; y < h; y++) row[y] = 176 + r() * 58;
+    for (y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+      var v = row[y] + (r() - 0.5) * 16 + Math.sin(x * 0.012 + y) * 3;
+      var i = (y * w + x) * 4;
+      a[i] = v; a[i + 1] = v; a[i + 2] = v * 1.01; a[i + 3] = 255;
+    }
+  }));
+  root.style.setProperty("--t-paper", texture(384, 384, function (a, w, h, r) {
+    for (var i = 0; i < w * h * 4; i += 4) {
+      var v = r();
+      a[i] = a[i + 1] = a[i + 2] = v < 0.5 ? 70 : 255;
+      a[i + 3] = (r() * r()) * 26;
+    }
+  }));
+  root.style.setProperty("--t-weave", texture(8, 8, function (a, w, h, r) {
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+      var over = ((x >> 1) + (y >> 1)) % 2 === 0;
+      var i = (y * w + x) * 4;
+      a[i] = a[i + 1] = a[i + 2] = over ? 255 : 0;
+      a[i + 3] = over ? 40 : 55;
+    }
+  }));
+
+  /* ---------- The dial: a shaded knob, printed through a halftone screen ---------- */
+  (function () {
+    var S = 640, tone = document.createElement("canvas");
+    tone.width = tone.height = S;
+    var t = tone.getContext("2d");
+    t.fillStyle = "#fff"; t.fillRect(0, 0, S, S);
+    t.translate(S / 2, S / 2);
+    /* Knurled skirt */
+    t.beginPath(); t.arc(0, 0, 316, 0, 6.283); t.fillStyle = "#222"; t.fill();
+    for (var n = 0; n < 72; n++) {
+      var ang = n / 72 * 6.283;
+      t.save(); t.rotate(ang);
+      t.fillStyle = n % 2 ? "#d0d0d0" : "#272727";
+      t.fillRect(-9, -314, 18, 56);
+      t.restore();
+    }
+    /* Spun metal top */
+    var spun = t.createConicGradient ? t.createConicGradient(0.6, 0, 0) : null;
+    if (spun) {
+      [[0, "#f6f6f6"], [0.1, "#7a7a7a"], [0.23, "#e8e8e8"], [0.38, "#454545"], [0.5, "#fbfbfb"], [0.62, "#6c6c6c"], [0.75, "#ececec"], [0.88, "#3f3f3f"], [1, "#f6f6f6"]].forEach(function (s) { spun.addColorStop(s[0], s[1]); });
+    }
+    t.beginPath(); t.arc(0, 0, 252, 0, 6.283); t.fillStyle = spun || "#999"; t.fill();
+    t.lineWidth = 7; t.strokeStyle = "#111"; t.stroke();
+    /* Soft top light */
+    var lit = t.createRadialGradient(-80, -110, 16, 0, 0, 268);
+    lit.addColorStop(0, "rgba(255,255,255,0.5)"); lit.addColorStop(0.55, "rgba(255,255,255,0)"); lit.addColorStop(1, "rgba(0,0,0,0.45)");
+    t.fillStyle = lit; t.beginPath(); t.arc(0, 0, 252, 0, 6.283); t.fill();
+    /* Pointer and pin */
+    t.fillStyle = "#000"; t.fillRect(-13, -298, 26, 236);
+    t.beginPath(); t.arc(0, 0, 40, 0, 6.283); t.fillStyle = "#121212"; t.fill();
+    t.beginPath(); t.arc(-8, -8, 12, 0, 6.283); t.fillStyle = "#cfcfcf"; t.fill();
+
+    var src = t.getImageData(0, 0, S, S).data;
+    var out = document.getElementById("knob").getContext("2d");
+    out.fillStyle = "#f7f4ec"; out.fillRect(0, 0, S, S);
+    out.fillStyle = "#131211";
+    var pitch = 7, th = 0.42, cs = Math.cos(th), sn = Math.sin(th), r = rng(9);
+    for (var a = -S; a < S * 1.6; a += pitch) {
+      for (var b = -S; b < S * 1.6; b += pitch) {
+        var px = a * cs - b * sn, py = a * sn + b * cs;
+        if (px < 0 || py < 0 || px >= S || py >= S) continue;
+        var dark = 1 - src[((py | 0) * S + (px | 0)) * 4] / 255;
+        if (dark < 0.03) continue;
+        out.beginPath();
+        out.arc(px, py, Math.sqrt(dark) * pitch * 0.72 * (0.96 + r() * 0.08), 0, 6.283);
+        out.fill();
+      }
+    }
+    root.style.setProperty("--t-dial", "url(" + document.getElementById("knob").toDataURL("image/png") + ")");
+  })();
+
+  /* ---------- Scroll, sway and lamp ---------- */
+  var hoisted = [], away = [];
+  document.querySelectorAll("[data-hoist]").forEach(function (el) { hoisted.push({ el: el, top: 0, q: -1 }); });
+  document.querySelectorAll("[data-scrollaway]").forEach(function (el) { away.push(el); });
+  var floors = Array.prototype.slice.call(document.querySelectorAll("[data-floor]"));
+  var NAMES = ["TITLE", "WINDOW", "ACTIONS", "APPEARANCE", "LANGUAGES", "NEW POSTS", "ASSEMBLY"];
+  var listItems = document.getElementById("partlist").children;
+  var gauge = document.getElementById("gauge"), hud = document.getElementById("hud");
+  var hoist = document.getElementById("hoist"), light = document.getElementById("light");
+  var mount = document.getElementById("mount"), reading = document.getElementById("reading"), dialFloor = document.getElementById("dialfloor");
+  var assembly = document.getElementById("assembly"), board = document.getElementById("board");
+  var lamp = document.getElementById("lamp"), lampval = document.getElementById("lampval");
+
+  function docTop(el) { var t = 0; while (el) { t += el.offsetTop; el = el.offsetParent; } return t; }
+  function measure() {
+    hoisted.forEach(function (it) { it.top = docTop(it.el); });
+    render();
+  }
+
+  var lastFloor = -1, lastStop = -1, lastLx = null, lastHeroQ = -1;
+  var lampX = (parseInt(lamp.value, 10) - 50) / 50;
+  var apart = false, openNow = live ? 1 : 0, openGoal = 0;
+  var sway = 0, swayV = 0, prevY = window.scrollY;
+
+  function render() {
+    var vh = window.innerHeight, y = window.scrollY;
+    var max = Math.max(1, root.scrollHeight - vh);
+    var gp = clamp(y / max, 0, 1);
+
+    if (live) {
+      hoisted.forEach(function (it) {
+        var q = 1 - clamp((y + vh * 0.92 - it.top) / (vh * 0.52), 0, 1);
+        q = Math.round(q * 400) / 400;
+        if (q !== it.q) { it.q = q; it.el.style.setProperty("--q", q); }
+      });
+      var hq = Math.round(clamp(y / (vh * 0.9), 0, 1) * 400) / 400;
+      if (hq !== lastHeroQ) {
+        lastHeroQ = hq;
+        away.forEach(function (el) { el.style.setProperty("--q", hq); });
+      }
+    }
+
+    /* Dial: twelve mechanical stops across its floor */
+    var fr = dialFloor.getBoundingClientRect();
+    var dp = live ? clamp((vh * 0.8 - fr.top) / (fr.height * 0.95), 0, 1) : 0;
+    var stop = Math.min(11, Math.floor(dp * 12));
+    if (stop !== lastStop) {
+      lastStop = stop;
+      mount.style.setProperty("--dial", (stop * 30) + "deg");
+      reading.textContent = "↑ " + (stop + 1) + (stop ? " new posts" : " new post");
+    }
+
+    /* Assembly: parts come in on the hoist and close up */
+    if (live) {
+      var ar = assembly.getBoundingClientRect();
+      var ap = clamp((-ar.top + vh * 0.15) / Math.max(1, ar.height - vh), 0, 1);
+      openGoal = apart ? 1 : 1 - clamp(ap / 0.86, 0, 1);
+    } else {
+      openGoal = apart ? 1 : 0;
+    }
+
+    /* Level markers */
+    var idx = 0;
+    floors.forEach(function (f, i) { if (f.getBoundingClientRect().top <= vh * 0.5) idx = i; });
+    var elev = (24 * (1 - gp)).toFixed(1);
+    gauge.textContent = "+" + elev;
+    if (idx !== lastFloor) {
+      lastFloor = idx;
+      for (var k = 0; k < listItems.length; k++) listItems[k].classList.toggle("on", k === idx);
+    }
+    hud.textContent = "+" + elev + " M · " + NAMES[idx];
+
+    hoist.style.setProperty("--drop", (vh * (0.1 + gp * 0.8)).toFixed(1));
+
+    /* Lamp: follows the carriage, drifting slightly on the way down */
+    var lx = (lampX + (live ? (gp - 0.5) * 0.3 : 0)).toFixed(3);
+    if (lx !== lastLx) {
+      lastLx = lx;
+      shaft.style.setProperty("--lx", lx);
+      light.style.setProperty("--lamp-x", (lx * 18).toFixed(2) + "vw");
+    }
+  }
+
+  /* Physical settling: cables swing when the hoist moves, parts ease into place */
+  var running = false;
+  function frame() {
+    var y = window.scrollY, dy = y - prevY;
+    prevY = y;
+    swayV += (live ? clamp(dy, -80, 80) * 0.0045 : 0) - sway * 0.05;
+    swayV *= 0.93;
+    sway += swayV;
+    sway = clamp(sway, -5, 5);
+    shaft.style.setProperty("--sway", sway.toFixed(3) + "deg");
+    render();
+    openNow += (openGoal - openNow) * 0.16;
+    if (Math.abs(openGoal - openNow) < 0.001) openNow = openGoal;
+    board.style.setProperty("--open", openNow.toFixed(4));
+    if (Math.abs(sway) > 0.01 || Math.abs(swayV) > 0.005 || dy !== 0 || openNow !== openGoal) {
+      requestAnimationFrame(frame);
+    } else {
+      running = false;
+    }
+  }
+  function wake() { if (!running) { running = true; requestAnimationFrame(frame); } }
+  window.addEventListener("scroll", wake, { passive: true });
+  window.addEventListener("resize", function () { measure(); wake(); });
+
+  /* ---------- Controls ---------- */
+  /* The carriage sets the appearance: the screenshot swaps at the halfway mark and the room dims below it */
+  var dusk = document.getElementById("dusk"), crop = document.getElementById("crop"), cropImg = document.getElementById("cropImg");
+  function showLook() {
+    var v = parseInt(lamp.value, 10), dark = v < 50;
+    lampX = (v - 50) / 50;
+    lampval.textContent = "Now: " + (dark ? "Dark" : "Light");
+    var src = "native_settings_" + (dark ? "dark" : "light") + ".png";
+    if (cropImg.getAttribute("src") !== src) cropImg.src = src;
+    crop.classList.toggle("dark", dark);
+    /* A blended full-screen layer is costly while scrolling, so it only exists once it is visible */
+    dusk.hidden = !dark;
+    dusk.style.setProperty("--dusk", (clamp((50 - v) / 50, 0, 1) * 0.5).toFixed(3));
+    wake();
+  }
+  lamp.addEventListener("input", showLook);
+
+  /* Strings copied from src/Localization.swift */
+  var LANGS = [
+    { code: "en", name: "English", t: "Home · Notifications · Messages · New Post · Settings" },
+    { code: "ja", name: "日本語", t: "ホーム · 通知 · メッセージ · ポストする · 環境設定" },
+    { code: "ko", name: "한국어", t: "홈 · 알림 · 쪽지 · 게시하기 · 환경설정" },
+    { code: "zh-Hans", name: "简体中文", t: "主页 · 通知 · 私信 · 发推 · 偏好设置" },
+    { code: "zh-Hant", name: "繁體中文", t: "主頁 · 通知 · 私訊 · 發文 · 偏好設定" }
+  ];
+  var langBox = document.getElementById("langs"), labels = document.getElementById("labels"), langBtns = [];
+  function showLang(l) { labels.lang = l.code; labels.textContent = l.t; }
+  LANGS.forEach(function (l, n) {
+    var b = document.createElement("button");
+    b.type = "button"; b.lang = l.code; b.textContent = l.name;
+    b.setAttribute("aria-pressed", n === 0 ? "true" : "false");
+    b.addEventListener("click", function () {
+      langBtns.forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+      showLang(l);
+    });
+    langBtns.push(b);
+    langBox.appendChild(b);
+  });
+  showLang(LANGS[0]);
+
+  var tallies = {};
+  var tally = document.getElementById("tally");
+  document.querySelectorAll("[data-count]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var n = b.getAttribute("data-count");
+      tallies[n] = (tallies[n] || 0) + 1;
+      tally.textContent = Object.keys(tallies).map(function (k) { return k + " × " + tallies[k]; }).join(" · ");
+    });
+  });
+  var apartBtn = document.getElementById("apart");
+  apartBtn.addEventListener("click", function () {
+    apart = !apart;
+    apartBtn.textContent = apart ? "Bolt it back together" : "Take it apart";
+    apartBtn.setAttribute("aria-pressed", apart ? "true" : "false");
+    wake();
+  });
+  document.getElementById("up").addEventListener("click", function () {
+    window.scrollTo({ top: 0, behavior: live ? "smooth" : "auto" });
+  });
+
+  /* Start */
+  measure();
+  openNow = openGoal;
+  board.style.setProperty("--open", openNow.toFixed(4));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+  window.addEventListener("load", measure);
+})();
+</script>
+</body>
+</html>
