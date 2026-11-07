@@ -105,6 +105,10 @@ final class GraphQLOperationIDs {
             "eF8kYZ4r9zFLqcYno3I17A", "oMVVrI5kt3kOpyHHTTKf5Q","BGmkmGDG0kZPM-aoQtNTTw", "dexO_2tohK86JDudXXG3Yw",
             "MOLbHrtk8Ovu7DUNOLcXiA", "Le6KlbilFmSu-5VltFND-Q"
         ],
+        // The Bookmarks page's timeline. Known ids first; X's web client is read for the current one if they fail.
+        "Bookmarks": [
+            "tmd4ifV8RHltzn8ymGg1aw", "xLjCVTqYWz8CGSprLU349w", "QUjXply7fA7fk05FRyajEg"
+        ],
         "CreateTweet": [
             "5CVj-J0FZWyGgJpcjeBJEA", "jm93VcEnLxM7My_CL9C_EA", "znCVAd692dKBq9MgkEhKPQ", "TAJw1rBsjAtdNgTdlo2oeg"
         ],
@@ -285,6 +289,7 @@ extension APIClient {
         operation: String,
         variables: [String: Any],
         fieldToggles: [String: Any]? = nil,
+        extraFeatures: [String: Any] = [:],
         usePost: Bool = false,
         completion: @escaping (Result<[String: Any], APIError>) -> Void
     ) {
@@ -297,7 +302,9 @@ extension APIClient {
             guard let data = try? JSONSerialization.data(withJSONObject: object) else { return nil }
             return String(data: data, encoding: .utf8)
         }
-        guard let varStr = encode(variables), let featStr = encode(Self.profileFeatures) else {
+        // Some operations insist on a flag of their own on top of the shared set, and refuse the request without it
+        let features = Self.profileFeatures.merging(extraFeatures) { _, extra in extra }
+        guard let varStr = encode(variables), let featStr = encode(features) else {
             completion(.failure(.parseError))
             return
         }
@@ -318,7 +325,7 @@ extension APIClient {
             var request: URLRequest
             if usePost {
                 // Some operations (search) are sent as a JSON POST by X's web client
-                var body: [String: Any] = ["variables": variables, "features": Self.profileFeatures, "queryId": id]
+                var body: [String: Any] = ["variables": variables, "features": features, "queryId": id]
                 if let fieldToggles = fieldToggles { body["fieldToggles"] = fieldToggles }
                 guard let url = URL(string: "https://x.com/i/api/graphql/\(id)/\(operation)"),
                       let bodyData = try? JSONSerialization.data(withJSONObject: body) else {
@@ -368,6 +375,58 @@ extension APIClient {
         }
 
         attempt(GraphQLOperationIDs.shared.ids(for: operation), tried: [], discovered: false)
+    }
+
+    // MARK: Bookmarks
+
+    // The signed-in account's bookmarks, newest first, a page at a time
+    func fetchBookmarks(
+        cursor: String?,
+        completion: @escaping (Result<(tweets: [Tweet], topCursor: String?, bottomCursor: String?), APIError>) -> Void
+    ) {
+        var variables: [String: Any] = ["count": 20, "includePromotedContent": false]
+        if let cursor = cursor { variables["cursor"] = cursor }
+        graphQLGet(operation: "Bookmarks", variables: variables,
+                   extraFeatures: ["graphql_timeline_v2_bookmark_timeline": true]) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let json): completion(.success(self.parseBookmarks(json)))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    private func parseBookmarks(_ json: [String: Any]) -> (tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
+        let data = json["data"] as? [String: Any]
+        let timeline = (data?["bookmark_timeline_v2"] as? [String: Any]) ?? (data?["bookmark_timeline"] as? [String: Any])
+        let instructions = ((timeline?["timeline"] as? [String: Any])?["instructions"] as? [[String: Any]]) ?? []
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+
+        var tweets: [Tweet] = []
+        var seen = Set<String>()
+        var topCursor: String?
+        var bottomCursor: String?
+        for instruction in instructions {
+            let entries = (instruction["entries"] as? [[String: Any]])
+                ?? ((instruction["entry"] as? [String: Any]).map { [$0] } ?? [])
+            for entry in entries {
+                let content = (entry["content"] as? [String: Any]) ?? [:]
+                if let cursorType = content["cursorType"] as? String, let value = content["value"] as? String {
+                    if cursorType == "Bottom" { bottomCursor = value }
+                    if cursorType == "Top" { topCursor = value }
+                    continue
+                }
+                guard let result = ((content["itemContent"] as? [String: Any])?["tweet_results"] as? [String: Any])?["result"] as? [String: Any],
+                      let tweet = parseGraphQLTweetResult(result, dateFormatter: formatter),
+                      !seen.contains(tweet.id) else { continue }
+                seen.insert(tweet.id)
+                tweets.append(tweet)
+            }
+        }
+        return (tweets, topCursor, bottomCursor)
     }
 
     // MARK: People who liked or reposted a post

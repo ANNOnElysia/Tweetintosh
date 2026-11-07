@@ -109,6 +109,9 @@ final class APIClient {
             queryId = "hB-6CNtJdReMJny7IPMoQQ"
             endpoint = "https://x.com/i/api/graphql/\(queryId)/HomeLatestTimeline"
             variables["enableRanking"] = false
+        case .bookmarks:
+            fetchBookmarks(cursor: cursor, completion: completion)
+            return
         case .list:
             queryId = "uV0pbd0DrW8hTbMrtZ1SYQ"
             endpoint = ""

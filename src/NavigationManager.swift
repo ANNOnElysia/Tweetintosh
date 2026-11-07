@@ -538,11 +538,9 @@ final class NavigationManager: ObservableObject {
                             NotificationsViewModel.shared.selectFilter(.priority)
                             return nil
                         }
-                    case 14: // Key E -> Home: List; Notifications: Mentions
+                    case 14: // Key E -> Home: Bookmarks; Notifications: Mentions
                         if self.currentTab == .home {
-                            if !TimelineViewModel.shared.userLists.isEmpty {
-                                TimelineViewModel.shared.selectFeed(.list)
-                            }
+                            TimelineViewModel.shared.selectFeed(.bookmarks)
                             return nil
                         } else if self.currentTab == .notifications {
                             NotificationsViewModel.shared.selectFilter(.mentions)

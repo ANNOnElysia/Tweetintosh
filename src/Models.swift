@@ -406,6 +406,8 @@ struct Tweet: Codable, Hashable, Identifiable {
 enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
     case forYou = "for_you"
     case following = "following"
+    // The posts you have bookmarked on X, newest first
+    case bookmarks = "bookmarks"
     case list = "list"
     
     var id: String { rawValue }
@@ -414,6 +416,7 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "feed_for_you"
         case .following: return "feed_following"
+        case .bookmarks: return "feed_bookmarks"
         case .list: return "feed_list"
         }
     }
@@ -422,6 +425,7 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "sparkles"
         case .following: return "person.2.fill"
+        case .bookmarks: return "bookmark.fill"
         case .list: return "list.bullet.rectangle.portrait"
         }
     }
@@ -430,7 +434,9 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "⌥Q"
         case .following: return "⌥W"
-        case .list: return "⌥E"
+        case .bookmarks: return "⌥E"
+        // Lists have no shortcut: there can be any number of them
+        case .list: return ""
         }
     }
     
@@ -438,7 +444,8 @@ enum HomeFeedType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .forYou: return "Q"
         case .following: return "W"
-        case .list: return "E"
+        case .bookmarks: return "E"
+        case .list: return ""
         }
     }
 }

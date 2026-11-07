@@ -1576,6 +1576,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "推荐",
             .traditionalChinese: "推薦"
         ],
+        "feed_bookmarks": [
+            .english: "Bookmarks",
+            .japanese: "ブックマーク",
+            .korean: "북마크",
+            .simplifiedChinese: "书签",
+            .traditionalChinese: "書籤"
+        ],
         "feed_following": [
             .english: "Following",
             .japanese: "フォロー中",

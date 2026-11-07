@@ -32,6 +32,7 @@ final class TimelineViewModel: ObservableObject {
     // Independent storage for each feed
     @Published var forYouTweets: [Tweet] = []
     @Published var followingTweets: [Tweet] = []
+    @Published var bookmarkTweets: [Tweet] = []
     @Published var listTweets: [String: [Tweet]] = [:]
     
     // Pending new tweets buffer (holds background/auto-fetched tweets so user reading is never disrupted or pushed down)
@@ -50,6 +51,9 @@ final class TimelineViewModel: ObservableObject {
     
     private var followingTopCursor: String?
     private var followingBottomCursor: String?
+
+    private var bookmarksTopCursor: String?
+    private var bookmarksBottomCursor: String?
     
     private var listTopCursors: [String: String] = [:]
     private var listBottomCursors: [String: String] = [:]
@@ -62,6 +66,7 @@ final class TimelineViewModel: ObservableObject {
             switch selectedFeed {
             case .forYou: return forYouTopCursor
             case .following: return followingTopCursor
+            case .bookmarks: return bookmarksTopCursor
             case .list: return listTopCursors[selectedListId]
             }
         }
@@ -69,6 +74,7 @@ final class TimelineViewModel: ObservableObject {
             switch selectedFeed {
             case .forYou: forYouTopCursor = newValue
             case .following: followingTopCursor = newValue
+            case .bookmarks: bookmarksTopCursor = newValue
             case .list: listTopCursors[selectedListId] = newValue
             }
         }
@@ -79,6 +85,7 @@ final class TimelineViewModel: ObservableObject {
             switch selectedFeed {
             case .forYou: return forYouBottomCursor
             case .following: return followingBottomCursor
+            case .bookmarks: return bookmarksBottomCursor
             case .list: return listBottomCursors[selectedListId]
             }
         }
@@ -86,6 +93,7 @@ final class TimelineViewModel: ObservableObject {
             switch selectedFeed {
             case .forYou: forYouBottomCursor = newValue
             case .following: followingBottomCursor = newValue
+            case .bookmarks: bookmarksBottomCursor = newValue
             case .list: listBottomCursors[selectedListId] = newValue
             }
         }
@@ -146,6 +154,7 @@ final class TimelineViewModel: ObservableObject {
         guard isAuthenticated, !isRefreshing, !isLoadingInitial, !isLoadingMore else { return }
         guard NSApp.isActive, NavigationManager.shared.currentTab == .home,
               let window = NSApp.mainWindow, window.isVisible, !window.isMiniaturized else { return }
+        guard selectedFeed != .bookmarks else { return }
         guard Date().timeIntervalSince(lastFetchAt) >= pollInterval(for: selectedFeed) else { return }
         pollLogger.notice("poll \(self.selectedFeed.rawValue, privacy: .public)")
         refresh(silently: true, isUserInitiated: false)
@@ -261,6 +270,12 @@ final class TimelineViewModel: ObservableObject {
             self.prefetchMedia(for: cachedFollowing.tweets)
         }
         
+        if let cachedBookmarks = TimelineCacheManager.shared.loadCachedSnapshot(feed: .bookmarks), !cachedBookmarks.tweets.isEmpty {
+            self.bookmarkTweets = cachedBookmarks.tweets
+            self.bookmarksTopCursor = cachedBookmarks.topCursor
+            self.bookmarksBottomCursor = cachedBookmarks.bottomCursor
+        }
+        
         if let cachedList = TimelineCacheManager.shared.loadCachedSnapshot(feed: .list, listId: selectedListId), !cachedList.tweets.isEmpty {
             self.listTweets[selectedListId] = cachedList.tweets
             self.listTopCursors[selectedListId] = cachedList.topCursor
@@ -283,6 +298,8 @@ final class TimelineViewModel: ObservableObject {
             self.tweets = forYouTweets
         case .following:
             self.tweets = followingTweets
+        case .bookmarks:
+            self.tweets = bookmarkTweets
         case .list:
             self.tweets = listTweets[selectedListId] ?? []
         }
@@ -292,6 +309,7 @@ final class TimelineViewModel: ObservableObject {
         switch feed {
         case .forYou: return forYouPendingTweets.count
         case .following: return followingPendingTweets.count
+        case .bookmarks: return 0
         case .list: return listPendingTweets[selectedListId]?.count ?? 0
         }
     }
@@ -306,6 +324,9 @@ final class TimelineViewModel: ObservableObject {
             let existingPendingIds = Set(followingPendingTweets.map { $0.id })
             let trulyNew = newTweets.filter { !existingPendingIds.contains($0.id) }
             followingPendingTweets.insert(contentsOf: trulyNew, at: 0)
+        case .bookmarks:
+            // Never queued: the bookmarks page always shows them as they are
+            break
         case .list:
             var currentPending = listPendingTweets[selectedListId] ?? []
             let existingPendingIds = Set(currentPending.map { $0.id })
@@ -320,6 +341,7 @@ final class TimelineViewModel: ObservableObject {
         switch feed {
         case .forYou: pending = forYouPendingTweets
         case .following: pending = followingPendingTweets
+        case .bookmarks: pending = []
         case .list: pending = listPendingTweets[selectedListId] ?? []
         }
         guard !pending.isEmpty else { return }
@@ -335,6 +357,8 @@ final class TimelineViewModel: ObservableObject {
             self.seenTweetIds = Array(Set(newIds + self.seenTweetIds).prefix(60))
         case .following:
             followingPendingTweets = []
+        case .bookmarks:
+            break
         case .list:
             listPendingTweets[selectedListId] = []
         }
@@ -376,11 +400,13 @@ final class TimelineViewModel: ObservableObject {
         
         if tweets.isEmpty {
             refresh(silently: false, isUserInitiated: false)
+        } else if feed == .bookmarks {
+            refresh(silently: true, isUserInitiated: false)
         }
     }
     
     func nextFeed() {
-        let all: [HomeFeedType] = userLists.isEmpty ? [.forYou, .following] : HomeFeedType.allCases
+        let all: [HomeFeedType] = userLists.isEmpty ? [.forYou, .following, .bookmarks] : HomeFeedType.allCases
         if let idx = all.firstIndex(of: selectedFeed) {
             let nextIdx = (idx + 1) % all.count
             selectFeed(all[nextIdx])
@@ -388,7 +414,7 @@ final class TimelineViewModel: ObservableObject {
     }
     
     func prevFeed() {
-        let all: [HomeFeedType] = userLists.isEmpty ? [.forYou, .following] : HomeFeedType.allCases
+        let all: [HomeFeedType] = userLists.isEmpty ? [.forYou, .following, .bookmarks] : HomeFeedType.allCases
         if let idx = all.firstIndex(of: selectedFeed) {
             let prevIdx = (idx - 1 + all.count) % all.count
             selectFeed(all[prevIdx])
@@ -425,6 +451,17 @@ final class TimelineViewModel: ObservableObject {
                 switch result {
                 case .success(let payload):
                     self.errorMessage = nil
+                    if currentFeed == .bookmarks {
+                        // Bookmarks are taken away as well as added, anywhere, so the newest page replaces the list
+                        // rather than being merged into it
+                        self.setFeedTweets(payload.tweets, for: .bookmarks)
+                        self.bookmarksTopCursor = payload.topCursor
+                        self.bookmarksBottomCursor = payload.bottomCursor
+                        TimelineCacheManager.shared.saveSnapshot(feed: .bookmarks, tweets: payload.tweets,
+                                                                 topCursor: payload.topCursor, bottomCursor: payload.bottomCursor)
+                        if self.selectedFeed == .bookmarks { self.updateActiveTweets() }
+                        break
+                    }
                     let existingIds = Set(self.currentFeedTweets(currentFeed).map { $0.id })
                     let newOnes = payload.tweets.filter { !existingIds.contains($0.id) }
                     
@@ -560,6 +597,8 @@ final class TimelineViewModel: ObservableObject {
                         self.forYouBottomCursor = payload.bottomCursor
                     } else if currentFeed == .following {
                         self.followingBottomCursor = payload.bottomCursor
+                    } else if currentFeed == .bookmarks {
+                        self.bookmarksBottomCursor = payload.bottomCursor
                     } else {
                         self.listBottomCursors[self.selectedListId] = payload.bottomCursor
                     }
@@ -587,6 +626,7 @@ final class TimelineViewModel: ObservableObject {
         switch feed {
         case .forYou: return forYouTweets
         case .following: return followingTweets
+        case .bookmarks: return bookmarkTweets
         case .list: return listTweets[selectedListId] ?? []
         }
     }
@@ -597,6 +637,8 @@ final class TimelineViewModel: ObservableObject {
             forYouTweets = list
         case .following:
             followingTweets = list
+        case .bookmarks:
+            bookmarkTweets = list
         case .list:
             listTweets[selectedListId] = list
         }
@@ -613,6 +655,9 @@ final class TimelineViewModel: ObservableObject {
         // 2. Mutate in Following
         if let idx = followingTweets.firstIndex(where: { $0.canonicalId == id }) {
             transform(&followingTweets[idx])
+        }
+        if let idx = bookmarkTweets.firstIndex(where: { $0.canonicalId == id }) {
+            transform(&bookmarkTweets[idx])
         }
         // 3. Mutate in Lists
         for (listId, list) in listTweets {
@@ -639,6 +684,7 @@ final class TimelineViewModel: ObservableObject {
             }
             forYouTweets.removeAll(where: matches)
             followingTweets.removeAll(where: matches)
+            bookmarkTweets.removeAll(where: matches)
             for (listId, list) in listTweets {
                 listTweets[listId] = list.filter { !matches($0) }
             }

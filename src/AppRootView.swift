@@ -1031,7 +1031,7 @@ private struct SidebarContextSection: View {
     private var feedRows: some View {
         VStack(alignment: .leading, spacing: 2) {
             VStack(alignment: .leading, spacing: 2) {
-                ForEach([HomeFeedType.forYou, .following]) { type in
+                ForEach([HomeFeedType.forYou, .following, .bookmarks]) { type in
                     row(title: loc.t(type.titleKey), badge: type.shortcutLetter,
                         isSelected: timelineVM.selectedFeed == type) {
                         iconTile(type.iconName)

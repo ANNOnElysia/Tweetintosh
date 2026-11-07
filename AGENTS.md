@@ -113,4 +113,4 @@ Whenever the user reviews and approves changes ("通过"), immediately commit th
   environment to have the app open a busy post on launch and log how X's replies were grouped. It is inert otherwise.
   Delete the file and its two call sites once that work settles.
 - The Messages tab is a placeholder (`NewDestinationPlaceholderView`); X's DMs are not implemented.
-- There is no Bookmarks destination yet; bookmarking exists only as an action on posts.
+- Bookmarks is a Home feed (sidebar, ⌥E), fetched with X's `Bookmarks` GraphQL operation; lists have no shortcut.
