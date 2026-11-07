@@ -103,6 +103,9 @@ final class GraphQLOperationIDs {
         // Who liked / reposted a post. No ids are known up front: they are read from X's web client on first use.
         "Favoriters": ["mDc_nU8xGv0cLRWtTaIEug"],
         "Retweeters": [],
+        // Who an account follows, and who follows it: read from X's web client on first use, like the two above
+        "Following": [],
+        "Followers": [],
         "UserMedia": [
             "eF8kYZ4r9zFLqcYno3I17A", "oMVVrI5kt3kOpyHHTTKf5Q","BGmkmGDG0kZPM-aoQtNTTw", "dexO_2tohK86JDudXXG3Yw",
             "MOLbHrtk8Ovu7DUNOLcXiA", "Le6KlbilFmSu-5VltFND-Q"
@@ -360,6 +363,8 @@ extension APIClient {
                     return
                 }
                 if status == 401 || status == 403 || status == 429 {
+                    let body = data.flatMap { String(data: $0.prefix(200), encoding: .utf8) } ?? ""
+                    graphQLLog.error("\(operation, privacy: .public) refused: HTTP \(status, privacy: .public) \(body, privacy: .public)")
                     completion(.failure(.serverError("HTTP \(status)")))
                     return
                 }
@@ -439,9 +444,14 @@ extension APIClient {
         cursor: String? = nil,
         completion: @escaping (Result<(users: [TweetUser], bottomCursor: String?), APIError>) -> Void
     ) {
-        var variables: [String: Any] = ["tweetId": tweetId, "count": 40, "includePromotedContent": true]
+        // A list that fell back to the REST endpoint keeps paging there
+        if let cursor = cursor, cursor.hasPrefix(Self.restCursorPrefix) {
+            fetchFollowListREST(kind, userId: tweetId, cursor: String(cursor.dropFirst(Self.restCursorPrefix.count)), completion: completion)
+            return
+        }
+        var variables: [String: Any] = [kind.subjectKey: tweetId, "count": 40, "includePromotedContent": kind.subjectKey == "tweetId"]
         if let cursor = cursor { variables["cursor"] = cursor }
-        graphQLGet(operation: kind.operation, variables: variables) { result in
+        graphQLGet(operation: kind.operation, variables: variables) { [weak self] result in
             switch result {
             case .success(let json):
                 var users: [TweetUser] = []
@@ -468,9 +478,55 @@ extension APIClient {
                 walk(json["data"] as Any)
                 completion(.success((users, bottomCursor)))
             case .failure(let error):
-                completion(.failure(error))
+                // X answers 404 to the Followers query id its own web client lists; the older REST lists still work
+                // with the same session, so following and followers fall back to them
+                if cursor == nil, kind == .following || kind == .followers, let self = self {
+                    self.fetchFollowListREST(kind, userId: tweetId, cursor: "-1", completion: completion)
+                } else {
+                    completion(.failure(error))
+                }
             }
         }
+    }
+
+    private static let restCursorPrefix = "rest:"
+
+    private func fetchFollowListREST(
+        _ kind: TweetUsersKind,
+        userId: String,
+        cursor: String,
+        completion: @escaping (Result<(users: [TweetUser], bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        let path = kind == .followers ? "followers" : "friends"
+        var components = URLComponents(string: "https://x.com/i/api/1.1/\(path)/list.json")!
+        components.queryItems = [
+            URLQueryItem(name: "user_id", value: userId),
+            URLQueryItem(name: "count", value: "40"),
+            URLQueryItem(name: "cursor", value: cursor),
+            URLQueryItem(name: "skip_status", value: "true"),
+            URLQueryItem(name: "include_user_entities", value: "true")
+        ]
+        guard let url = components.url else { return completion(.failure(.invalidResponse)) }
+        session.dataTask(with: authorizedRequest(url, method: "GET", creds: creds)) { data, response, error in
+            if let error = error { return completion(.failure(.networkError(error))) }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status), let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                graphQLLog.error("\(path, privacy: .public)/list.json refused: HTTP \(status, privacy: .public)")
+                return completion(.failure(.serverError(Self.errorMessage(from: data) ?? "HTTP \(status)")))
+            }
+            // A REST user is shaped like a GraphQL user's "legacy" object
+            let users = ((json["users"] as? [[String: Any]]) ?? []).compactMap { raw -> TweetUser? in
+                guard let id = raw["id_str"] as? String else { return nil }
+                return Self.parseUser(["rest_id": id, "legacy": raw])
+            }
+            let next = json["next_cursor_str"] as? String
+            completion(.success((users, (next == nil || next == "0") ? nil : Self.restCursorPrefix + next!)))
+        }.resume()
     }
 
     // MARK: Profile
@@ -759,8 +815,33 @@ extension APIClient {
 }
 
 // Which list of people to show for a post
+// Which list of people to show: those who liked or reposted a post, or who an account follows or is followed by
 enum TweetUsersKind: String {
-    case likes, reposts
+    case likes, reposts, following, followers
 
-    var operation: String { self == .likes ? "Favoriters" : "Retweeters" }
+    var operation: String {
+        switch self {
+        case .likes: return "Favoriters"
+        case .reposts: return "Retweeters"
+        case .following: return "Following"
+        case .followers: return "Followers"
+        }
+    }
+
+    // What the subject's id is called in the request: a post's for likes and reposts, an account's for the others
+    var subjectKey: String {
+        switch self {
+        case .likes, .reposts: return "tweetId"
+        case .following, .followers: return "userId"
+        }
+    }
+
+    var titleKey: String {
+        switch self {
+        case .likes: return "liked_by"
+        case .reposts: return "reposted_by"
+        case .following: return "peek_following"
+        case .followers: return "peek_followers"
+        }
+    }
 }

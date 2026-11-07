@@ -2,7 +2,8 @@
 //  UserListView.swift
 //  Tweetintosh - Headless Data-driven Client
 //
-//  A full-pane page listing the people who liked or reposted a post (opened from "and 9 others liked your post").
+//  A full-pane page listing people: who liked or reposted a post (opened from "and 9 others liked your post"), or who an
+//  account follows and is followed by (opened from the counts on a profile).
 //
 
 import SwiftUI
@@ -97,7 +98,7 @@ struct UserListView: View {
             .buttonStyle(.plain)
             .help("\(loc.t("nav_back")) (Esc / ←)")
 
-            Text(loc.t(vm.kind == .likes ? "liked_by" : "reposted_by"))
+            Text(loc.t(vm.kind.titleKey))
                 .font(.system(size: 13.5, weight: .semibold))
                 .foregroundColor(ThemeManager.primaryText)
                 .padding(.horizontal, 14)
@@ -116,7 +117,7 @@ struct UserListView: View {
                 LoadingIndicator()
             } else if vm.failed {
                 VStack(spacing: 10) {
-                    Text(loc.t("users_load_failed"))
+                    Text(loc.t(vm.kind == .following || vm.kind == .followers ? "follow_list_load_failed" : "users_load_failed"))
                         .font(.system(size: 13.5))
                         .foregroundColor(ThemeManager.secondaryText)
                     Button(loc.t("profile_retry")) { vm.load() }

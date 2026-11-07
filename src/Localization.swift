@@ -939,6 +939,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "转发的人",
             .traditionalChinese: "轉發的人"
         ],
+        "follow_list_load_failed": [
+            .english: "Couldn't load this list.",
+            .japanese: "このリストを読み込めませんでした。",
+            .korean: "이 목록을 불러올 수 없습니다.",
+            .simplifiedChinese: "无法加载此列表。",
+            .traditionalChinese: "無法載入此清單。"
+        ],
         "users_load_failed": [
             .english: "Couldn't load this list. X only shows who liked or reposted your own posts.",
             .japanese: "このリストを読み込めませんでした。いいねやリポストしたユーザーは自分の投稿でのみ表示されます。",

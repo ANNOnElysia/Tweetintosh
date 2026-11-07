@@ -468,15 +468,28 @@ struct ProfileView: View {
     private var statPills: some View {
         HStack(spacing: 8) {
             if let following = vm.user.followingCount {
-                statPill(following, loc.t("peek_following"))
+                statPill(following, loc.t("peek_following"), opens: .following)
             }
             if let followers = vm.user.followersCount {
-                statPill(followers, loc.t("peek_followers"))
+                statPill(followers, loc.t("peek_followers"), opens: .followers)
             }
         }
     }
 
-    private func statPill(_ count: Int, _ label: String) -> some View {
+    // Each count opens the people it counts, as on X
+    private func statPill(_ count: Int, _ label: String, opens kind: TweetUsersKind) -> some View {
+        Button {
+            NavigationManager.shared.openUserList(kind, tweetId: vm.userId)
+        } label: {
+            statPillLabel(count, label)
+        }
+        .buttonStyle(.plain)
+        // The account's id arrives with the profile when the page was opened from just a handle
+        .disabled(vm.userId.isEmpty)
+        .help(label)
+    }
+
+    private func statPillLabel(_ count: Int, _ label: String) -> some View {
         HStack(spacing: 4) {
             // Semantic styles rather than the theme's fixed colours, whose gray washes out on bare glass over a banner
             Text(Self.formatCount(count))
