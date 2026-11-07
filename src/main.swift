@@ -642,7 +642,7 @@ final class SettingsWindow: NSWindow {
     
     @objc func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "Tweetintosh v2.0"
+        alert.messageText = "Tweetintosh v\(AppVersion.short)"
         alert.informativeText = "Headless Data-driven Native macOS Client for X.\nBuilt with pure SwiftUI, high performance GraphQL synchronization, and 120Hz micro-animations."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
