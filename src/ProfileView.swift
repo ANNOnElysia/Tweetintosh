@@ -367,7 +367,10 @@ struct ProfileView: View {
                 HStack(alignment: .bottom, spacing: 12) {
                     identity
                     Spacer(minLength: 12)
+                    // The counts keep their full size; when room is short the name truncates instead of the pills wrapping
                     statPills
+                        .fixedSize()
+                        .layoutPriority(1)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -428,6 +431,7 @@ struct ProfileView: View {
                 Text(vm.user.formattedHandle)
                     .font(theme.appFont(size: 13.5))
                     .opacity(0.82)
+                    .lineLimit(1)
             }
             .foregroundColor(.white)
             .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 1)

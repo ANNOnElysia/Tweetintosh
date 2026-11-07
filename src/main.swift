@@ -82,6 +82,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var settingsWindow: NSWindow?
     private var tilingMonitor: Any?
     private var settingsTitleObserver: AnyCancellable?
+    private var sidebarObserver: AnyCancellable?
     var loginController: LoginWindowController?
     private var welcomeController: WelcomeWindowController?
     
@@ -175,6 +176,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         applyMinimumSize(to: window)
         updateLayout(for: window)
+        // Opening the sidebar in a narrow window widens the window to fit it, rather than squeezing the page beside it.
+        // The new value comes with the announcement, before NavigationManager has stored it.
+        sidebarObserver = NavigationManager.shared.$sidebarExpanded
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak window] expanded in
+                guard let self = self, let window = window else { return }
+                self.applyMinimumSize(to: window, sidebarExpanded: expanded, animate: true)
+            }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self, weak window] _ in
@@ -269,15 +280,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     // The window stays at least a third of its screen wide, so it follows the screen it is on. A window saved narrower,
     // or moved over from a smaller display, grows to fit rather than waiting to be resized.
-    private func applyMinimumSize(to window: NSWindow) {
+    // The sidebar's column (216 points plus its margins), and the narrowest page that still fits a profile's banner: the
+    // photo and name on one side, and the following and follower counts on the other without wrapping
+    private static let sidebarColumnWidth: CGFloat = 234
+    private static let minimumPageWidth: CGFloat = 520
+
+    private func applyMinimumSize(to window: NSWindow, sidebarExpanded: Bool? = nil, animate: Bool = false) {
         guard let screen = window.screen ?? NSScreen.main else { return }
-        let minWidth = max(500, (screen.frame.width / 3).rounded(.up))
+        var minWidth = max(500, (screen.frame.width / 3).rounded(.up))
+        if sidebarExpanded ?? NavigationManager.shared.sidebarExpanded {
+            minWidth = max(minWidth, Self.sidebarColumnWidth + Self.minimumPageWidth)
+        }
+        minWidth = min(minWidth, screen.visibleFrame.width)
         window.minSize = NSSize(width: minWidth, height: 600)
         guard window.frame.width < minWidth else { return }
+        // Grows to the right, unless that would leave the screen
         var frame = window.frame
         frame.size.width = minWidth
         frame.origin.x = min(frame.origin.x, screen.visibleFrame.maxX - minWidth)
-        window.setFrame(frame, display: true)
+        window.setFrame(frame, display: true, animate: animate)
     }
     
     func windowDidChangeScreen(_ notification: Notification) {
