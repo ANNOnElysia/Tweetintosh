@@ -287,7 +287,7 @@ final class ThemeManager: ObservableObject {
            let tone = AppThemeTone(rawValue: savedTone) {
             self.themeTone = tone
         } else {
-            self.themeTone = .mild
+            self.themeTone = .minimalism
         }
         
         if let savedFont = UserDefaults.standard.string(forKey: "Tweetintosh_FontType"),
@@ -300,12 +300,14 @@ final class ThemeManager: ObservableObject {
         if UserDefaults.standard.object(forKey: "Tweetintosh_UseLiquidGlass") != nil {
             self.useLiquidGlass = UserDefaults.standard.bool(forKey: "Tweetintosh_UseLiquidGlass")
         } else {
-            self.useLiquidGlass = false
+            // Glass by default, clear rather than tinted: on systems before macOS 26 the same switch shows the existing
+            // frosted material, so this is safe everywhere
+            self.useLiquidGlass = true
         }
         if UserDefaults.standard.object(forKey: "Tweetintosh_UseLiquidGlassTint") != nil {
             self.useLiquidGlassTint = UserDefaults.standard.bool(forKey: "Tweetintosh_UseLiquidGlassTint")
         } else {
-            self.useLiquidGlassTint = true
+            self.useLiquidGlassTint = false
         }
         
         if let savedColor = UserDefaults.standard.string(forKey: "Tweetintosh_ThemeColor") ?? UserDefaults.standard.string(forKey: "Tweetintosh_RefreshAnimationColor"),
