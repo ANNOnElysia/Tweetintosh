@@ -125,6 +125,8 @@ struct TweetArticleCard: View {
             }
         }
         .onAppear { if tweet.article == nil { store.load(tweetId: tweet.id) } }
+        // A reused table cell keeps this view and hands it another post, so onAppear doesn't run again
+        .onChange(of: tweet.id) { if tweet.article == nil { store.load(tweetId: tweet.id) } }
     }
 }
 

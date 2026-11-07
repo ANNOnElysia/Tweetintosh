@@ -12,6 +12,13 @@ enum TweetText {
     private static let profileScheme = "tweetintosh"
     private static let mentionPattern = try! NSRegularExpression(pattern: "(?<![A-Za-z0-9_])@([A-Za-z0-9_]{1,15})")
 
+    // A plain post skips the AttributedString: there is nothing in it to style or click
+    static func text(_ tweet: Tweet) -> Text {
+        let body = tweet.displayBodyText
+        if tweet.displayLinks.isEmpty && !body.contains("@") { return Text(verbatim: body) }
+        return Text(attributed(tweet))
+    }
+
     static func attributed(_ tweet: Tweet) -> AttributedString {
         let body = tweet.displayBodyText
         var attributed = AttributedString(body)

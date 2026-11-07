@@ -64,23 +64,115 @@ final class PeekRegistry {
     static let shared = PeekRegistry()
 
     fileprivate let anchors = NSHashTable<PeekAnchorView>.weakObjects()
+    fileprivate let cells = NSHashTable<TableCellGeometry>.weakObjects()
+
+    // One item under the pointer, whichever way it was registered
+    private struct Hit {
+        let area: CGFloat
+        let target: () -> PeekTarget?
+        let toWindow: (CGPoint) -> CGPoint
+    }
 
     // Most specific (smallest) matching item wins, e.g. an avatar over its surrounding row. Positions come from
     // AppKit at the moment of the press: inside a List the frames SwiftUI reports stop being updated as soon as the
     // table scrolls, so they would point at wherever a row was when it was laid out.
     func target(atWindowPoint point: CGPoint, scope: PeekScope) -> PeekTarget? {
-        let hits = anchors.allObjects
+        var hits: [Hit] = anchors.allObjects
             .filter { $0.scope == scope && $0.visiblyContains(windowPoint: point) }
-            .sorted { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
-        for anchor in hits {
-            guard let target = anchor.resolve?(anchor.topLeftPoint(fromWindowPoint: point), anchor.bounds.size) else { continue }
+            .map { anchor in
+                Hit(area: anchor.bounds.width * anchor.bounds.height,
+                    target: { anchor.resolve?(anchor.topLeftPoint(fromWindowPoint: point), anchor.bounds.size) },
+                    toWindow: { anchor.windowPoint(fromTopLeftPoint: $0) })
+            }
+        for cell in cells.allObjects {
+            guard let host = cell.hostView, host.window != nil else { continue }
+            let local = host.convert(point, from: nil)
+            guard host.bounds.intersection(host.visibleRect).contains(local) else { continue }
+            for region in cell.peekRegions.values where region.scope == scope && region.frame.contains(local) {
+                let origin = region.frame.origin
+                hits.append(Hit(
+                    area: region.frame.width * region.frame.height,
+                    target: { region.resolve(CGPoint(x: local.x - origin.x, y: local.y - origin.y), region.frame.size) },
+                    toWindow: { host.convert(CGPoint(x: $0.x + origin.x, y: $0.y + origin.y), to: nil) }
+                ))
+            }
+        }
+        for hit in hits.sorted(by: { $0.area < $1.area }) {
+            guard let target = hit.target() else { continue }
             if case .word(var word) = target {
-                word.baseline = anchor.windowPoint(fromTopLeftPoint: word.baseline)
+                word.baseline = hit.toWindow(word.baseline)
                 return .word(word)
             }
             return target
         }
         return nil
+    }
+
+    func register(_ cell: TableCellGeometry) {
+        cells.add(cell)
+    }
+}
+
+// MARK: - Table Cells
+
+// What a table cell's contents know about the cell they are in. An NSView per peekable or tappable item costs more to
+// create and lay out than the text beside it, and inside a cell it isn't needed: scrolling moves the cell, so a position
+// relative to the cell stays true however far the table has scrolled, and the cell's hosting view converts it when asked.
+final class TableCellGeometry {
+    static let spaceName = "TableCell"
+    // For laying a row out to measure it, where nothing will ever ask where anything is
+    static let forMeasuring = TableCellGeometry()
+
+    struct PeekRegion {
+        var frame: CGRect = .zero
+        var scope: PeekScope = .none
+        var resolve: (CGPoint, CGSize) -> PeekTarget? = { _, _ in nil }
+    }
+
+    weak var hostView: NSView?
+    fileprivate(set) var peekRegions: [ObjectIdentifier: PeekRegion] = [:]
+}
+
+private struct TableCellGeometryKey: EnvironmentKey {
+    static let defaultValue: TableCellGeometry? = nil
+}
+
+extension EnvironmentValues {
+    var tableCellGeometry: TableCellGeometry? {
+        get { self[TableCellGeometryKey.self] }
+        set { self[TableCellGeometryKey.self] = newValue }
+    }
+}
+
+// Lives exactly as long as the item in the cell's view tree, and takes its region with it. Not tied to onDisappear, which
+// also fires when the whole cell goes off to the reuse pool and would leave it with no regions when it comes back.
+private final class PeekRegionToken: ObservableObject {
+    weak var cell: TableCellGeometry?
+
+    deinit {
+        cell?.peekRegions[ObjectIdentifier(self)] = nil
+    }
+}
+
+private struct CellPeekRegion: ViewModifier {
+    let cell: TableCellGeometry
+    let scope: PeekScope
+    let resolve: (CGPoint, CGSize) -> PeekTarget?
+    @StateObject private var token = PeekRegionToken()
+
+    func body(content: Content) -> some View {
+        // Not state that drives anything on screen, so it is safe to bring up to date here: it is only read during a press
+        let key = ObjectIdentifier(token)
+        token.cell = cell
+        var region = cell.peekRegions[key] ?? TableCellGeometry.PeekRegion()
+        region.scope = scope
+        region.resolve = resolve
+        cell.peekRegions[key] = region
+        return content.onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .named(TableCellGeometry.spaceName))
+        } action: { [cell] frame in
+            cell.peekRegions[key]?.frame = frame
+        }
     }
 }
 
@@ -134,10 +226,13 @@ private struct PeekAnchor: NSViewRepresentable {
 private struct PeekableModifier: ViewModifier {
     let resolve: (CGPoint, CGSize) -> PeekTarget?
     @Environment(\.peekScope) private var scope
+    @Environment(\.tableCellGeometry) private var cell
 
     func body(content: Content) -> some View {
         if scope == .none {
             content
+        } else if let cell = cell {
+            content.modifier(CellPeekRegion(cell: cell, scope: scope, resolve: resolve))
         } else {
             content.background(PeekAnchor(scope: scope, resolve: resolve))
         }

@@ -59,50 +59,67 @@ final class ImageCache {
 
 // MARK: - Image Loader (Sync Cache Hit & Offloaded Disk/Network)
 final class ImageLoader: ObservableObject {
-    // Published as a CGImage so SwiftUI hands the decoded bitmap straight to Core Animation (no NSImage rep lookup)
-    @Published var loadedImage: CGImage?
-    @Published var isLoading = false
-    private var currentUrl: String?
-    // The address the picture on screen belongs to, and the one being fetched (a view can be given a new address)
-    private var shownUrl: String?
-    private var inFlightUrl: String?
-    // Display box in device pixels; nil decodes at full resolution
-    private let targetPixelSize: CGSize?
+    // What to show, and the display box it was decoded for. A reused table cell keeps its loader for the next post, so
+    // the two travel together: a box that no longer matches means the picture belongs to someone else.
+    private struct Request: Equatable {
+        let url: String
+        let targetSize: CGSize?
 
-    init(urlString: String?, targetSize: CGSize? = nil) {
-        self.currentUrl = urlString
-        if let size = targetSize, size.width > 0, size.height > 0 {
+        // Display box in device pixels; nil decodes at full resolution
+        var pixelSize: CGSize? {
+            guard let size = targetSize, size.width > 0, size.height > 0 else { return nil }
             let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-            self.targetPixelSize = CGSize(width: ceil(size.width * scale), height: ceil(size.height * scale))
-        } else {
-            self.targetPixelSize = nil
-        }
-        if let urlStr = urlString {
-            // Immediate frame-0 hit if already decoded in memory
-            if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
-                self.loadedImage = Self.cgImage(of: mem)
-                self.shownUrl = urlStr
-            }
+            return CGSize(width: ceil(size.width * scale), height: ceil(size.height * scale))
         }
     }
 
-    func load(urlString: String?) {
-        guard let urlStr = urlString else { return }
-        self.currentUrl = urlStr
-        let targetPixelSize = self.targetPixelSize
+    // Published as a CGImage so SwiftUI hands the decoded bitmap straight to Core Animation (no NSImage rep lookup)
+    @Published private var loadedImage: CGImage?
+    // The request the picture on screen belongs to, the one wanted now, and the one being fetched
+    private var shown: Request?
+    private var current: Request?
+    private var inFlight: Request?
+
+    init(urlString: String?, targetSize: CGSize? = nil) {
+        guard let urlString = urlString else { return }
+        let request = Request(url: urlString, targetSize: targetSize)
+        current = request
+        // Immediate frame-0 hit if already decoded in memory
+        if let mem = MediaCacheManager.shared.memoryImage(for: urlString, targetPixelSize: request.pixelSize) {
+            loadedImage = Self.cgImage(of: mem)
+            shown = request
+        }
+    }
+
+    // The picture for this address, or nil for the placeholder. Asked while the body is evaluated, so a reused cell never
+    // shows the previous post's picture for even one frame, and so it must not change any published state.
+    func image(urlString: String?, targetSize: CGSize?) -> CGImage? {
+        guard let urlString = urlString else { return nil }
+        let request = Request(url: urlString, targetSize: targetSize)
+        if shown == request { return loadedImage }
+        return MediaCacheManager.shared.memoryImage(for: urlString, targetPixelSize: request.pixelSize).flatMap(Self.cgImage(of:))
+    }
+
+    func load(urlString: String?, targetSize: CGSize?) {
+        guard let urlStr = urlString else {
+            current = nil
+            return
+        }
+        let request = Request(url: urlStr, targetSize: targetSize)
+        current = request
+        let targetPixelSize = request.pixelSize
 
         // 1. Memory cache hit -> synchronous frame-0 return without flicker
         if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
-            if self.loadedImage == nil || self.shownUrl != urlStr {
-                self.loadedImage = Self.cgImage(of: mem)
-                self.shownUrl = urlStr
+            if shown != request || loadedImage == nil {
+                loadedImage = Self.cgImage(of: mem)
+                shown = request
             }
             return
         }
         
-        guard inFlightUrl != urlStr else { return }
-        inFlightUrl = urlStr
-        isLoading = true
+        guard inFlight != request else { return }
+        inFlight = request
         
         // 2. Offload disk lookup and network I/O to background queue to guarantee 120Hz smooth scrolling
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -110,45 +127,33 @@ final class ImageLoader: ObservableObject {
             
             // Check disk cache first
             if let diskImg = MediaCacheManager.shared.diskImage(for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:)) {
-                DispatchQueue.main.async {
-                    if self.currentUrl == urlStr {
-                        self.loadedImage = diskImg
-                        self.shownUrl = urlStr
-                    }
-                    if self.inFlightUrl == urlStr { self.inFlightUrl = nil }
-                    self.isLoading = false
-                }
+                DispatchQueue.main.async { self.finish(request, image: diskImg) }
                 return
             }
             
             // 3. Network fetch
             guard let url = URL(string: urlStr) else {
-                DispatchQueue.main.async { if self.inFlightUrl == urlStr { self.inFlightUrl = nil }; self.isLoading = false }
+                DispatchQueue.main.async { self.finish(request, image: nil) }
                 return
             }
             
-            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-            URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            let urlRequest = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
+            URLSession.shared.dataTask(with: urlRequest) { [weak self] data, _, _ in
                 guard let self = self else { return }
                 // Decode (and downsample) on this background thread to prevent main-thread decompression hitches
-                if let data = data,
-                   let img = MediaCacheManager.shared.storeImageData(data, for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:)) {
-                    DispatchQueue.main.async {
-                        if self.currentUrl == urlStr {
-                            self.loadedImage = img
-                            self.shownUrl = urlStr
-                        }
-                        if self.inFlightUrl == urlStr { self.inFlightUrl = nil }
-                        self.isLoading = false
-                    }
-                } else {
-                    DispatchQueue.main.async {
-                        if self.inFlightUrl == urlStr { self.inFlightUrl = nil }
-                        self.isLoading = false
-                    }
+                let img = data.flatMap {
+                    MediaCacheManager.shared.storeImageData($0, for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:))
                 }
+                DispatchQueue.main.async { self.finish(request, image: img) }
             }.resume()
         }
+    }
+    
+    private func finish(_ request: Request, image: CGImage?) {
+        if inFlight == request { inFlight = nil }
+        guard let image = image, current == request else { return }
+        loadedImage = image
+        shown = request
     }
     
     // Cache images are NSImage(cgImage:) wrappers, so this returns the backing CGImage without redrawing
@@ -159,9 +164,15 @@ final class ImageLoader: ObservableObject {
 
 // MARK: - Cached Async Image View
 struct CachedAsyncImage: View {
+    private struct LoadKey: Equatable {
+        let url: String?
+        let targetSize: CGSize?
+    }
+
     let urlString: String?
     var placeholderColor: Color = Color(white: 0.08)
     var contentMode: ContentMode = .fill
+    let targetSize: CGSize?
     
     @StateObject private var loader: ImageLoader
 
@@ -170,12 +181,13 @@ struct CachedAsyncImage: View {
         self.urlString = urlString
         self.placeholderColor = placeholderColor
         self.contentMode = contentMode
+        self.targetSize = targetSize
         _loader = StateObject(wrappedValue: ImageLoader(urlString: urlString, targetSize: targetSize))
     }
     
     var body: some View {
         ZStack {
-            if let image = loader.loadedImage {
+            if let image = loader.image(urlString: urlString, targetSize: targetSize) {
                 Image(decorative: image, scale: 1.0)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
@@ -187,12 +199,12 @@ struct CachedAsyncImage: View {
             }
         }
         .onAppear {
-            loader.load(urlString: urlString)
+            loader.load(urlString: urlString, targetSize: targetSize)
         }
         // The address can arrive after the view does (a profile opened from an @mention knows only the handle until
-        // X has answered), so a new address is loaded too
-        .onChange(of: urlString) {
-            loader.load(urlString: urlString)
+        // X has answered), and a reused table cell is handed a different post, so a new address is loaded too
+        .onChange(of: LoadKey(url: urlString, targetSize: targetSize)) {
+            loader.load(urlString: urlString, targetSize: targetSize)
         }
     }
 }
@@ -203,12 +215,32 @@ struct ImageGridView: View {
     var tweet: Tweet? = nil
     var isInteractive: Bool = true
     var isQuoted: Bool = false
-    @ObservedObject var layout = TimelineLayoutState.shared
     @ObservedObject var theme = ThemeManager.shared
     @Environment(\.mediaColumnWidth) private var mediaColumnWidth
     
     private var columnWidth: CGFloat {
-        max(180, min(mediaColumnWidth ?? .infinity, layout.availableColumnWidth))
+        Self.columnWidth(mediaColumnWidth: mediaColumnWidth)
+    }
+    
+    private static func columnWidth(mediaColumnWidth: CGFloat?) -> CGFloat {
+        max(180, min(mediaColumnWidth ?? .infinity, TimelineLayoutState.shared.availableColumnWidth))
+    }
+    
+    // How tall this grid will be, without building it, for rows that need a height before they exist. The grid's sizes come
+    // from these same calculations, so the two can't drift apart.
+    static func contentHeight(mediaList: [TweetMedia], isQuoted: Bool, mediaColumnWidth: CGFloat?) -> CGFloat {
+        guard let first = mediaList.first else { return 0 }
+        let top: CGFloat = 4 // The grid's own top padding
+        if mediaList.count == 1 {
+            let width = columnWidth(mediaColumnWidth: mediaColumnWidth)
+            return top + singleDimensions(first, columnWidth: width, isQuoted: isQuoted).height
+        }
+        return top + stripHeight(isQuoted: isQuoted)
+    }
+    
+    private static func stripHeight(isQuoted: Bool) -> CGFloat {
+        let windowHeight = TimelineLayoutState.shared.windowHeight
+        return isQuoted ? min(windowHeight / 3.5, 180) : min(windowHeight / 3.0, 260)
     }
     
     private func thumbUrl(_ original: String) -> String {
@@ -238,7 +270,7 @@ struct ImageGridView: View {
     
     // MARK: - 1. Single Image (Exact Proportions based on Apple Hardware Physical Profile)
     private func singleImageView(_ media: TweetMedia) -> some View {
-        let dims = calculateSingleDimensions(media)
+        let dims = Self.singleDimensions(media, columnWidth: columnWidth, isQuoted: isQuoted)
         let corner: CGFloat = isQuoted ? 10 : 16
         
         return HStack {
@@ -257,7 +289,8 @@ struct ImageGridView: View {
         .frame(height: dims.height)
     }
     
-    private func calculateSingleDimensions(_ media: TweetMedia) -> (width: CGFloat, height: CGFloat) {
+    private static func singleDimensions(_ media: TweetMedia, columnWidth: CGFloat, isQuoted: Bool) -> (width: CGFloat, height: CGFloat) {
+        let layout = TimelineLayoutState.shared
         // 读取当前 Apple 设备物理渲染分辨率的长宽各 1/2（转换为 points）
         let ref = AppleDisplayManager.shared.halfPhysicalReferencePoints
         let maxBoxW = min(isQuoted ? max(180, columnWidth - 24) : columnWidth, ref.width)
@@ -297,7 +330,7 @@ struct ImageGridView: View {
         let availableWidth = isQuoted ? max(180, columnWidth - 24) : columnWidth
         let spacing: CGFloat = 8
         let singleWidth = (availableWidth - spacing) / 2.0
-        let height: CGFloat = isQuoted ? min(layout.windowHeight / 3.5, 180) : min(layout.windowHeight / 3.0, 260)
+        let height = Self.stripHeight(isQuoted: isQuoted)
         let size = CGSize(width: singleWidth, height: height)
         let corner: CGFloat = isQuoted ? 10 : 16
         
@@ -314,7 +347,7 @@ struct ImageGridView: View {
     
     // MARK: - 3. Modern Stream / Horizontal Card Stream
     private func carouselStreamView(_ items: [TweetMedia]) -> some View {
-        let height: CGFloat = isQuoted ? min(layout.windowHeight / 3.5, 180) : min(layout.windowHeight / 3.0, 260)
+        let height = Self.stripHeight(isQuoted: isQuoted)
         let cardWidth: CGFloat = isQuoted ? 160 : 220
         let corner: CGFloat = isQuoted ? 10 : 16
         
@@ -339,6 +372,8 @@ struct ImageGridView: View {
             // Inside the ScrollView, so the accessor finds the carousel's scroll view and not the timeline's
             .background(ScrollViewAccessor { sv in HorizontalOnlyScrolling.shared.register(sv) })
         }
+        // A reused table cell must not open the next post's images partway along
+        .id(tweet?.id)
         .frame(height: height)
     }
 }
@@ -379,7 +414,13 @@ final class HorizontalOnlyScrolling {
     }
 
     private func carousel(under event: NSEvent) -> NSScrollView? {
-        guard let content = event.window?.contentView, let frameView = content.superview else { return nil }
+        guard let window = event.window, let content = window.contentView, let frameView = content.superview else { return nil }
+        // Bounds first: a mouse wheel comes here on every tick, and a hit test goes through SwiftUI's hit testing of every
+        // row on screen. It is still needed when the pointer is over a carousel, in case something covers it.
+        let isOverCarousel = carousels.allObjects.contains {
+            $0.window === window && $0.convert($0.bounds, to: nil).contains(event.locationInWindow)
+        }
+        guard isOverCarousel else { return nil }
         var view = content.hitTest(frameView.convert(event.locationInWindow, from: nil))
         while let current = view {
             if let scrollView = current as? NSScrollView, carousels.contains(scrollView) { return scrollView }
@@ -390,28 +431,43 @@ final class HorizontalOnlyScrolling {
 }
 
 // MARK: - Window-space Frame Holder
-// Written on every geometry change without invalidating any view (no @Published); read only when a tile is tapped.
-private final class FrameBox: ObservableObject {
-    var rect: CGRect = .zero
-    // SwiftUI's reported frame goes stale while a List scrolls (the table moves its clip view, not the SwiftUI
-    // layout). The tile's AppKit view always knows where it really is, so the reported frame is shifted by how
-    // far that view has moved since the frame was reported.
+// Knows how to find where something is; read only when it is tapped, so scrolling does no work for it.
+final class FrameBox: ObservableObject {
+    // Outside a table cell: an AppKit view that marks the spot
     weak var view: NSView?
+    // Inside one: the position relative to the cell, and the cell's hosting view to convert it
+    fileprivate weak var cell: TableCellGeometry?
+    fileprivate var cellFrame: CGRect = .zero
 
-    func report(_ rect: CGRect) {
-        self.rect = rect
-    }
-
-    // Where the tile really is, in the "AppWindow" space: read from AppKit, so it is right however a List has
-    // scrolled and whatever offset it applies to the positions SwiftUI reports
+    // Where it really is, in the "AppWindow" space: read from AppKit, so it is right however a table has scrolled
     var liveRect: CGRect {
-        guard let now = currentWindowRect(), let origin = AppWindowOrigin.windowRect else { return rect }
+        guard let now = currentWindowRect(), let origin = AppWindowOrigin.windowRect else { return .zero }
         return CGRect(x: now.minX - origin.minX, y: origin.maxY - now.maxY, width: now.width, height: now.height)
     }
 
     private func currentWindowRect() -> CGRect? {
+        if let host = cell?.hostView, host.window != nil { return host.convert(cellFrame, to: nil) }
         guard let view = view, view.window != nil else { return nil }
         return view.convert(view.bounds, to: nil)
+    }
+}
+
+// Lets a FrameBox find this view, in whichever way suits where the view is
+struct LocatesFrame: ViewModifier {
+    let box: FrameBox
+    @Environment(\.tableCellGeometry) private var cell
+
+    func body(content: Content) -> some View {
+        if let cell = cell {
+            content.onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .named(TableCellGeometry.spaceName))
+            } action: { [box] frame in
+                box.cell = cell
+                box.cellFrame = frame
+            }
+        } else {
+            content.background(FrameAnchor(box: box))
+        }
     }
 }
 
@@ -436,7 +492,7 @@ enum AppWindowOrigin {
     }
 }
 
-private struct FrameAnchor: NSViewRepresentable {
+struct FrameAnchor: NSViewRepresentable {
     let box: FrameBox
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -476,14 +532,7 @@ private struct MediaTile: View {
             shape.stroke(ThemeManager.border, lineWidth: 0.6)
         )
         .contentShape(Rectangle())
-        // onGeometryChange instead of a GeometryReader overlay: scrolling moves the frame every frame, and a
-        // GeometryReader would rebuild the button and context menu each time; this only updates the box.
-        .onGeometryChange(for: CGRect.self) { proxy in
-            proxy.frame(in: .named("AppWindow"))
-        } action: { [frameBox] rect in
-            frameBox.report(rect)
-        }
-        .background(FrameAnchor(box: frameBox))
+        .modifier(LocatesFrame(box: frameBox))
         .overlay(
             Button(action: open) {
                 Color.clear
@@ -532,7 +581,6 @@ struct VideoBadgeOverlay: View {
                             .offset(x: 1.5)
                     )
                     .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
-                    .shadow(radius: 8)
             }
             
             // Bottom Right Duration Pill

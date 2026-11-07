@@ -6,8 +6,9 @@
 import SwiftUI
 import AppKit
 
+// Which post is hovered rather than a flag, so a reused table cell doesn't carry the highlight to its next post
 final class QuotedCardState: ObservableObject {
-    @Published var isHovered: Bool = false
+    @Published var hoveredId: String?
 }
 
 struct QuotedTweetCard: View {
@@ -17,12 +18,14 @@ struct QuotedTweetCard: View {
     @ObservedObject var theme = ThemeManager.shared
     @StateObject private var state = QuotedCardState()
     
+    private var isHovered: Bool { state.hoveredId == tweet.id }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // 1. Author Header
             HStack(spacing: 6) {
                 if let avatarUrl = tweet.author.avatarUrl {
-                    CachedAsyncImage(urlString: avatarUrl)
+                    CachedAsyncImage(urlString: avatarUrl, targetSize: CGSize(width: 20, height: 20))
                         .frame(width: 20, height: 20)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(ThemeManager.border.opacity(0.6), lineWidth: 0.5))
@@ -34,19 +37,20 @@ struct QuotedTweetCard: View {
                         .frame(width: 20, height: 20)
                 }
                 
-                Text(tweet.author.name)
-                    .font(theme.appFont(size: 13, weight: .bold))
-                    .foregroundColor(ThemeManager.primaryText)
-                    .lineLimit(1)
-                    .peekable(.profile(tweet.author))
-                    .opensProfile(tweet.author)
-                
-                Text(tweet.author.formattedHandle)
-                    .font(theme.appFont(size: 12))
-                    .foregroundColor(ThemeManager.secondaryText)
-                    .lineLimit(1)
-                    .peekable(.profile(tweet.author))
-                    .opensProfile(tweet.author)
+                // One hit target for the whole name, as on the post itself
+                HStack(spacing: 6) {
+                    Text(tweet.author.name)
+                        .font(theme.appFont(size: 13, weight: .bold))
+                        .foregroundColor(ThemeManager.primaryText)
+                        .lineLimit(1)
+                    
+                    Text(tweet.author.formattedHandle)
+                        .font(theme.appFont(size: 12))
+                        .foregroundColor(ThemeManager.secondaryText)
+                        .lineLimit(1)
+                }
+                .peekable(.profile(tweet.author))
+                .opensProfile(tweet.author)
                 
                 Text("·")
                     .font(theme.appFont(size: 12))
@@ -68,7 +72,7 @@ struct QuotedTweetCard: View {
             }
             
             if !tweet.displayBodyText.isEmpty {
-                Text(TweetText.attributed(tweet))
+                TweetText.text(tweet)
                     .handlesTweetLinks()
                     .font(theme.tweetFont(size: 13))
                     .lineSpacing(theme.lineSpacing() * 0.8)
@@ -86,17 +90,17 @@ struct QuotedTweetCard: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(theme.isLight ? Color.black.opacity(state.isHovered ? 0.04 : 0.02) : Color.white.opacity(state.isHovered ? 0.06 : 0.03))
+                .fill(theme.isLight ? Color.black.opacity(isHovered ? 0.04 : 0.02) : Color.white.opacity(isHovered ? 0.06 : 0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(state.isHovered ? ThemeManager.accent.opacity(0.4) : ThemeManager.border.opacity(0.7), lineWidth: 0.8)
+                .stroke(isHovered ? ThemeManager.accent.opacity(0.4) : ThemeManager.border.opacity(0.7), lineWidth: 0.8)
         )
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .onHover { hovering in
             if isInteractive {
-                state.isHovered = hovering
+                state.hoveredId = hovering ? tweet.id : nil
             }
         }
         .onTapGesture {

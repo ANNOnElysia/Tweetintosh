@@ -50,25 +50,27 @@ struct TweetRowView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         // Header: Author Name, Verified Badge, Handle, Dot, Relative Time
                         HStack(alignment: .center, spacing: 4) {
-                            Text(tweet.author.name)
-                                .font(theme.appFont(size: 14.5, weight: .bold))
-                                .foregroundColor(ThemeManager.primaryText)
-                                .lineLimit(1)
-                                .peekable(.profile(tweet.author))
-                                .opensProfile(tweet.author)
-                            
-                            if tweet.author.isVerified {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(ThemeManager.accent)
+                            // One hit target for the whole name: each peekable adds an AppKit view to every row, and
+                            // those were the largest single cost of a row scrolling in
+                            HStack(alignment: .center, spacing: 4) {
+                                Text(tweet.author.name)
+                                    .font(theme.appFont(size: 14.5, weight: .bold))
+                                    .foregroundColor(ThemeManager.primaryText)
+                                    .lineLimit(1)
+                                
+                                if tweet.author.isVerified {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(ThemeManager.accent)
+                                }
+                                
+                                Text(tweet.author.formattedHandle)
+                                    .font(theme.appFont(size: 13.5))
+                                    .foregroundColor(ThemeManager.secondaryText)
+                                    .lineLimit(1)
                             }
-                            
-                            Text(tweet.author.formattedHandle)
-                                .font(theme.appFont(size: 13.5))
-                                .foregroundColor(ThemeManager.secondaryText)
-                                .lineLimit(1)
-                                .peekable(.profile(tweet.author))
-                                .opensProfile(tweet.author)
+                            .peekable(.profile(tweet.author))
+                            .opensProfile(tweet.author)
                             
                             Text("·")
                                 .font(theme.appFont(size: 13.5))
@@ -181,7 +183,7 @@ struct TweetRowView: View {
     // Body text with links shown by their display URL in the accent colour; clicking one opens it in the browser,
     // and clicking an @mention opens that profile
     private var bodyText: Text {
-        Text(TweetText.attributed(tweet))
+        TweetText.text(tweet)
     }
     
     private func metricItem(icon: String, count: Int) -> some View {
@@ -215,17 +217,20 @@ private func formatCount(_ n: Int) -> String {
 
 // MARK: - Hover Reader
 // Keeps hover in its own state object so hovering one action redraws only that action, not the whole tweet row.
+// Remembers which post was hovered rather than a flag: a reused table cell keeps this object, and the exit event for
+// the old post may never arrive, so a flag would carry the highlight over to the next post shown in the cell.
 private final class HoverState: ObservableObject {
-    @Published var isHovered = false
+    @Published var hoveredKey: String?
 }
 
 private struct HoverReader<Content: View>: View {
+    let key: String
     @ViewBuilder let content: (Bool) -> Content
     @StateObject private var state = HoverState()
     
     var body: some View {
-        content(state.isHovered)
-            .onHover { state.isHovered = $0 }
+        content(state.hoveredKey == key)
+            .onHover { state.hoveredKey = $0 ? key : nil }
     }
 }
 
@@ -267,7 +272,7 @@ struct TweetActionBar: View {
         HStack(alignment: .center, spacing: 0) {
             // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
             Group {
-                HoverReader { hovered in
+                HoverReader(key: tweet.id) { hovered in
                     Button(action: { actions.reply(tweet) }) {
                         label(icon: "bubble.left", count: tweet.replyCount,
                               color: hovered ? Self.replyColor : ThemeManager.secondaryText)
@@ -279,7 +284,7 @@ struct TweetActionBar: View {
                 
                 // A plain Button that pops up an NSMenu on click: SwiftUI's Menu is backed by an NSPopUpButton,
                 // and creating one per row as rows scroll into view was a major source of scroll hitches.
-                HoverReader { hovered in
+                HoverReader(key: tweet.id) { hovered in
                     Button(action: showRepostMenu) {
                         label(icon: "arrow.2.squarepath", count: tweet.retweetCount, isActive: tweet.isRetweeted,
                               color: tweet.isRetweeted || hovered ? Self.repostColor : ThemeManager.secondaryText)
@@ -289,7 +294,7 @@ struct TweetActionBar: View {
                 .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 
-                HoverReader { hovered in
+                HoverReader(key: tweet.id) { hovered in
                     Button(action: {
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
                             like.scale = 1.35
@@ -318,7 +323,7 @@ struct TweetActionBar: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             
-            HoverReader { hovered in
+            HoverReader(key: tweet.id) { hovered in
                 Button(action: { actions.bookmark(tweet) }) {
                     label(icon: tweet.isBookmarked ? "bookmark.fill" : "bookmark",
                           count: isProminent ? tweet.bookmarkCount : 0, isActive: tweet.isBookmarked,
@@ -330,7 +335,7 @@ struct TweetActionBar: View {
             .padding(.trailing, isProminent ? 0 : 18)
             .frame(maxWidth: isProminent ? .infinity : nil, alignment: .leading)
             
-            HoverReader { hovered in
+            HoverReader(key: tweet.id) { hovered in
                 Button(action: { actions.share(tweet) }) {
                     label(icon: "square.and.arrow.up", count: 0,
                           color: hovered ? ThemeManager.accent : ThemeManager.secondaryText)

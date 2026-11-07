@@ -131,9 +131,9 @@ final class AutoplayCoordinator {
 // MARK: - Player View
 
 final class AutoplayVideoView: NSView {
-    var url: URL? {
+    var media: TweetMedia? {
         didSet {
-            guard url != oldValue else { return }
+            guard media?.id != oldValue?.id else { return }
             stop()
             AutoplayCoordinator.shared.setNeedsEvaluate()
         }
@@ -142,21 +142,18 @@ final class AutoplayVideoView: NSView {
     var scope: PeekScope = .none
     var isPreferred = false
 
-    private let player = AVPlayer()
-    private let playerLayer = AVPlayerLayer()
+    // Made the first time this tile plays: most tiles scroll past without ever playing, and an AVPlayer takes up to a
+    // millisecond to create, on the main thread, in the same frame the row is being built
+    private var player: AVPlayer?
+    private var playerLayer: AVPlayerLayer?
+    // The tile whose address is being looked up, cleared if it is stopped before the answer arrives
+    private var resolvingMediaId: String?
     private var readyObservation: NSKeyValueObservation?
     private var loopObserver: Any?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        player.isMuted = true
-        player.preventsDisplaySleepDuringVideoPlayback = false
-        playerLayer.player = player
-        // Same crop as the thumbnail underneath, which stays visible until the first frame is ready
-        playerLayer.videoGravity = .resizeAspectFill
-        playerLayer.isHidden = true
-        layer?.addSublayer(playerLayer)
     }
 
     required init?(coder: NSCoder) {
@@ -174,7 +171,7 @@ final class AutoplayVideoView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        playerLayer.frame = bounds
+        playerLayer?.frame = bounds
         CATransaction.commit()
     }
 
@@ -194,28 +191,43 @@ final class AutoplayVideoView: NSView {
     }
 
     func start() {
-        guard player.currentItem == nil, let url = url else { return }
+        guard player?.currentItem == nil, let media = media, resolvingMediaId != media.id else { return }
+        resolvingMediaId = media.id
+        // Finding the address checks the disk cache, so that happens away from the main thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let url = MediaHelpers.previewPlaybackURL(for: media)
+            DispatchQueue.main.async {
+                guard let self = self, self.resolvingMediaId == media.id else { return }
+                self.resolvingMediaId = nil
+                if let url = url { self.play(url) }
+            }
+        }
+    }
+
+    private func play(_ url: URL) {
+        let (player, playerLayer) = preparedPlayer()
         let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
         readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
             guard layer.isReadyForDisplay else { return }
             DispatchQueue.main.async {
-                guard let self = self, self.player.currentItem != nil else { return }
-                self.playerLayer.isHidden = false
+                guard let self = self, self.player?.currentItem != nil else { return }
+                self.playerLayer?.isHidden = false
                 self.onPlayingChange?(true)
             }
         }
         loopObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in
-            self?.player.seek(to: .zero)
-            self?.player.play()
+            self?.player?.seek(to: .zero)
+            self?.player?.play()
         }
         player.play()
     }
 
     func stop() {
-        guard player.currentItem != nil else { return }
+        resolvingMediaId = nil
+        guard let player = player, player.currentItem != nil else { return }
         player.pause()
         player.replaceCurrentItem(with: nil)
         readyObservation = nil
@@ -223,22 +235,39 @@ final class AutoplayVideoView: NSView {
             NotificationCenter.default.removeObserver(observer)
             loopObserver = nil
         }
-        playerLayer.isHidden = true
+        playerLayer?.isHidden = true
         onPlayingChange?(false)
+    }
+
+    private func preparedPlayer() -> (AVPlayer, AVPlayerLayer) {
+        if let player = player, let playerLayer = playerLayer { return (player, playerLayer) }
+        let player = AVPlayer()
+        player.isMuted = true
+        player.preventsDisplaySleepDuringVideoPlayback = false
+        let playerLayer = AVPlayerLayer()
+        playerLayer.player = player
+        // Same crop as the thumbnail underneath, which stays visible until the first frame is ready
+        playerLayer.videoGravity = .resizeAspectFill
+        playerLayer.isHidden = true
+        playerLayer.frame = bounds
+        layer?.addSublayer(playerLayer)
+        self.player = player
+        self.playerLayer = playerLayer
+        return (player, playerLayer)
     }
 }
 
 // MARK: - SwiftUI
 
 private struct AutoplayVideoRepresentable: NSViewRepresentable {
-    let url: URL
+    let media: TweetMedia
     let scope: PeekScope
     let isPreferred: Bool
     let onPlayingChange: (Bool) -> Void
 
     func makeNSView(context: Context) -> AutoplayVideoView {
         let view = AutoplayVideoView()
-        view.url = url
+        view.media = media
         view.scope = scope
         view.isPreferred = isPreferred
         view.onPlayingChange = onPlayingChange
@@ -247,7 +276,7 @@ private struct AutoplayVideoRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ view: AutoplayVideoView, context: Context) {
-        view.url = url
+        view.media = media
         view.scope = scope
         view.isPreferred = isPreferred
         view.onPlayingChange = onPlayingChange
@@ -280,8 +309,9 @@ extension EnvironmentValues {
     }
 }
 
+// Which video is playing rather than a flag, so a reused table cell shows the next video's play icon straight away
 private final class AutoplayState: ObservableObject {
-    @Published var isPlaying = false
+    @Published var playingMediaId: String?
 }
 
 // What sits over a video's thumbnail: the player where autoplay applies, then the play icon and duration. The icon
@@ -297,12 +327,16 @@ struct VideoTileOverlay: View {
 
     var body: some View {
         ZStack {
-            if allowsAutoplay, theme.autoplayMedia, let url = MediaHelpers.previewPlaybackURL(for: media) {
-                AutoplayVideoRepresentable(url: url, scope: scope, isPreferred: prefersAutoplay) { [state] playing in
-                    if state.isPlaying != playing { state.isPlaying = playing }
+            if allowsAutoplay, theme.autoplayMedia, media.videoInfo != nil {
+                AutoplayVideoRepresentable(media: media, scope: scope, isPreferred: prefersAutoplay) { [state, id = media.id] playing in
+                    // Later, because a cell handed a new video stops the old one while SwiftUI is updating it
+                    DispatchQueue.main.async {
+                        let playingId = playing ? id : nil
+                        if state.playingMediaId != playingId { state.playingMediaId = playingId }
+                    }
                 }
             }
-            VideoBadgeOverlay(media: media, showsPlayIcon: !state.isPlaying)
+            VideoBadgeOverlay(media: media, showsPlayIcon: state.playingMediaId != media.id)
         }
     }
 }

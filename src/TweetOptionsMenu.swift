@@ -96,8 +96,9 @@ final class TweetOptionsMenuManager: ObservableObject {
 }
 
 // MARK: - Options Button (Placed in post headers)
+// Which post is hovered rather than a flag, so a reused table cell doesn't carry the highlight to its next post
 private final class ButtonHoverState: ObservableObject {
-    @Published var isHovered = false
+    @Published var hoveredId: String?
 }
 
 struct TweetOptionsMenuButton: View {
@@ -108,15 +109,19 @@ struct TweetOptionsMenuButton: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var menuManager = TweetOptionsMenuManager.shared
     @StateObject private var hover = ButtonHoverState()
+    @StateObject private var frameBox = FrameBox()
     
     private var isMenuOpen: Bool {
         menuManager.activeMenu?.tweet.id == tweet.id
     }
     
+    private var isHovered: Bool { hover.hoveredId == tweet.id }
+    
     var body: some View {
-        GeometryReader { proxy in
+        Group {
             Button(action: {
-                let rect = proxy.frame(in: .named("AppWindow"))
+                // Read from AppKit: the "AppWindow" space can't be reached from inside a table cell's own hosting view
+                let rect = frameBox.liveRect
                 if isMenuOpen {
                     menuManager.dismiss()
                 } else {
@@ -127,18 +132,18 @@ struct TweetOptionsMenuButton: View {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(
-                        isMenuOpen || hover.isHovered
+                        isMenuOpen || isHovered
                             ? (theme.isLight ? ThemeManager.primaryText : Color.white)
                             : (theme.isLight ? ThemeManager.secondaryText.opacity(0.80) : Color.white.opacity(0.55))
                     )
-                    .scaleEffect(isMenuOpen ? 1.05 : (hover.isHovered ? 1.08 : 1.0))
+                    .scaleEffect(isMenuOpen ? 1.05 : (isHovered ? 1.08 : 1.0))
                     .frame(width: 24, height: 24)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(
                                 isMenuOpen
                                     ? (theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.16))
-                                    : (hover.isHovered
+                                    : (isHovered
                                         ? (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.10))
                                         : Color.clear)
                             )
@@ -146,16 +151,17 @@ struct TweetOptionsMenuButton: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: hover.isHovered)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isHovered)
             .animation(.spring(response: 0.28, dampingFraction: 0.80), value: isMenuOpen)
             .onHover { isHovered in
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
-                    hover.isHovered = isHovered
+                    hover.hoveredId = isHovered ? tweet.id : nil
                 }
             }
             .help(loc.t("more_actions"))
         }
         .frame(width: 24, height: 24)
+        .modifier(LocatesFrame(box: frameBox))
     }
 }
 
