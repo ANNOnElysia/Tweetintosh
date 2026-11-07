@@ -83,12 +83,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var tilingMonitor: Any?
     private var settingsTitleObserver: AnyCancellable?
     var loginController: LoginWindowController?
+    private var welcomeController: WelcomeWindowController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
+        NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
+        if EULA.needsAcceptance {
+            showWelcome()
+        } else {
+            startApp()
+        }
+    }
+    
+    // Nothing is loaded or sent to X until the License Agreement is accepted: the main window creates the timeline,
+    // which fetches as soon as it exists
+    private func showWelcome() {
+        welcomeController = WelcomeWindowController { [weak self] in
+            self?.welcomeController = nil
+            self?.startApp()
+        }
+        welcomeController?.show()
+    }
+    
+    private func startApp() {
         setupMainWindow()
         AccountManager.shared.refreshActiveInfo()
-        NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
     }
     
     @objc private func appearanceDidChange() {
@@ -102,6 +121,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if let welcome = welcomeController {
+            welcome.show()
+            return true
+        }
         if !flag {
             if let window = mainWindow {
                 window.makeKeyAndOrderFront(nil)
@@ -332,6 +355,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     // A Dock menu is used while the app is in the background, or with its window closed
     private func bringMainWindowForward() {
+        // Before the License Agreement is accepted the only window is the welcome window
+        if let welcome = welcomeController {
+            welcome.show()
+            return
+        }
         if let window = mainWindow {
             window.makeKeyAndOrderFront(nil)
         } else {

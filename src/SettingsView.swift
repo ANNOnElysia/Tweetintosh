@@ -769,7 +769,14 @@ struct SettingsView: View {
             // Footer
             HStack {
                 Spacer()
-                Text("Tweetintosh v2.0 (Headless Native Swift)")
+                Button(loc.t("license_agreement")) { LicenseAgreementWindow.show() }
+                    .buttonStyle(.link)
+                    .font(theme.appFont(size: 12))
+                Spacer()
+            }
+            HStack {
+                Spacer()
+                Text("Tweetintosh v\(AppVersion.short) (Headless Native Swift)")
                     .font(theme.appFont(size: 11))
                     .foregroundColor(ThemeManager.tertiaryText)
                 Spacer()

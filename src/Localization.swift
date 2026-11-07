@@ -610,6 +610,125 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "需要登录账户",
             .traditionalChinese: "需要登入帳號"
         ],
+        "welcome_title": [
+            .english: "Welcome to Tweetintosh",
+            .japanese: "Tweetintosh へようこそ",
+            .korean: "Tweetintosh에 오신 것을 환영합니다",
+            .simplifiedChinese: "欢迎使用 Tweetintosh",
+            .traditionalChinese: "歡迎使用 Tweetintosh"
+        ],
+        "welcome_subtitle": [
+            .english: "A native Mac app for reading and posting on X.",
+            .japanese: "X を読んで投稿するための、Mac ネイティブのアプリです。",
+            .korean: "X를 읽고 게시하기 위한 Mac 전용 네이티브 앱입니다.",
+            .simplifiedChinese: "一款用于浏览和发布 X 内容的 Mac 原生应用。",
+            .traditionalChinese: "一款用於瀏覽和發佈 X 內容的 Mac 原生應用程式。"
+        ],
+        "welcome_native_title": [
+            .english: "Made for the Mac",
+            .japanese: "Mac のために",
+            .korean: "Mac을 위해 만들어짐",
+            .simplifiedChinese: "为 Mac 而生",
+            .traditionalChinese: "為 Mac 而生"
+        ],
+        "welcome_native_detail": [
+            .english: "Native windows, menus, keyboard shortcuts and trackpad gestures, with no web page inside.",
+            .japanese: "ネイティブのウインドウ、メニュー、キーボードショートカット、トラックパッドジェスチャ。Web ページは使いません。",
+            .korean: "네이티브 윈도우, 메뉴, 키보드 단축키와 트랙패드 제스처. 웹 페이지를 사용하지 않습니다.",
+            .simplifiedChinese: "原生窗口、菜单、键盘快捷键与触控板手势，不内嵌网页。",
+            .traditionalChinese: "原生視窗、選單、鍵盤快速鍵與觸控式軌跡板手勢，不內嵌網頁。"
+        ],
+        "welcome_private_title": [
+            .english: "Stays on your Mac",
+            .japanese: "データは Mac の中だけに",
+            .korean: "데이터는 Mac에만 저장",
+            .simplifiedChinese: "数据只留在你的 Mac 上",
+            .traditionalChinese: "資料只留在你的 Mac 上"
+        ],
+        "welcome_private_detail": [
+            .english: "Your sign-in and caches are stored only on this Mac. Tweetintosh has no servers and collects nothing.",
+            .japanese: "ログイン情報とキャッシュはこの Mac にのみ保存されます。Tweetintosh はサーバを持たず、何も収集しません。",
+            .korean: "로그인 정보와 캐시는 이 Mac에만 저장됩니다. Tweetintosh는 서버가 없으며 아무것도 수집하지 않습니다.",
+            .simplifiedChinese: "登录信息和缓存只保存在这台 Mac 上。Tweetintosh 没有服务器，不收集任何数据。",
+            .traditionalChinese: "登入資訊和快取只儲存在這台 Mac 上。Tweetintosh 沒有伺服器，不收集任何資料。"
+        ],
+        "welcome_independent_title": [
+            .english: "Independent",
+            .japanese: "独立したアプリ",
+            .korean: "독립 앱",
+            .simplifiedChinese: "独立应用",
+            .traditionalChinese: "獨立應用程式"
+        ],
+        "welcome_independent_detail": [
+            .english: "Not made or endorsed by X Corp. It connects the way X's website does, which X may change or restrict at any time.",
+            .japanese: "X Corp. が開発・承認したものではありません。X の Web サイトと同じ方法で接続するため、X が予告なく変更・制限する場合があります。",
+            .korean: "X Corp.가 만들거나 보증한 앱이 아닙니다. X 웹사이트와 같은 방식으로 연결되며, X가 언제든지 이를 변경하거나 제한할 수 있습니다.",
+            .simplifiedChinese: "并非由 X Corp. 开发或认可。它以与 X 网站相同的方式连接，X 可能随时更改或限制这种方式。",
+            .traditionalChinese: "並非由 X Corp. 開發或認可。它以與 X 網站相同的方式連線，X 可能隨時變更或限制這種方式。"
+        ],
+        "license_agreement": [
+            .english: "License Agreement",
+            .japanese: "使用許諾契約",
+            .korean: "라이선스 계약",
+            .simplifiedChinese: "许可协议",
+            .traditionalChinese: "授權合約"
+        ],
+        "eula_summary": [
+            .english: "In short: Tweetintosh is provided as is, without warranty. Using it with your X account is your choice and your risk, and X's own terms still apply. The full agreement below is in English, and that version is the one that applies.",
+            .japanese: "概要：Tweetintosh は現状のまま無保証で提供されます。X アカウントで使用するかどうかはご自身の判断と責任によるもので、X の規約も引き続き適用されます。以下の英語の全文が正式な契約です。",
+            .korean: "요약: Tweetintosh는 보증 없이 있는 그대로 제공됩니다. X 계정으로 사용할지는 사용자의 선택이며 그에 따른 위험도 사용자에게 있고, X의 약관도 계속 적용됩니다. 아래 영어 전문이 효력을 갖는 계약입니다.",
+            .simplifiedChinese: "简而言之：Tweetintosh 按现状提供，不作任何保证。是否用你的 X 账户使用它由你决定，风险也由你承担，X 自身的条款依然适用。下方的英文全文为正式协议。",
+            .traditionalChinese: "簡而言之：Tweetintosh 按現狀提供，不作任何保證。是否用你的 X 帳號使用它由你決定，風險也由你承擔，X 本身的條款依然適用。下方的英文全文為正式合約。"
+        ],
+        "eula_accept_note": [
+            .english: "By clicking Agree, you accept the License Agreement.",
+            .japanese: "「同意する」をクリックすると、使用許諾契約に同意したことになります。",
+            .korean: "\"동의\"를 클릭하면 라이선스 계약에 동의하게 됩니다.",
+            .simplifiedChinese: "点击“同意”即表示你接受许可协议。",
+            .traditionalChinese: "按下「同意」即表示你接受授權合約。"
+        ],
+        "eula_agree": [
+            .english: "Agree",
+            .japanese: "同意する",
+            .korean: "동의",
+            .simplifiedChinese: "同意",
+            .traditionalChinese: "同意"
+        ],
+        "eula_quit": [
+            .english: "Quit",
+            .japanese: "終了",
+            .korean: "종료",
+            .simplifiedChinese: "退出",
+            .traditionalChinese: "結束"
+        ],
+        "eula_updated_title": [
+            .english: "The License Agreement Has Changed",
+            .japanese: "使用許諾契約が更新されました",
+            .korean: "라이선스 계약이 변경되었습니다",
+            .simplifiedChinese: "许可协议已更新",
+            .traditionalChinese: "授權合約已更新"
+        ],
+        "eula_updated_subtitle": [
+            .english: "Please review and accept the updated agreement to keep using Tweetintosh.",
+            .japanese: "Tweetintosh を引き続き使用するには、更新された契約を確認して同意してください。",
+            .korean: "Tweetintosh를 계속 사용하려면 변경된 계약을 확인하고 동의해 주세요.",
+            .simplifiedChinese: "请阅读并接受更新后的协议，以继续使用 Tweetintosh。",
+            .traditionalChinese: "請閱讀並接受更新後的合約，以繼續使用 Tweetintosh。"
+        ],
+        "eula_accepted_version": [
+            .english: "You accepted version {version} of this agreement.",
+            .japanese: "この契約のバージョン {version} に同意済みです。",
+            .korean: "이 계약의 버전 {version}에 동의했습니다.",
+            .simplifiedChinese: "你已接受此协议的第 {version} 版。",
+            .traditionalChinese: "你已接受此合約的第 {version} 版。"
+        ],
+        "done": [
+            .english: "Done",
+            .japanese: "完了",
+            .korean: "완료",
+            .simplifiedChinese: "完成",
+            .traditionalChinese: "完成"
+        ],
         "sign_in_button": [
             .english: "Sign in with X",
             .japanese: "X でログイン",
