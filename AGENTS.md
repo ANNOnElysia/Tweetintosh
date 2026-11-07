@@ -33,6 +33,8 @@ Entry point and shell
 Feeds and posts
 - `TimelineView.swift`, `TimelineViewModel.swift` — home feeds (For You / Following / Lists), the floating
   "N new posts" pill, pull-to-refresh, cursor pagination.
+- `TimelineTableView.swift` — the Home timeline as an NSTableView with reused NSHostingView cells and cached row heights.
+  A spike behind `Tweetintosh_TimelineUsesTable` (default on); `false` goes back to the List in `TimelineView.swift`.
 - `TweetRowView.swift`, `TweetText.swift`, `QuotedTweetCard.swift` — a post row, its text and entities, quoted posts.
 - `TimelineCacheManager.swift` — the offline snapshot that makes launch instant.
 

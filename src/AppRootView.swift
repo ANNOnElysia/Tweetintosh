@@ -274,9 +274,9 @@ struct AppRootView: View {
         switch nav.currentTab {
         case .home:
             HomeColumns(sidebarExpanded: nav.sidebarExpanded) {
-                NavigationStack {
-                    MainTimelineView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
-                }
+                // Not in a NavigationStack: pages open through the app's own overlay stack, so it would navigate nowhere, and
+                // it adds layers of layout that run again whenever the root is laid out
+                MainTimelineView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
             }
         case .notifications:
             NavigationStack {

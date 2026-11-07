@@ -585,6 +585,8 @@ struct MainTimelineView: View {
                 skeletonLoadingView
             } else if viewModel.tweets.isEmpty {
                 emptyStateView
+            } else if TimelineBackend.usesTable {
+                timelineTable
             } else {
                 timelineContent
             }
@@ -632,6 +634,18 @@ struct MainTimelineView: View {
     }
     
     // MARK: - Timeline Scroll Content with Pull-to-Refresh
+    private var timelineTable: some View {
+        TimelineTableView(
+            tweets: viewModel.tweets,
+            isLoadingMore: viewModel.isLoadingMore,
+            topSpacerHeight: (nav.sidebarExpanded ? 36 : 64) + (viewModel.isRefreshing ? 40 : 0) + listMetrics.titlebarInset,
+            onLoadMore: { viewModel.loadMore() }
+        )
+        .overlay(alignment: .top) {
+            TimelinePullRefreshIndicatorOverlay()
+        }
+    }
+
     // The timeline is a SwiftUI List (backed by NSTableView on macOS)
     private var timelineContent: some View {
         List {
