@@ -648,6 +648,32 @@ extension APIClient {
         }
     }
 
+    // MARK: Edit Profile
+
+    // The same endpoints and limits as X's own Edit profile sheet. Sent from inside x.com, like every other write.
+    func updateProfile(name: String, bio: String, location: String, website: String,
+                       completion: @escaping (Result<Void, APIError>) -> Void) {
+        let fields = ["name": name, "description": bio, "location": location, "url": website]
+        WebKitWriteChannel.shared.performForm(path: "/i/api/1.1/account/update_profile.json", fields: fields) { result in
+            completion(result.map { _ in () })
+        }
+    }
+
+    // JPEG data, already cropped and sized: 400×400 for the photo, 1500×500 for the header
+    func updateProfileImage(_ jpeg: Data, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let fields = ["image": jpeg.base64EncodedString(), "skip_status": "1", "return_user": "true"]
+        WebKitWriteChannel.shared.performForm(path: "/i/api/1.1/account/update_profile_image.json", fields: fields) { result in
+            completion(result.map { _ in () })
+        }
+    }
+
+    func updateProfileBanner(_ jpeg: Data, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let fields = ["banner": jpeg.base64EncodedString()]
+        WebKitWriteChannel.shared.performForm(path: "/i/api/1.1/account/update_profile_banner.json", fields: fields) { result in
+            completion(result.map { _ in () })
+        }
+    }
+
     // MARK: Follow
 
     func setFollowing(_ follow: Bool, userId: String, completion: @escaping (Result<Void, APIError>) -> Void) {

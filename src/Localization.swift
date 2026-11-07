@@ -729,6 +729,76 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "完成",
             .traditionalChinese: "完成"
         ],
+        "view_profile": [
+            .english: "View Profile",
+            .japanese: "プロフィールを表示",
+            .korean: "프로필 보기",
+            .simplifiedChinese: "查看个人资料",
+            .traditionalChinese: "檢視個人資料"
+        ],
+        "edit_profile": [
+            .english: "Edit Profile",
+            .japanese: "プロフィールを編集",
+            .korean: "프로필 수정",
+            .simplifiedChinese: "编辑个人资料",
+            .traditionalChinese: "編輯個人資料"
+        ],
+        "edit_profile_name": [
+            .english: "Name",
+            .japanese: "名前",
+            .korean: "이름",
+            .simplifiedChinese: "名字",
+            .traditionalChinese: "名稱"
+        ],
+        "edit_profile_bio": [
+            .english: "Bio",
+            .japanese: "自己紹介",
+            .korean: "자기소개",
+            .simplifiedChinese: "简介",
+            .traditionalChinese: "簡介"
+        ],
+        "edit_profile_location": [
+            .english: "Location",
+            .japanese: "場所",
+            .korean: "위치",
+            .simplifiedChinese: "位置",
+            .traditionalChinese: "位置"
+        ],
+        "edit_profile_website": [
+            .english: "Website",
+            .japanese: "ウェブサイト",
+            .korean: "웹사이트",
+            .simplifiedChinese: "网站",
+            .traditionalChinese: "網站"
+        ],
+        "edit_profile_change_photo": [
+            .english: "Change Photo",
+            .japanese: "写真を変更",
+            .korean: "사진 변경",
+            .simplifiedChinese: "更换头像",
+            .traditionalChinese: "更換大頭貼照"
+        ],
+        "edit_profile_change_header": [
+            .english: "Change Header Image",
+            .japanese: "ヘッダー画像を変更",
+            .korean: "헤더 이미지 변경",
+            .simplifiedChinese: "更换横幅图片",
+            .traditionalChinese: "更換橫幅圖片"
+        ],
+        "edit_profile_saved": [
+            .english: "Profile updated",
+            .japanese: "プロフィールを更新しました",
+            .korean: "프로필을 업데이트했습니다",
+            .simplifiedChinese: "个人资料已更新",
+            .traditionalChinese: "個人資料已更新"
+        ],
+        "save": [
+            .english: "Save",
+            .japanese: "保存",
+            .korean: "저장",
+            .simplifiedChinese: "保存",
+            .traditionalChinese: "儲存"
+        ],
         "sign_in_button": [
             .english: "Sign in with X",
             .japanese: "X でログイン",

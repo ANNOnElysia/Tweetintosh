@@ -31,6 +31,7 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
     // The menu says so rather than showing "Loading" for ever; the next hover tries again
     @Published private(set) var listsFailed = false
     @Published var isConfirmingBlock = false
+    @Published var isEditing = false
 
     private var cursors: [ProfileTab: String] = [:]
     private var exhausted: Set<ProfileTab> = []
@@ -118,6 +119,19 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
         // Authors from tweets carry their id, so posts can load alongside the profile
         if !user.id.isEmpty {
             loadTab(.posts)
+        }
+    }
+
+    // After the profile was edited here: X is asked again, past the preload cache, and so are the sidebar's name and photo
+    func reloadProfile() {
+        ProfilePreloader.shared.forget(user.screenName)
+        AccountManager.shared.refreshActiveInfo()
+        APIClient.shared.fetchUserProfile(screenName: user.screenName) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, case .success(let profile) = result else { return }
+                self.profile = profile
+                self.user = profile.user
+            }
         }
     }
 
@@ -651,9 +665,10 @@ struct ProfileView: View {
 
             Spacer()
 
-            followButton
-
-            if !vm.isOwnProfile {
+            if vm.isOwnProfile {
+                editProfileButton
+            } else {
+                followButton
                 moreMenu
             }
         }
@@ -705,6 +720,25 @@ struct ProfileView: View {
             Button(loc.t("cancel"), role: .cancel) {}
         } message: {
             Text(loc.t("profile_block_message"))
+        }
+    }
+
+    private var editProfileButton: some View {
+        Button { vm.isEditing = true } label: {
+            Text(loc.t("edit_profile"))
+                .font(theme.appFont(size: 13, weight: .semibold))
+                .foregroundColor(ThemeManager.primaryText)
+                .padding(.horizontal, 16)
+                .frame(height: 36)
+                .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.profile == nil)
+        .help(loc.t("edit_profile"))
+        .sheet(isPresented: $vm.isEditing) {
+            if let profile = vm.profile {
+                EditProfileView(profile: profile) { vm.reloadProfile() }
+            }
         }
     }
 

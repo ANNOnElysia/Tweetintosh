@@ -772,40 +772,51 @@ private struct LiquidGlassSidebar: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 2)
             
-            // The signed-in account, which is also the way into Settings
-            Button(action: onOpenSettings) {
-                HStack(spacing: 9) {
-                    CurrentUserAvatar(size: 26)
-                    Text(accounts.active?.name ?? loc.t("settings"))
-                        .font(theme.appFont(size: 13, weight: .medium))
-                        .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
-                        .lineLimit(1)
-                    
-                    Spacer(minLength: 4)
-                    
-                    if nav.showShortcutBadges {
-                        Text("⌘,")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3.5)
-                                    .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
-                            )
-                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                    } else {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 12.5))
-                            .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60))
+            // The signed-in account: the avatar and name open its profile, as they do everywhere else on X, and the gear
+            // beside them opens Settings. Signed out, the whole row leads to Settings, where accounts are added.
+            HStack(spacing: 4) {
+                Button(action: openOwnProfile) {
+                    HStack(spacing: 9) {
+                        CurrentUserAvatar(size: 26)
+                        Text(accounts.active?.name ?? loc.t("settings"))
+                            .font(theme.appFont(size: 13, weight: .medium))
+                            .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
                     }
+                    .padding(.leading, 8)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+                .buttonStyle(PlainButtonStyle())
+                .help(loc.t(accounts.active == nil ? "settings" : "view_profile"))
+
+                Button(action: onOpenSettings) {
+                    Group {
+                        if nav.showShortcutBadges {
+                            Text("⌘,")
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3.5)
+                                        .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+                                )
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        } else {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 12.5))
+                                .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.60))
+                        }
+                    }
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help(loc.t("settings"))
+                .padding(.trailing, 4)
             }
-            .buttonStyle(PlainButtonStyle())
-            .help(loc.t("settings"))
             .padding(.horizontal, 8)
             .padding(.bottom, 10)
         }
@@ -819,6 +830,15 @@ private struct LiquidGlassSidebar: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
     }
     
+    private func openOwnProfile() {
+        guard let account = accounts.active else {
+            onOpenSettings()
+            return
+        }
+        nav.openProfile(TweetUser(id: account.id, name: account.name, screenName: account.screenName,
+                                  avatarUrl: account.avatarUrl, isVerified: false))
+    }
+
     private func tabTitle(_ tab: AppTab) -> String {
         switch tab {
         case .home:

@@ -71,6 +71,11 @@ final class ProfilePreloader {
 
     private func key(_ screenName: String) -> String { screenName.lowercased() }
 
+    // After an edit, so the next visit fetches the profile as it is now
+    func forget(_ screenName: String) {
+        entries[key(screenName)] = nil
+    }
+
     // A fresh preloaded entry, if any
     func cached(_ screenName: String) -> Entry? {
         guard let entry = entries[key(screenName)], Date().timeIntervalSince(entry.fetchedAt) < ttl else { return nil }

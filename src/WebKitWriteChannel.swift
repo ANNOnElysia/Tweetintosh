@@ -40,6 +40,16 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     /// Runs a GraphQL mutation from inside x.com. The answer is the decoded body of a successful response; a
     /// refusal or a transport failure comes back as the matching APIError.
     func perform(path: String, body: [String: Any], completion: @escaping (Result<[String: Any], APIError>) -> Void) {
+        perform(path: path, body: body, asForm: false, completion: completion)
+    }
+
+    /// The same for X's older 1.1 endpoints, which take a form rather than JSON (such as account/update_profile.json).
+    /// A success with an empty body, as some of them answer, comes back as an empty dictionary.
+    func performForm(path: String, fields: [String: String], completion: @escaping (Result<[String: Any], APIError>) -> Void) {
+        perform(path: path, body: fields, asForm: true, completion: completion)
+    }
+
+    private func perform(path: String, body: [String: Any], asForm: Bool, completion: @escaping (Result<[String: Any], APIError>) -> Void) {
         DispatchQueue.main.async {
             guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
                 completion(.failure(.unauthenticated))
@@ -49,7 +59,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
             self.prepare(for: creds)
             self.whenLoaded(
                 ready: {
-                    self.send(path: path, body: body, creds: creds) { result in
+                    self.send(path: path, body: body, asForm: asForm, creds: creds) { result in
                         self.scheduleIdleTeardown()
                         completion(result)
                     }
@@ -206,7 +216,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     
     // MARK: - The request
     
-    private func send(path: String, body: [String: Any], creds: AuthCredentials,
+    private func send(path: String, body: [String: Any], asForm: Bool = false, creds: AuthCredentials,
                       completion: @escaping (Result<[String: Any], APIError>) -> Void) {
         guard let webView else {
             completion(.failure(.networkError(URLError(.cannotConnectToHost))))
@@ -230,7 +240,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
             }
 
             const headers = {
-                "content-type": "application/json",
+                "content-type": asForm ? "application/x-www-form-urlencoded" : "application/json",
                 "authorization": bearer,
                 "x-csrf-token": csrf,
                 "x-twitter-active-user": "yes",
@@ -245,7 +255,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                 method: "POST",
                 credentials: "include",
                 headers: headers,
-                body: JSON.stringify(body)
+                body: asForm ? new URLSearchParams(body).toString() : JSON.stringify(body)
             });
             const text = await response.text();
 
@@ -276,6 +286,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                                     arguments: [
                                         "path": path,
                                         "body": body,
+                                        "asForm": asForm,
                                         "csrf": creds.ct0,
                                         "bearer": APIClient.shared.bearerToken,
                                         "language": APIClient.shared.clientLanguageHeader
@@ -308,6 +319,10 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                 }
                 guard (200...299).contains(status) else {
                     finish(.failure(.serverError(APIClient.errorMessage(from: data) ?? "HTTP \(status)")))
+                    return
+                }
+                if asForm && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    finish(.success([:]))
                     return
                 }
                 guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
