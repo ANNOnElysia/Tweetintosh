@@ -1583,6 +1583,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "书签",
             .traditionalChinese: "書籤"
         ],
+        "profile_follows_you": [
+            .english: "Follows you",
+            .japanese: "フォローされています",
+            .korean: "나를 팔로우합니다",
+            .simplifiedChinese: "关注了你",
+            .traditionalChinese: "跟隨你"
+        ],
         "feed_following": [
             .english: "Following",
             .japanese: "フォロー中",

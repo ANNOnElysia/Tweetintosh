@@ -442,10 +442,22 @@ struct ProfileView: View {
                             .font(.system(size: 12))
                     }
                 }
-                Text(vm.user.formattedHandle)
-                    .font(theme.appFont(size: 13.5))
-                    .opacity(0.82)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(vm.user.formattedHandle)
+                        .font(theme.appFont(size: 13.5))
+                        .opacity(0.82)
+                        .lineLimit(1)
+                    // As on X: beside the handle, only on other people's profiles
+                    if vm.profile?.followsYou == true && !vm.isOwnProfile {
+                        Text(loc.t("profile_follows_you"))
+                            .font(theme.appFont(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                            .fixedSize()
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2.5)
+                            .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
+                    }
+                }
             }
             .foregroundColor(.white)
             .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 1)

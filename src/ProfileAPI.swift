@@ -22,6 +22,8 @@ struct UserProfile {
     var isProtected: Bool
     var isMuting: Bool = false
     var isBlocking: Bool = false
+    // They follow the signed-in account
+    var followsYou: Bool = false
 }
 
 // One of the signed-in account's own lists, and whether the person being looked at is on it
@@ -523,7 +525,8 @@ extension APIClient {
             isFollowing: ((userResult["relationship_perspectives"] as? [String: Any])?["following"] as? Bool) ?? (legacy["following"] as? Bool) ?? false,
             isProtected: ((userResult["privacy"] as? [String: Any])?["protected"] as? Bool) ?? (legacy["protected"] as? Bool) ?? false,
             isMuting: ((userResult["relationship_perspectives"] as? [String: Any])?["muting"] as? Bool) ?? (legacy["muting"] as? Bool) ?? false,
-            isBlocking: ((userResult["relationship_perspectives"] as? [String: Any])?["blocking"] as? Bool) ?? (legacy["blocking"] as? Bool) ?? false
+            isBlocking: ((userResult["relationship_perspectives"] as? [String: Any])?["blocking"] as? Bool) ?? (legacy["blocking"] as? Bool) ?? false,
+            followsYou: ((userResult["relationship_perspectives"] as? [String: Any])?["followed_by"] as? Bool) ?? (legacy["followed_by"] as? Bool) ?? false
         )
     }
 
