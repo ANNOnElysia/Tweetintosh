@@ -156,8 +156,33 @@ final class ProfilePreloader {
 
 // MARK: - Tweet Detail
 
-final class TweetDetailPrefetcher {
+final class TweetDetailPrefetcher: TweetMutationTarget {
     static let shared = TweetDetailPrefetcher()
+
+    private init() {
+        TweetMutationHub.shared.register(self)
+    }
+
+    // A page warmed before a like, repost or bookmark opens showing it: the cached copy is changed along with the rest
+    func applyMutation(id: String, transform: (inout Tweet) -> Void) {
+        for (key, var entry) in entries {
+            var changed = false
+            if var focal = entry.detail.focalTweet, focal.canonicalId == id {
+                transform(&focal)
+                entry.detail.focalTweet = focal
+                changed = true
+            }
+            for i in entry.detail.ancestors.indices where entry.detail.ancestors[i].canonicalId == id {
+                transform(&entry.detail.ancestors[i])
+                changed = true
+            }
+            for i in entry.detail.replies.indices where entry.detail.replies[i].canonicalId == id {
+                transform(&entry.detail.replies[i])
+                changed = true
+            }
+            if changed { entries[key] = entry }
+        }
+    }
 
     typealias Detail = (focalTweet: Tweet?, ancestors: [Tweet], replies: [Tweet], bottomCursor: String?)
     struct Entry {

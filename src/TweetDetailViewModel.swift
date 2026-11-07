@@ -10,7 +10,7 @@ private let detailLogger = Logger(subsystem: "com.anno.tweetintosh", category: "
 import AppKit
 import Combine
 
-final class TweetDetailViewModel: ObservableObject {
+final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
     @Published var focalTweet: Tweet
     @Published var ancestors: [Tweet] = []
     @Published var replies: [Tweet] = [] {
@@ -80,6 +80,7 @@ final class TweetDetailViewModel: ObservableObject {
     private let apiClient: APIClient
     
     init(focalTweet: Tweet, apiClient: APIClient = .shared) {
+        defer { TweetMutationHub.shared.register(self) }
         self.focalTweet = focalTweet
         self.apiClient = apiClient
         
@@ -294,34 +295,35 @@ final class TweetDetailViewModel: ObservableObject {
     }
     
     // MARK: - Mutate Any Tweet in Focal/Ancestors/Replies
+    // Sent through the timeline, which changes its own copies and then every registered page, this one included: a like
+    // made here shows on Home, and one made on Home or another page shows here.
     private func mutateTweet(id: String, transform: (inout Tweet) -> Void) {
-        if focalTweet.id == id {
+        TimelineViewModel.shared.mutateTweet(id: id, transform: transform)
+    }
+
+    func applyMutation(id: String, transform: (inout Tweet) -> Void) {
+        if focalTweet.canonicalId == id {
             transform(&focalTweet)
         }
-        for i in 0..<ancestors.count {
-            if ancestors[i].id == id {
-                transform(&ancestors[i])
-            }
+        for i in ancestors.indices where ancestors[i].canonicalId == id {
+            transform(&ancestors[i])
         }
-        for i in 0..<replies.count {
-            if replies[i].id == id {
-                transform(&replies[i])
-            }
+        for i in replies.indices where replies[i].canonicalId == id {
+            transform(&replies[i])
         }
-        // Also sync back to global timeline view model
-        TimelineViewModel.shared.mutateTweet(id: id, transform: transform)
     }
     
     // MARK: - Optimistic Like Toggle
     func toggleLike(for tweet: Tweet) {
         guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
+        let postId = tweet.canonicalId
         let wasLiked = tweet.isFavorited
         let willLike = !wasLiked
         
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         
-        mutateTweet(id: tweetId) { t in
+        mutateTweet(id: postId) { t in
             t.isFavorited = willLike
             t.favoriteCount = max(0, t.favoriteCount + (willLike ? 1 : -1))
         }
@@ -331,7 +333,7 @@ final class TweetDetailViewModel: ObservableObject {
                 if case .failure(let err) = res {
                     EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
-                        self?.mutateTweet(id: tweetId) { t in
+                        TimelineViewModel.shared.mutateTweet(id: postId) { t in
                             t.isFavorited = false
                             t.favoriteCount = max(0, t.favoriteCount - 1)
                         }
@@ -343,7 +345,7 @@ final class TweetDetailViewModel: ObservableObject {
                 if case .failure(let err) = res {
                     EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
-                        self?.mutateTweet(id: tweetId) { t in
+                        TimelineViewModel.shared.mutateTweet(id: postId) { t in
                             t.isFavorited = true
                             t.favoriteCount += 1
                         }
@@ -357,12 +359,13 @@ final class TweetDetailViewModel: ObservableObject {
     func toggleRetweet(for tweet: Tweet) {
         guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
+        let postId = tweet.canonicalId
         let wasRetweeted = tweet.isRetweeted
         let willRetweet = !wasRetweeted
         
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         
-        mutateTweet(id: tweetId) { t in
+        mutateTweet(id: postId) { t in
             t.isRetweeted = willRetweet
             t.retweetCount = max(0, t.retweetCount + (willRetweet ? 1 : -1))
         }
@@ -372,7 +375,7 @@ final class TweetDetailViewModel: ObservableObject {
                 if case .failure(let err) = res {
                     EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
-                        self?.mutateTweet(id: tweetId) { t in
+                        TimelineViewModel.shared.mutateTweet(id: postId) { t in
                             t.isRetweeted = false
                             t.retweetCount = max(0, t.retweetCount - 1)
                         }
@@ -384,7 +387,7 @@ final class TweetDetailViewModel: ObservableObject {
                 if case .failure(let err) = res {
                     EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
-                        self?.mutateTweet(id: tweetId) { t in
+                        TimelineViewModel.shared.mutateTweet(id: postId) { t in
                             t.isRetweeted = true
                             t.retweetCount += 1
                         }
@@ -398,12 +401,13 @@ final class TweetDetailViewModel: ObservableObject {
     func toggleBookmark(for tweet: Tweet) {
         guard EngagementGuard.allows(tweet) else { return }
         let tweetId = tweet.id
+        let postId = tweet.canonicalId
         let wasBookmarked = tweet.isBookmarked
         let willBookmark = !wasBookmarked
         
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         
-        mutateTweet(id: tweetId) { t in
+        mutateTweet(id: postId) { t in
             t.isBookmarked = willBookmark
             t.bookmarkCount = max(0, t.bookmarkCount + (willBookmark ? 1 : -1))
         }
@@ -413,7 +417,7 @@ final class TweetDetailViewModel: ObservableObject {
                 if case .failure(let err) = res {
                     EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
-                        self?.mutateTweet(id: tweetId) { t in
+                        TimelineViewModel.shared.mutateTweet(id: postId) { t in
                             t.isBookmarked = false
                             t.bookmarkCount = max(0, t.bookmarkCount - 1)
                         }
@@ -425,7 +429,7 @@ final class TweetDetailViewModel: ObservableObject {
                 if case .failure(let err) = res {
                     EngagementGuard.reportFailure(err)
                     DispatchQueue.main.async {
-                        self?.mutateTweet(id: tweetId) { t in
+                        TimelineViewModel.shared.mutateTweet(id: postId) { t in
                             t.isBookmarked = true
                             t.bookmarkCount += 1
                         }

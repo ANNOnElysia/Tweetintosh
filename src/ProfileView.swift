@@ -58,7 +58,7 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
         for tab in Array(tweets.keys) {
             guard var list = tweets[tab] else { continue }
             var changed = false
-            for index in list.indices where list[index].tweet.id == id {
+            for index in list.indices where list[index].tweet.canonicalId == id {
                 transform(&list[index].tweet)
                 changed = true
             }

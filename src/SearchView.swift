@@ -118,7 +118,7 @@ final class SearchViewModel: ObservableObject, TweetMutationTarget {
         for tab in Array(tweets.keys) {
             guard var list = tweets[tab] else { continue }
             var changed = false
-            for index in list.indices where list[index].id == id {
+            for index in list.indices where list[index].canonicalId == id {
                 transform(&list[index])
                 changed = true
             }

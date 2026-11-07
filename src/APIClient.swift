@@ -379,6 +379,7 @@ final class APIClient {
         
         var isRetweet = false
         var retweetedBy: String?
+        var originalId: String?
         
         // Handle Retweet in GraphQL
         if let rtResult = legacy["retweeted_status_result"] as? [String: Any],
@@ -387,6 +388,7 @@ final class APIClient {
             if let innerRt = original["tweet"] as? [String: Any] {
                 original = innerRt
             }
+            originalId = original["rest_id"] as? String
             if let rtLegacy = original["legacy"] as? [String: Any] {
                 let curCore = (result["core"] as? [String: Any]) ?? [:]
                 let curUserRes = (curCore["user_results"] as? [String: Any]) ?? [:]
@@ -482,7 +484,7 @@ final class APIClient {
         let inReplyToScreenName = legacy["in_reply_to_screen_name"] as? String
         let inReplyToStatusId = (legacy["in_reply_to_status_id_str"] as? String) ?? (legacy["in_reply_to_status_id"] as? NSNumber)?.stringValue
         
-        return Tweet(
+        var tweet = Tweet(
             id: restId,
             text: fullText,
             createdAt: createdAt,
@@ -504,6 +506,8 @@ final class APIClient {
             links: Self.parseLinks(legacy["entities"] as? [String: Any]),
             article: Self.parseArticlePreview(result["article"] as? [String: Any])
         )
+        tweet.originalId = originalId
+        return tweet
     }
     
     // The article attached to a post: its title, opening lines and cover. The text itself comes from fetchArticle.

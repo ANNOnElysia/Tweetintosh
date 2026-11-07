@@ -176,6 +176,12 @@ struct Tweet: Codable, Hashable, Identifiable {
     var isPromoted: Bool = false
     var links: [TweetLink] = []
     var article: TweetArticle? = nil
+    // For a repost, the id of the post it reposts: X gives the repost an id of its own, while the post's page and every
+    // other listing of it use the original's
+    var originalId: String? = nil
+    // The post this row stands for, which is what likes, reposts and bookmarks change. Screens match on this, so a repost on
+    // Home and the post's own page count as the same post.
+    var canonicalId: String { originalId ?? id }
     var quoted: Tweet? {
         quotedTweet?.tweet
     }
@@ -226,6 +232,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         case isPromoted
         case links
         case article
+        case originalId
     }
     
     init(
@@ -298,6 +305,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         isPromoted = try container.decodeIfPresent(Bool.self, forKey: .isPromoted) ?? false
         links = try container.decodeIfPresent([TweetLink].self, forKey: .links) ?? []
         article = try container.decodeIfPresent(TweetArticle.self, forKey: .article)
+        originalId = try container.decodeIfPresent(String.self, forKey: .originalId)
         computeParsedTexts()
     }
     
