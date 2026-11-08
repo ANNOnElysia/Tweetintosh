@@ -329,9 +329,8 @@ final class NotificationsViewModel: ObservableObject {
                     self.store(Page(items: data.items, topCursor: data.topCursor, bottomCursor: data.bottomCursor), for: feed)
                     self.prefetchMedia(for: data.items)
                 case .failure:
-                    if feed == .all && self.pages[.all] == nil {
-                        self.loadMockNotifications()
-                    }
+                    // Nothing is shown in place of notifications that could not be fetched, signed out included
+                    break
                 }
             }
         }
@@ -377,68 +376,5 @@ final class NotificationsViewModel: ObservableObject {
             }
         }
         MediaCacheManager.shared.prefetchImages(urls: urls)
-    }
-    
-    private func loadMockNotifications() {
-        let now = Date()
-        let mock = [
-            NotificationItem(
-                id: "notif-1",
-                type: .like,
-                actors: [
-                    TweetUser(id: "u1", name: "Lumine", screenName: "lumine_traveller", avatarUrl: nil, isVerified: true),
-                    TweetUser(id: "u2", name: "Amber", screenName: "outrider_amber", avatarUrl: nil, isVerified: false)
-                ],
-                actionSummary: "Lumine and Amber liked your post",
-                targetTweetSnippet: "Tweetintosh native macOS client Liquid Glass UI is rolling out smoothly! #SwiftUI",
-                replyBody: nil,
-                createdAt: now.addingTimeInterval(-180)
-            ),
-            NotificationItem(
-                id: "notif-2",
-                type: .retweet,
-                actors: [
-                    TweetUser(id: "u3", name: "Apple Swift", screenName: "swift_lang", avatarUrl: nil, isVerified: true)
-                ],
-                actionSummary: "Apple Swift reposted your post",
-                targetTweetSnippet: "Building seamless macOS 26 glassEffect with fallback Gaussian blur modifiers.",
-                replyBody: nil,
-                createdAt: now.addingTimeInterval(-1200)
-            ),
-            NotificationItem(
-                id: "notif-3",
-                type: .reply,
-                actors: [
-                    TweetUser(id: "u4", name: "Design Lead", screenName: "design_system", avatarUrl: nil, isVerified: true)
-                ],
-                actionSummary: "Design Lead replied to your post",
-                targetTweetSnippet: "The floating island sidebar and dynamic search capsule look stunning.",
-                replyBody: "The in-place fade transition and continuous smooth corners feel so organic. Great HIG adherence!",
-                createdAt: now.addingTimeInterval(-3600)
-            ),
-            NotificationItem(
-                id: "notif-4",
-                type: .mention,
-                actors: [
-                    TweetUser(id: "u5", name: "Cyan", screenName: "anno_cyan", avatarUrl: nil, isVerified: false)
-                ],
-                actionSummary: "Cyan mentioned you in a post",
-                targetTweetSnippet: nil,
-                replyBody: "@anno Check out the new Option+QWER shortcuts for the secondary notifications capsule!",
-                createdAt: now.addingTimeInterval(-7200)
-            ),
-            NotificationItem(
-                id: "notif-5",
-                type: .like,
-                actors: [
-                    TweetUser(id: "u6", name: "Raiden Shogun", screenName: "inazuma_eternity", avatarUrl: nil, isVerified: true)
-                ],
-                actionSummary: "Raiden Shogun liked your post",
-                targetTweetSnippet: "120Hz ProMotion skeleton shimmer and SVG handwriting pull-to-refresh.",
-                replyBody: nil,
-                createdAt: now.addingTimeInterval(-14400)
-            )
-        ]
-        pages[.all] = Page(items: mock, topCursor: nil, bottomCursor: nil)
     }
 }
