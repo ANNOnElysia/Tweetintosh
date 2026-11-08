@@ -213,7 +213,7 @@ struct SearchSuggestionsPanel: View {
             }
             .padding(8)
             .frame(maxWidth: 440)
-            .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: RoundedRectangle(cornerRadius: 20, style: .continuous)))
+            .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: RoundedRectangle(cornerRadius: 20, style: .continuous), isInteractive: false))
             .padding(.horizontal, 16)
         }
     }

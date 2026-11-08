@@ -244,7 +244,8 @@ private struct NotificationFilterCapsuleBar: View {
         .modifier(
             AdaptiveGlassModifier(
                 isLiquid: theme.useLiquidGlass,
-                shape: Capsule()
+                shape: Capsule(),
+                isInteractive: false
             )
         )
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)

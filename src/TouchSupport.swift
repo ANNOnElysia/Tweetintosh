@@ -38,6 +38,32 @@ final class ScrollInput {
     }
 }
 
+// Dragging the window by any empty part of it is handy with a pointer and a trap for a finger, which always moves a
+// little while it is down: a tap on a glass bar or beside a control starts moving the window instead, and the control
+// never sees it. So while a touch screen is connected the window moves only by its title bar.
+enum WindowDragging {
+    private static var observer: NSObjectProtocol?
+
+    static func keepUpdated(_ window: NSWindow) {
+        update(window)
+        guard observer == nil else { return }
+        observer = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak window] _ in
+            if let window { update(window) }
+        }
+    }
+
+    private static func update(_ window: NSWindow) {
+        window.isMovableByWindowBackground = !hasTouchScreen
+    }
+
+    private static var hasTouchScreen: Bool {
+        guard #available(macOS 27.0, *) else { return false }
+        return NSScreen.screens.contains { $0.touchCapabilities.contains(.multiTouch) }
+    }
+}
+
 // The app's plain button: the system's plain style, taking clicks and taps over a rectangle at least 36 points each way
 // (Apple's touch target on the Mac), however small its label, and over the whole of the label's frame, gaps between an
 // icon and its count included. A plain button only answers inside its own frame, so the frame itself grows, and padding

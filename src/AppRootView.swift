@@ -33,6 +33,33 @@ struct VisualEffectBackground: NSViewRepresentable {
     }
 }
 
+// MARK: - Top Bar Targets
+
+// The top bar's controls are small and sit near the top edge, so a finger reaches for them from below and often lands
+// beside them. Each takes taps across the full height of the bar plus this much space above and below it; the space is
+// given back outside, so nothing moves.
+enum TopBarTarget {
+    static let above: CGFloat = 10
+    static let below: CGFloat = 16
+}
+
+private extension View {
+    // Inside a top bar button's label
+    func topBarTarget() -> some View {
+        padding(.top, TopBarTarget.above + 4)
+            .padding(.bottom, TopBarTarget.below + 4)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+    }
+
+    // Outside the same button
+    func topBarTargetSpace() -> some View {
+        padding(.top, -(TopBarTarget.above + 4))
+            .padding(.bottom, -(TopBarTarget.below + 4))
+            .padding(.horizontal, -4)
+    }
+}
+
 // MARK: - Adaptive Glass Modifier (Liquid Glass Mode vs Frosted Glass Off Mode)
 // Every Liquid Glass surface goes through here. It is Apple's glass as the HIG describes it, with no clarity control of
 // the app's own: how clear or tinted the glass looks, and Reduce Transparency, are the user's choices in System Settings,
@@ -59,6 +86,9 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     var shape: S
     // Clear variant, so content behind stays visible (top tab switcher)
     var isClear: Bool = false
+    // Interactive glass answers a press itself, which suits glass that is a control. A bar or panel holding other
+    // controls passes false: on a touch screen its own response to a finger took the touch from the tab or button on it.
+    var isInteractive: Bool = true
     @ObservedObject private var theme = ThemeManager.shared
 
     func body(content: Content) -> some View {
@@ -66,9 +96,10 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
             if #available(macOS 26.0, *) {
                 // Mode A: Native Liquid Glass (SwiftUI macOS 26+ native API)
                 let base: Glass = isClear ? .clear : .regular
-                let glassStyle: Glass = theme.useLiquidGlassTint
-                    ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
-                    : base.interactive()
+                let tinted: Glass = theme.useLiquidGlassTint
+                    ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16))
+                    : base
+                let glassStyle: Glass = isInteractive ? tinted.interactive() : tinted
 
                 // Nothing painted behind or around it: a fill sits between the glass and what it refracts and turns it
                 // milky, and the system glass already draws its own edge and shadow
@@ -345,9 +376,10 @@ private struct LiquidGlassCapsule: View {
                     Capsule()
                         .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                 )
-                .contentShape(Rectangle())
+                .topBarTarget()
             }
             .buttonStyle(.target)
+            .topBarTargetSpace()
             .padding(.leading, 6)
             .help("Toggle Sidebar (⌥`)")
             
@@ -402,12 +434,17 @@ private struct LiquidGlassCapsule: View {
                             .pressDragItem(tab)
                         }
                     }
+                    // The whole height of the bar and the space around it picks the nearest tab
+                    .padding(.top, TopBarTarget.above + 4)
+                    .padding(.bottom, TopBarTarget.below + 4)
                     .pressDragSelection { (tab: AppTab) in
                         withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                             selection = tab
                             nav.isSearchActive = false
                         }
                     }
+                    .padding(.top, -(TopBarTarget.above + 4))
+                    .padding(.bottom, -(TopBarTarget.below + 4))
                     .transition(.opacity)
                 } else {
                     // Inline Liquid Glass Search Input Field
@@ -520,14 +557,21 @@ private struct LiquidGlassCapsule: View {
                         Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     }
                 }
-                .contentShape(Rectangle())
+                .topBarTarget()
             }
             .buttonStyle(.target)
+            .topBarTargetSpace()
             .padding(.trailing, 6)
             .help(nav.isSearchActive ? "Close Search (Esc / ⌥S)" : "Search (⌥S)")
         }
         .padding(.vertical, 4)
-        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true))
+        // The glass is a backdrop rather than a container: content inside glass only takes taps within the glass's
+        // own outline, and the bar's controls reach well beyond it for a finger
+        .background {
+            Capsule()
+                .fill(.clear)
+                .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true, isInteractive: false))
+        }
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
         .fixedSize()
     }
@@ -691,9 +735,12 @@ private struct LiquidGlassSidebar: View {
                         Capsule()
                             .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     )
+                    // Well beyond its small capsule, into the empty corner of the sidebar around it
+                    .padding(12)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.target)
+                .padding(-12)
                 .help("Toggle Sidebar (⌥`)")
             }
             .padding(.horizontal, 14)
@@ -845,7 +892,8 @@ private struct LiquidGlassSidebar: View {
         .modifier(
             AdaptiveGlassModifier(
                 isLiquid: theme.useLiquidGlass,
-                shape: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
+                isInteractive: false
             )
         )
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)

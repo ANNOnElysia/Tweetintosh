@@ -696,7 +696,7 @@ struct ProfileView: View {
             }
         }
         .padding(4)
-        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true))
+        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true, isInteractive: false))
         .frame(maxWidth: .infinity)
         .padding(.bottom, 10)
         .overlay(alignment: .bottom) {

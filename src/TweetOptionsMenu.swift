@@ -496,7 +496,7 @@ struct FloatingMenuBackground: View {
             if #available(macOS 26.0, *) {
                 shape
                     .fill(Color.clear)
-                    .modifier(AdaptiveGlassModifier(isLiquid: true, shape: shape, isClear: true))
+                    .modifier(AdaptiveGlassModifier(isLiquid: true, shape: shape, isClear: true, isInteractive: false))
             } else {
                 frostedGlass(shape: shape)
             }

@@ -164,7 +164,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.backgroundColor = ThemeManager.windowBackgroundColor
-        window.isMovableByWindowBackground = true
+        WindowDragging.keepUpdated(window)
         applyMinimumSize(to: window)
         window.isReleasedWhenClosed = false
         window.delegate = self
