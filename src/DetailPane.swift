@@ -110,12 +110,17 @@ struct HomeColumns<Timeline: View>: View {
     // Margins, avatar and spacing beside a post's media
     private static var mediaInset: CGFloat { 82 }
 
+    /// How wide the timeline column is in a window of `width`; with no pane beside it, the column is centred.
+    static func timelineWidth(in width: CGFloat, paneAvailable: Bool) -> CGFloat {
+        paneAvailable
+            ? min(besidePaneMaxWidth, width * 0.6, width - paneMinWidth)
+            : min(aloneWidth, width)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let timelineWidth = layout.isAvailable
-                ? min(Self.besidePaneMaxWidth, width * 0.6, width - Self.paneMinWidth)
-                : min(Self.aloneWidth, width)
+            let timelineWidth = Self.timelineWidth(in: width, paneAvailable: layout.isAvailable)
             let paneWidth = width - timelineWidth
             HStack(spacing: 0) {
                 timeline()

@@ -124,9 +124,16 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     }
 }
 
+private final class WindowWidth: ObservableObject {
+    @Published var width: CGFloat = 0
+}
+
 // MARK: - AppRootView (Adaptive Shell)
 struct AppRootView: View {
     @ObservedObject private var nav = NavigationManager.shared
+    @ObservedObject private var paneLayout = DetailPane.shared.layout
+    // A plain @State is a macro this command-line toolchain cannot expand, so the width lives in an object
+    @StateObject private var window = WindowWidth()
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
 
@@ -174,6 +181,10 @@ struct AppRootView: View {
                     }
                 )
                 .padding(.top, 14)
+                // With the post pane beside Home, the bar belongs to the timeline it switches, so it centres over that
+                // column rather than the window
+                .frame(width: capsuleColumnWidth)
+                .frame(maxWidth: .infinity, alignment: capsuleColumnWidth == nil ? .center : .leading)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.92).combined(with: .opacity).combined(with: .offset(y: -8)),
@@ -260,6 +271,7 @@ struct AppRootView: View {
                 .zIndex(9999)
         }
         .background(AppWindowOrigin.Anchor())
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { window.width = $0 }
         .coordinateSpace(name: "AppWindow")
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
         .sheet(isPresented: $nav.isShowingCompose) {
@@ -268,6 +280,12 @@ struct AppRootView: View {
         .sheet(item: $nav.replyTargetTweet) { tweet in
             ReplyComposerSheet(tweet: tweet)
         }
+    }
+
+    // The sidebar is closed whenever the bar shows, so Home's columns span the whole window
+    private var capsuleColumnWidth: CGFloat? {
+        guard nav.currentTab == .home, paneLayout.isAvailable, window.width > 0 else { return nil }
+        return HomeColumns<EmptyView>.timelineWidth(in: window.width, paneAvailable: true)
     }
 
     @ViewBuilder private var destination: some View {
