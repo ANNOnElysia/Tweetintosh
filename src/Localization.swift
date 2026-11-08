@@ -583,11 +583,11 @@ final class LocalizationManager: ObservableObject {
             .traditionalChinese: "加密對話 (點擊解鎖)"
         ],
         "messages_verifying_passcode": [
-            .english: "Verifying passcode and decrypting messages...",
-            .japanese: "パスコードを検証してメッセージを復号中...",
-            .korean: "암호를 확인하고 메시지를 복호화하는 중...",
-            .simplifiedChinese: "正在验证密码并解密消息...",
-            .traditionalChinese: "正在驗證密碼並解密訊息..."
+            .english: "Verifying passcode and decrypting messages…",
+            .japanese: "パスコードを検証してメッセージを復号中…",
+            .korean: "암호를 확인하고 메시지를 복호화하는 중…",
+            .simplifiedChinese: "正在验证密码并解密消息…",
+            .traditionalChinese: "正在驗證密碼並解密訊息…"
         ],
         "messages_passcode_incorrect": [
             .english: "Incorrect passcode. Please try again.",

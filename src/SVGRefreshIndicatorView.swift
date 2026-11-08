@@ -300,17 +300,23 @@ struct LoadingIndicator: View {
     @ObservedObject private var theme = ThemeManager.shared
 
     var body: some View {
-        let line = SVGRefreshIndicatorView(
-            pullProgress: active ? 1 : 0,
-            isRefreshing: active,
-            colorScheme: theme.themeColor,
-            tint: tint.map { NSColor($0) }
-        )
         if let height = compactHeight {
-            // Wide enough for the word (its width is about 1.41 times this height) with nothing left for the line
-            line.frame(width: height * 1.5, height: height)
+            // Inline, beside a word or inside a button, the line drawing is too small to read; the system's own small
+            // spinner is what a Mac shows there
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.small)
+                .tint(tint)
+                .opacity(active ? 1 : 0)
+                .frame(width: height, height: height)
         } else {
-            line.frame(height: 40).frame(maxWidth: .infinity)
+            SVGRefreshIndicatorView(
+                pullProgress: active ? 1 : 0,
+                isRefreshing: active,
+                colorScheme: theme.themeColor,
+                tint: tint.map { NSColor($0) }
+            )
+            .frame(height: 40).frame(maxWidth: .infinity)
         }
     }
 }

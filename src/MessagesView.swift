@@ -1473,13 +1473,17 @@ private struct DMPasscodeModalOverlay: View {
                 // 4 PIN Dots or Verifying Spinner
                 VStack(spacing: 8) {
                     if vm.isVerifyingPasscode {
+                        // Wraps rather than being cut short: the card is narrow, and some languages need two lines
                         HStack(spacing: 8) {
-                            LoadingIndicator(compactHeight: 20)
+                            LoadingIndicator(compactHeight: 16)
                             Text(loc.t("messages_verifying_passcode"))
                                 .font(theme.appFont(size: 12.5, weight: .medium))
                                 .foregroundColor(ThemeManager.accent)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .frame(height: 20)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 20)
                     } else {
                         HStack(spacing: 18) {
                             ForEach(0..<4, id: \.self) { index in
