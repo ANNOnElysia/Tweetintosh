@@ -179,6 +179,12 @@ struct Tweet: Codable, Hashable, Identifiable {
     // For a repost, the id of the post it reposts: X gives the repost an id of its own, while the post's page and every
     // other listing of it use the original's
     var originalId: String? = nil
+    // A long post's whole text and its links. X sends long posts (past 280 characters, counting CJK twice) cut short in
+    // the usual text field, and in full only here.
+    private(set) var longText: String? = nil
+    private(set) var longLinks: [TweetLink] = []
+    // Whether the long text is shown in place of the shortened one. A view state, so never saved.
+    private(set) var isTextExpanded = false
     // The post this row stands for, which is what likes, reposts and bookmarks change. Screens match on this, so a repost on
     // Home and the post's own page count as the same post.
     var canonicalId: String { originalId ?? id }
@@ -191,16 +197,49 @@ struct Tweet: Codable, Hashable, Identifiable {
         article != nil || links.contains { $0.expandedUrl.contains("/i/article/") }
     }
     
-    // Cached precomputed strings for zero-cost 120Hz scrolling
+    // Cached precomputed strings for zero-cost 120Hz scrolling. Display text is whichever of the short and the long
+    // text is showing.
     var displayBodyText: String = ""
     var replyContextText: String? = nil
     var displayLinks: [DisplayLink] = []
     var cleanText: String { displayBodyText }
+    struct BodyText: Hashable {
+        var text: String
+        var links: [DisplayLink]
+    }
+    private var shortBody = BodyText(text: "", links: [])
+    private var longBody: BodyText? = nil
     
-    /// The post's words as written, with links in full rather than shortened for display, for copying
+    mutating func setLongText(_ text: String, links: [TweetLink]) {
+        longText = text
+        longLinks = links
+        computeParsedTexts()
+    }
+    
+    /// Whether X cut this post's text short, so there is more to show
+    var hasLongText: Bool { longBody != nil }
+    
+    /// Shows the whole text of a long post, or its shortened text again
+    mutating func setTextExpanded(_ expanded: Bool) {
+        guard let long = longBody, expanded != isTextExpanded else { return }
+        isTextExpanded = expanded
+        let body = expanded ? long : shortBody
+        displayBodyText = body.text
+        displayLinks = body.links
+    }
+    
+    /// The same post with its whole text showing, as a post's own page shows it
+    var withFullText: Tweet {
+        var copy = self
+        copy.setTextExpanded(true)
+        return copy
+    }
+    
+    /// The post's words as written, in full, with links in full rather than shortened for display, for copying
     var copyableText: String {
-        var text = displayBodyText as NSString
-        for link in displayLinks.reversed() {
+        let body = longBody ?? shortBody
+        var text = body.text as NSString
+        for link in body.links.reversed() {
             text = text.replacingCharacters(in: NSRange(location: link.location, length: link.length), with: link.url) as NSString
         }
         return text as String
@@ -242,6 +281,7 @@ struct Tweet: Codable, Hashable, Identifiable {
         case links
         case article
         case originalId
+        case longText, longLinks
     }
     
     init(
@@ -315,6 +355,8 @@ struct Tweet: Codable, Hashable, Identifiable {
         links = try container.decodeIfPresent([TweetLink].self, forKey: .links) ?? []
         article = try container.decodeIfPresent(TweetArticle.self, forKey: .article)
         originalId = try container.decodeIfPresent(String.self, forKey: .originalId)
+        longText = try container.decodeIfPresent(String.self, forKey: .longText)
+        longLinks = try container.decodeIfPresent([TweetLink].self, forKey: .longLinks) ?? []
         computeParsedTexts()
     }
     
@@ -325,46 +367,63 @@ struct Tweet: Codable, Hashable, Identifiable {
     }
     
     private mutating func computeParsedTexts() {
-        var raw = Self.unescapeHTML(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        let short = Self.parseBody(text, links: links, stripsTrailingLinks: !media.isEmpty || quotedTweet != nil || linksToArticle,
+                                   articleLinksToo: linksToArticle)
+        var mentions = short.mentions
+        // If no leading mentions found in text, but inReplyToScreenName is present
+        if mentions.isEmpty, let replyScreenName = inReplyToScreenName, !replyScreenName.isEmpty {
+            mentions.append("@" + replyScreenName)
+        }
+        shortBody = short.body
+        // Only a long text that says more than the short one counts; the reply's @mentions are already in the line above
+        if let longText = longText {
+            let long = Self.parseBody(longText, links: longLinks, stripsTrailingLinks: !media.isEmpty || quotedTweet != nil || linksToArticle,
+                                      articleLinksToo: linksToArticle)
+            longBody = long.body.text.count > short.body.text.count ? long.body : nil
+        } else {
+            longBody = nil
+        }
+        let showing = isTextExpanded ? (longBody ?? shortBody) : shortBody
+        self.displayBodyText = showing.text
+        self.displayLinks = showing.links
+        self.replyContextText = mentions.isEmpty ? nil : LocalizationManager.shared.formatReplyContext(mentions: mentions)
+    }
+    
+    // A post's text made ready to show: HTML entities undone, the media or quote link at its end dropped, leading
+    // @mentions taken off (they become the "Replying to" line), and links shown by their display address
+    private static func parseBody(_ text: String, links: [TweetLink], stripsTrailingLinks: Bool, articleLinksToo: Bool)
+        -> (mentions: [String], body: BodyText) {
+        var raw = unescapeHTML(text).trimmingCharacters(in: .whitespacesAndNewlines)
         
         // 1. Strip trailing media or quote t.co URLs when media or quote is present
         //    (real link entities stay: they're shown and previewable)
-        if !media.isEmpty || quotedTweet != nil || linksToArticle {
-            if let tcoRegex = Self.trailingTCoRegex {
-                // The link to an attached article is dropped like a media link: the article is shown as a card
-                let articleLinks = !linksToArticle ? [] : links.filter { $0.expandedUrl.contains("/i/article/") }.map { $0.url }
-                let linkUrls = Set(links.map { $0.url }).subtracting(articleLinks)
-                while true {
-                    let nsRaw = raw as NSString
-                    let match = tcoRegex.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length))
-                    guard let m = match, m.range.location != NSNotFound else { break }
-                    let matched = nsRaw.substring(with: m.range).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if linkUrls.contains(matched) { break }
-                    raw = nsRaw.substring(to: m.range.location).trimmingCharacters(in: .whitespacesAndNewlines)
-                }
+        if stripsTrailingLinks, let tcoRegex = trailingTCoRegex {
+            // The link to an attached article is dropped like a media link: the article is shown as a card
+            let articleLinks = !articleLinksToo ? [] : links.filter { $0.expandedUrl.contains("/i/article/") }.map { $0.url }
+            let linkUrls = Set(links.map { $0.url }).subtracting(articleLinks)
+            while true {
+                let nsRaw = raw as NSString
+                let match = tcoRegex.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length))
+                guard let m = match, m.range.location != NSNotFound else { break }
+                let matched = nsRaw.substring(with: m.range).trimmingCharacters(in: .whitespacesAndNewlines)
+                if linkUrls.contains(matched) { break }
+                raw = nsRaw.substring(to: m.range.location).trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
         
         // 2. Extract leading @mentions
         var mentions: [String] = []
         var remainder = raw
-        
-        if let regex = Self.leadingMentionRegex {
+        if let regex = leadingMentionRegex {
             while true {
                 let nsRemainder = remainder as NSString
                 guard let match = regex.firstMatch(in: remainder, range: NSRange(location: 0, length: nsRemainder.length)),
                       match.range.location == 0 else {
                     break
                 }
-                let mention = nsRemainder.substring(with: match.range(at: 1))
-                mentions.append(mention)
+                mentions.append(nsRemainder.substring(with: match.range(at: 1)))
                 remainder = nsRemainder.substring(from: match.range.length).trimmingCharacters(in: .whitespacesAndNewlines)
             }
-        }
-        
-        // If no leading mentions found in text, but inReplyToScreenName is present
-        if mentions.isEmpty, let replyScreenName = inReplyToScreenName, !replyScreenName.isEmpty {
-            mentions.append("@" + replyScreenName)
         }
         
         // 3. Show links by their display URL and record where each one sits for styling and deep-press previews
@@ -379,10 +438,7 @@ struct Tweet: Codable, Hashable, Identifiable {
             linkRanges.append(DisplayLink(location: found.location, length: length, url: link.expandedUrl))
             searchFrom = found.location + length
         }
-        self.displayLinks = linkRanges
-        
-        self.displayBodyText = remainder
-        self.replyContextText = mentions.isEmpty ? nil : LocalizationManager.shared.formatReplyContext(mentions: mentions)
+        return (mentions, BodyText(text: remainder, links: linkRanges))
     }
     
     var textBreakdown: TextBreakdown {

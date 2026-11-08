@@ -107,6 +107,7 @@ struct TweetRowView: View {
                                 // A deep press on a link previews it; its release must not also open the browser
                                 .handlesTweetLinks()
                                 .peeksText(of: tweet, fontSize: 14.5, lineSpacing: theme.lineSpacing())
+                            LongTextToggle(tweet: tweet)
                         }
                         
                         // Media Photo / Video Grid

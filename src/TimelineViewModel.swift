@@ -646,6 +646,14 @@ final class TimelineViewModel: ObservableObject {
     
     // MARK: - Tweet Mutation & Cross-Feed Synchronization
     
+    /// Shows a long post's whole text, or its shortened text again, in every copy of it on screen. Lists animate the row
+    /// to its new height; the Home table animates it itself.
+    func setTextExpanded(_ expanded: Bool, for tweet: Tweet) {
+        withAnimation(.easeInOut(duration: 0.28)) {
+            mutateTweet(id: tweet.canonicalId) { $0.setTextExpanded(expanded) }
+        }
+    }
+    
     // `id` is a post's canonicalId, so a repost row and the post itself change together
     func mutateTweet(id: String, transform: (inout Tweet) -> Void) {
         // 1. Mutate in For You

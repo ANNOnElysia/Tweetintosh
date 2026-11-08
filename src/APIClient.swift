@@ -510,6 +510,11 @@ final class APIClient {
             article: Self.parseArticlePreview(result["article"] as? [String: Any])
         )
         tweet.originalId = originalId
+        // A long post's whole text, which X leaves out of "legacy"
+        if let note = ((result["note_tweet"] as? [String: Any])?["note_tweet_results"] as? [String: Any])?["result"] as? [String: Any],
+           let noteText = note["text"] as? String, !noteText.isEmpty {
+            tweet.setLongText(noteText, links: Self.parseLinks(note["entity_set"] as? [String: Any]))
+        }
         return tweet
     }
     

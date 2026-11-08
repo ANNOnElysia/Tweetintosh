@@ -300,19 +300,31 @@ private class TimelineCellBase: NSView {
 
     var hostedView: NSView? { nil }
 
+    // While a row glides to a new height (Show more / Show less), its post is laid out once at the final height and
+    // pinned to the top, and the cell's clipping reveals or hides it. Resizing the post on every frame of the glide
+    // made it jump inside its row.
+    var pinnedHeight: CGFloat? {
+        didSet { if let hosted = hostedView { hosted.frame = hostedFrame } }
+    }
+
+    private var hostedFrame: NSRect {
+        guard let height = pinnedHeight else { return bounds }
+        return NSRect(x: 0, y: isFlipped ? 0 : bounds.height - height, width: bounds.width, height: height)
+    }
+
     override func resizeSubviews(withOldSize oldSize: NSSize) {
-        hostedView?.frame = bounds
+        hostedView?.frame = hostedFrame
     }
 
     override func layout() {
         super.layout()
-        if let hosted = hostedView, hosted.frame != bounds { hosted.frame = bounds }
+        if let hosted = hostedView, hosted.frame != hostedFrame { hosted.frame = hostedFrame }
     }
 
     func install(_ hosted: NSView) {
         hosted.translatesAutoresizingMaskIntoConstraints = true
         hosted.autoresizingMask = []
-        hosted.frame = bounds
+        hosted.frame = hostedFrame
         addSubview(hosted)
     }
 }
@@ -332,6 +344,8 @@ private final class TimelineTweetCell: TimelineCellBase {
     func show(_ row: TimelineRowContent) {
         // Nothing to do when a page is only being asked to refresh: comparing here spares SwiftUI the whole row
         if let content = content, content.tweet == row.tweet, content.mediaColumnWidth == row.mediaColumnWidth { return }
+        // A reused cell must not keep a pin meant for the post it showed before
+        if content?.tweet.id != row.tweet.id { pinnedHeight = nil }
         var newContent = row
         newContent.cellGeometry = geometry
         content = newContent
@@ -429,6 +443,12 @@ struct TimelineTableView: NSViewRepresentable {
         private var topSpacerHeight: CGFloat = 0
         private var isLoadingMore = false
         private var measureTimer: Timer?
+        // Rows gliding to a new height after Show more / Show less
+        private struct Glide { let id: String; let from: CGFloat; let to: CGFloat }
+        private var glides: [Glide] = []
+        private var glideStart: CFTimeInterval = 0
+        private var glideTimer: Timer?
+        private static let glideDuration: CFTimeInterval = 0.28
         private var lastCellShownAt: CFTimeInterval = 0
         private var lastScrollY: CGFloat = 0
         private var articleObserver: AnyCancellable?
@@ -542,7 +562,20 @@ struct TimelineTableView: NSViewRepresentable {
             let old = tweets
             tweets = newTweets
             var changedHeights = IndexSet()
+            var unfolded = IndexSet()
             for index in newTweets.indices where newTweets[index] != old[index] {
+                // Show more / Show less: measured now, so the row can glide straight to its real height
+                if newTweets[index].isTextExpanded != old[index].isTextExpanded {
+                    let target = heights.measure(newTweets[index])
+                    glides.removeAll { $0.id == newTweets[index].id }
+                    glides.append(Glide(id: newTweets[index].id, from: rowHeights[index], to: target))
+                    unfolded.insert(index + 1)
+                    if let cell = tableView.view(atColumn: 0, row: index + 1, makeIfNecessary: false) as? TimelineTweetCell {
+                        cell.pinnedHeight = target
+                        cell.show(content(for: newTweets[index]))
+                    }
+                    continue
+                }
                 let height = heights.height(for: newTweets[index])
                 if height != rowHeights[index] {
                     rowHeights[index] = height
@@ -553,7 +586,57 @@ struct TimelineTableView: NSViewRepresentable {
                 }
             }
             if !changedHeights.isEmpty { noteHeightsChanged(changedHeights) }
+            if !unfolded.isEmpty { animateUnfolding(unfolded) }
             scheduleMeasuring()
+        }
+
+        // The row grows or shrinks in place, a frame at a time, with its post laid out once at the final height and its
+        // cell clipping it. The table's own animated height change can't be used: it gives the cell its final height at
+        // once, anchored to the bottom of the growing row, which hides the top of the post until it ends. Shrinking a
+        // post whose top has scrolled away brings its top back into view, so the reader is not left further down.
+        private func animateUnfolding(_ rows: IndexSet) {
+            // Room for the floating bar over the top of the timeline
+            let clearance: CGFloat = 72
+            let clip = scrollView.contentView
+            if let row = rows.first, row - 1 < tweets.count, !tweets[row - 1].isTextExpanded {
+                let top = tableView.rect(ofRow: row).minY
+                if top < clip.bounds.minY + clearance {
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = Self.glideDuration
+                        clip.animator().setBoundsOrigin(NSPoint(x: clip.bounds.minX, y: max(scrollView.restingTopY, top - clearance)))
+                    }
+                }
+            }
+            glideStart = CACurrentMediaTime()
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { glideStart -= Self.glideDuration }
+            stepGlides()
+            guard glideTimer == nil, !glides.isEmpty else { return }
+            let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in self?.stepGlides() }
+            RunLoop.main.add(timer, forMode: .common)
+            glideTimer = timer
+        }
+
+        private func stepGlides() {
+            let t = min(1, (CACurrentMediaTime() - glideStart) / Self.glideDuration)
+            let eased = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+            var rows = IndexSet()
+            for glide in glides {
+                guard let index = ids.firstIndex(of: glide.id) else { continue }
+                rowHeights[index] = (glide.from + (glide.to - glide.from) * eased).rounded()
+                if t >= 1 { rowHeights[index] = glide.to }
+                rows.insert(index + 1)
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                tableView.noteHeightOfRows(withIndexesChanged: rows)
+            }
+            guard t >= 1 else { return }
+            glideTimer?.invalidate()
+            glideTimer = nil
+            for row in rows {
+                (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineTweetCell)?.pinnedHeight = nil
+            }
+            glides.removeAll()
         }
 
         private func refreshArticleRows() {

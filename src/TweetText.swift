@@ -77,6 +77,30 @@ enum TweetText {
     }
 }
 
+/// "Show more" under a long post X cut short, and "Show less" under its whole text, in the accent colour on a line of
+/// their own, as X shows them
+struct LongTextToggle: View {
+    let tweet: Tweet
+    var fontSize: CGFloat = 14.5
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        if tweet.hasLongText {
+            Button {
+                TimelineViewModel.shared.setTextExpanded(!tweet.isTextExpanded, for: tweet)
+            } label: {
+                Text(loc.t(tweet.isTextExpanded ? "show_less" : "show_more"))
+                    .font(theme.appFont(size: fontSize, weight: .medium))
+                    .foregroundColor(ThemeManager.accent)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+        }
+    }
+}
+
 extension View {
     // Lets the text inside this view open @mentions as profiles
     func handlesTweetLinks() -> some View {

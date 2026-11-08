@@ -598,6 +598,7 @@ struct TweetDetailView: View {
                         .foregroundColor(ThemeManager.primaryText)
                         .lineSpacing(theme.lineSpacing() * 0.7)
                         .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
+                    LongTextToggle(tweet: tweet, fontSize: 13.5)
                 }
                 
                 if !tweet.media.isEmpty {
@@ -747,6 +748,7 @@ struct TweetDetailView: View {
                             .foregroundColor(ThemeManager.primaryText)
                             .lineSpacing(theme.lineSpacing() * 0.7)
                             .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
+                        LongTextToggle(tweet: tweet, fontSize: 13.5)
                     }
                     
                     // Media

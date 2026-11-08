@@ -11,7 +11,12 @@ import AppKit
 import Combine
 
 final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
-    @Published var focalTweet: Tweet
+    // The post itself always shows its whole text, however its copies elsewhere are showing
+    @Published var focalTweet: Tweet {
+        didSet {
+            if focalTweet.hasLongText && !focalTweet.isTextExpanded { focalTweet.setTextExpanded(true) }
+        }
+    }
     @Published var ancestors: [Tweet] = []
     @Published var replies: [Tweet] = [] {
         didSet {
@@ -81,7 +86,7 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
     
     init(focalTweet: Tweet, apiClient: APIClient = .shared) {
         defer { TweetMutationHub.shared.register(self) }
-        self.focalTweet = focalTweet
+        self.focalTweet = focalTweet.withFullText
         self.apiClient = apiClient
         
         // A reply sent from the reply sheet to this post (or to a reply shown here): show it

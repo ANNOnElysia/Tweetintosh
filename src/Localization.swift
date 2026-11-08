@@ -1184,6 +1184,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "静音 {handle}",
             .traditionalChinese: "將 {handle} 設為靜音"
         ],
+        "show_more": [
+            .english: "Show more",
+            .japanese: "さらに表示",
+            .korean: "더 보기",
+            .simplifiedChinese: "显示更多",
+            .traditionalChinese: "顯示更多"
+        ],
+        "show_less": [
+            .english: "Show less",
+            .japanese: "表示を減らす",
+            .korean: "간단히 보기",
+            .simplifiedChinese: "显示更少",
+            .traditionalChinese: "顯示較少"
+        ],
         "post_menu_delete": [
             .english: "Delete Post…",
             .japanese: "ポストを削除…",
