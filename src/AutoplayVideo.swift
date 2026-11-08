@@ -165,11 +165,18 @@ final class AutoplayVideoView: NSView {
     var showsWholeFrame = false {
         didSet { playerLayer?.videoGravity = showsWholeFrame ? .resizeAspect : .resizeAspectFill }
     }
-    // Loaded ahead while not being watched; only the Videos tab's neighbouring pages, so at most two wait like this
+    // Loaded ahead while not being watched, paused on its first frame; only the Videos tab's neighbouring pages, so at
+    // most two wait like this
     var preloads = false
+    // Seconds buffered ahead by a streamed Videos page: while it waits beside the one being watched, and while playing
+    private static let heldBuffer: TimeInterval = 2
+    private static let playingBuffer: TimeInterval = 6
     var isHeld = false {
         didSet {
-            guard isHeld != oldValue, let player = player, player.currentItem != nil else { return }
+            guard isHeld != oldValue, let player = player, let item = player.currentItem else { return }
+            if scope == .videos, item.preferredForwardBufferDuration > 0 {
+                item.preferredForwardBufferDuration = isHeld ? Self.heldBuffer : Self.playingBuffer
+            }
             if isHeld { player.pause() } else { player.play() }
         }
     }
@@ -231,7 +238,8 @@ final class AutoplayVideoView: NSView {
             DispatchQueue.main.async {
                 guard let self = self, self.resolvingMediaId == media.id else { return }
                 self.resolvingMediaId = nil
-                if let url = url { self.play(url) }
+                guard let url = url else { return }
+                self.play(url)
             }
         }
     }
@@ -239,6 +247,12 @@ final class AutoplayVideoView: NSView {
     private func play(_ url: URL) {
         let (player, playerLayer) = preparedPlayer()
         let item = AVPlayerItem(url: url)
+        // Streamed in the Videos tab, a player would otherwise buffer as far ahead as it can and take the bandwidth
+        // the next videos are being downloaded with, so each arrival would find its video still downloading. A page
+        // waiting beside the one being watched needs only its opening seconds, enough to start the moment it arrives.
+        if scope == .videos && !url.isFileURL {
+            item.preferredForwardBufferDuration = isHeld ? Self.heldBuffer : Self.playingBuffer
+        }
         player.replaceCurrentItem(with: item)
         readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
             guard layer.isReadyForDisplay else { return }

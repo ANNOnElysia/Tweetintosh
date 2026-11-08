@@ -18,6 +18,8 @@ struct VideosView: View {
     private let nav = NavigationManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
+    // How far a finger has dragged the page it is holding
+    @State private var touchDrag: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -38,7 +40,6 @@ struct VideosView: View {
         }
         .ignoresSafeArea()
         .environment(\.colorScheme, .dark)
-        .onAppear { feed.prepare() }
         // Stop when the window is minimised or the app hidden, as a video player does. Another app merely being in
         // front leaves it playing.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in
@@ -50,24 +51,55 @@ struct VideosView: View {
     }
 
     private var pages: some View {
-        ScrollView(.vertical) {
-            LazyVStack(spacing: 0) {
-                // A lazy stack builds the neighbours of the page on screen early, so the next video is already there
-                // when the swipe lands
-                let currentIndex = feed.currentIndex
-                ForEach(Array(feed.posts.enumerated()), id: \.element.id) { index, post in
-                    VideoPage(post: post, isCurrent: index == currentIndex,
-                              isNeighbour: currentIndex.map { abs(index - $0) == 1 } ?? false)
-                        .containerRelativeFrame([.horizontal, .vertical])
-                        .id(post.id)
+        // Pages are sized from the space the tab is given, not with containerRelativeFrame. A vertical scroll view takes
+        // its width from its content, and content sized to the scroll view kept its old width when the window narrowed:
+        // it held the scroll view open, pushing the sidebar off one edge and the action rail off the other.
+        GeometryReader { geometry in
+            let size = geometry.size
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    // Not lazy: a lazy stack only builds the next page once a swipe begins, too late for its video to be
+                    // sitting on its first frame when the swipe lands. Only the pages near the one in view are real; the
+                    // rest are black placeholders of the same size, so the feed's length costs next to nothing.
+                    VStack(spacing: 0) {
+                        let currentIndex = feed.currentIndex
+                        ForEach(Array(feed.posts.enumerated()), id: \.element.id) { index, post in
+                            let distance = currentIndex.map { abs(index - $0) } ?? index
+                            Group {
+                                if distance <= 2 {
+                                    VideoPage(post: post, isCurrent: distance == 0, isNeighbour: distance == 1)
+                                } else {
+                                    Color.black
+                                }
+                            }
+                            .frame(width: size.width, height: size.height)
+                            .id(post.id)
+                        }
+                    }
+                    .scrollTargetLayout()
+                    .offset(y: touchDrag)
+                    .background(ScrollViewAccessor { scrollView in
+                        // A finger is paged by the drag below instead
+                        if #available(macOS 27.0, *), scrollView.isTouchScrollingEnabled {
+                            scrollView.isTouchScrollingEnabled = false
+                        }
+                    })
                 }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $feed.currentID)
+                .scrollIndicators(.hidden)
+                .onChange(of: feed.currentID) { feed.didSettle() }
+                // The pages change height with the window, and the scroll offset doesn't follow by itself: keep the
+                // video being watched in place instead of landing between two
+                .onChange(of: size) {
+                    guard let id = feed.currentID else { return }
+                    var instant = Transaction()
+                    instant.disablesAnimations = true
+                    withTransaction(instant) { proxy.scrollTo(id, anchor: .top) }
+                }
+                .modifier(TouchPaging(offset: $touchDrag, pageHeight: size.height))
             }
-            .scrollTargetLayout()
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $feed.currentID)
-        .scrollIndicators(.hidden)
-        .onChange(of: feed.currentID) { feed.didSettle() }
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -149,6 +181,9 @@ private struct VideoPage: View {
         ZStack(alignment: .bottom) {
             video
                 .contentShape(Rectangle())
+                // A double tap likes the video, as on a phone, and a second one takes the like back; the heart on the
+                // rail shows it. Declared first, so a single tap waits the moment it takes to tell the two apart.
+                .onTapGesture(count: 2) { TweetActions().like(post) }
                 .onTapGesture { feed.togglePlayback() }
 
             if isCurrent && !feed.isPlaying {
@@ -350,5 +385,63 @@ private struct RailIcon: View {
             .symbolEffect(.bounce, value: effectTrigger)
             .frame(width: 44, height: 44)
             .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
+    }
+}
+
+// MARK: - Touch Paging
+
+// Paging scroll behaviour snaps a trackpad's swipe, but a finger's flick ran on through video after video and then
+// drifted slowly into place. So on a touch screen the scroll view leaves fingers alone and this pages them itself: the
+// video follows the finger 1:1, resists at either end of the feed, and on release springs quickly to the next or
+// previous video, or back, as a phone's video feed does. Trackpad swipes and the keyboard still go through the scroll view.
+private struct TouchPaging: ViewModifier {
+    @Binding var offset: CGFloat
+    let pageHeight: CGFloat
+    private let feed = VideosFeed.shared
+
+    // Any input, not only direct touch: with the scroll view's touch scrolling off, macOS hands a finger's drag to the
+    // app as a mouse drag. A mouse can now drag a page too, which is harmless; a trackpad's two-finger swipe is a scroll,
+    // not a drag, and still goes through the scroll view.
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 6, coordinateSpace: .local)
+                    .onChanged { drag(by: $0.translation.height) }
+                    .onEnded { release(with: $0) }
+            )
+    }
+
+    private func drag(by translation: CGFloat) {
+        guard let index = feed.currentIndex else { return }
+        // Pulling past the first or last video only gives a little, like a rubber band
+        let atEnd = (translation > 0 && index == 0) || (translation < 0 && index == feed.posts.count - 1)
+        offset = atEnd ? translation * 0.3 : translation
+    }
+
+    private func release(with value: DragGesture.Value) {
+        guard let index = feed.currentIndex, pageHeight > 0 else { offset = 0; return }
+        // Where the flick would carry the page if let go, so a short fast flick turns it as a long slow drag does
+        let projected = value.predictedEndTranslation.height
+        var step = 0
+        if projected < -pageHeight * 0.3 || value.translation.height < -pageHeight * 0.5 { step = 1 }
+        if projected > pageHeight * 0.3 || value.translation.height > pageHeight * 0.5 { step = -1 }
+        let target = min(max(index + step, 0), feed.posts.count - 1)
+        if target != index {
+            // The scroll view moves to the new page at once, and the drag offset takes up the difference so nothing
+            // on screen moves; only the offset is then animated. Animating the scroll position alongside it let the
+            // two run out of step, and the page jumped before it slid.
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) {
+                offset += CGFloat(target - index) * pageHeight
+                feed.currentID = feed.posts[target].id
+            }
+        }
+        withAnimation(Self.settle) { offset = 0 }
+    }
+
+    // Quick, with a hint of overshoot so the page lands rather than stops. None with Reduce Motion.
+    private static var settle: Animation? {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.82)
     }
 }

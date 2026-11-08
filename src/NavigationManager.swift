@@ -95,7 +95,8 @@ final class NavigationManager {
     // Opens the Videos tab on a feed that starts with this post
     func openInVideos(_ post: Tweet) {
         guard post.feedVideo != nil else { return }
-        VideosFeed.shared.start(from: post)
+        // Already on the tab, there is no entry to keep it through
+        VideosFeed.shared.start(from: post, keepingOnEntry: currentTab != .videos)
         overlayStack = []
         selectTab(.videos)
     }

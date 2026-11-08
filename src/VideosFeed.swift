@@ -137,15 +137,31 @@ final class VideosFeed: TweetMutationTarget {
 
     // The post the feed was started from, asked about again for each later batch
     @ObservationIgnored private var seed: (id: String, screenName: String)?
+    @ObservationIgnored private var keepsFeedOnNextEntry = false
+    // The posts feeds have been started from, and the videos already watched, kept across launches: at launch For You
+    // is the saved snapshot, so without them every launch would start from the same post and X would answer with
+    // much the same videos.
+    @ObservationIgnored private var usedSeeds = RecentIDs(key: "Tweetintosh_VideosUsedSeeds", limit: 200)
+    @ObservationIgnored private var seen = RecentIDs(key: "Tweetintosh_VideosSeen", limit: 1000)
     // Bumped when the feed is started again, so a batch for the old one is thrown away
     @ObservationIgnored private var generation = 0
-    // Two batches in a row that added nothing: X has run out, so the end of the feed is the end
+    // Batches in a row that added nothing new: X has run out, or keeps sending what was watched already, so the end of
+    // the feed is the end
     @ObservationIgnored private var emptyBatches = 0
+    private static let maxEmptyBatches = 4
     // Loads ahead once the reader is this close to the last video, so the next one is there when the swipe lands
     private static let loadAheadCount = 3
-    // How many of the next videos are downloaded ahead. A page's player only exists once the page is on screen (the
-    // stack builds the next one when a swipe begins), so without this every arrival waited for the network.
-    private static let downloadAheadCount = 2
+    // How many of the next videos are downloaded ahead, one at a time and nearest first, so the very next one is
+    // ready soonest. A page's player only exists once the page is on screen (the stack builds the next one when a swipe
+    // begins), so without this every arrival waited for the network.
+    private static let downloadAheadCount = 3
+    // Videos this far behind the one being watched give their downloads back; the nearer ones stay, for going back
+    private static let keepBehindCount = 5
+
+    // The download under way, and the videos this feed put in the disk cache itself. Only those are removed again:
+    // a video the timeline cached is the timeline's.
+    @ObservationIgnored private var download: (url: String, task: URLSessionDownloadTask)?
+    @ObservationIgnored private var downloadedVideos = Set<String>()
 
     private init() {
         TweetMutationHub.shared.register(self)
@@ -164,20 +180,38 @@ final class VideosFeed: TweetMutationTarget {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .snappy(duration: 0.35)
     }
 
-    // Entering the tab. Keeps the feed it had; the first time, starts from the first video in For You.
+    // Entering the tab starts a new feed each time, as opening X's video viewer does, from a video in For You that
+    // hasn't started one yet; a feed kept from last time would open on the same video again. The one exception is a
+    // feed just started from a post the reader chose ("Open in Videos").
     func prepare() {
-        guard posts.isEmpty, !isLoading else { return }
+        if keepsFeedOnNextEntry {
+            keepsFeedOnNextEntry = false
+            return
+        }
         let home = TimelineViewModel.shared
-        let candidates = home.forYouTweets.isEmpty ? home.tweets : home.forYouTweets
-        guard let seedPost = candidates.first(where: { $0.feedVideo != nil }) else {
+        let candidates = (home.forYouTweets.isEmpty ? home.tweets : home.forYouTweets).filter { $0.feedVideo != nil }
+        // Any video post not started from or watched yet, picked at random so two launches on the same snapshot differ
+        let unused = candidates.filter { !usedSeeds.contains($0.canonicalId) && !seen.contains($0.canonicalId) }
+        guard let seedPost = unused.randomElement() ?? candidates.randomElement() else {
+            generation += 1
+            posts = []
+            currentID = nil
+            isLoading = false
             emptyReason = LocalizationManager.shared.t("videos_no_seed")
             return
         }
         start(from: seedPost)
     }
 
-    // A new feed starting with this post, which shows at once while the rest loads
-    func start(from post: Tweet) {
+    // A new feed starting with this post, which shows at once while the rest loads. Kept when the tab is entered
+    // straight afterwards, which is how "Open in Videos" arrives.
+    func start(from post: Tweet, keepingOnEntry: Bool = false) {
+        keepsFeedOnNextEntry = keepingOnEntry
+        usedSeeds.insert(post.canonicalId)
+        // The last feed's downloads are of no use to this one
+        cancelDownload()
+        downloadedVideos.forEach { MediaCacheManager.shared.removeCachedVideo(for: $0) }
+        downloadedVideos.removeAll()
         generation += 1
         emptyBatches = 0
         seed = (post.canonicalId, post.author.screenName)
@@ -191,7 +225,7 @@ final class VideosFeed: TweetMutationTarget {
     }
 
     func loadMore() {
-        guard let seed = seed, !isLoading, emptyBatches < 2 else { return }
+        guard let seed = seed, !isLoading, emptyBatches < Self.maxEmptyBatches else { return }
         isLoading = true
         let generation = generation
         APIClient.shared.fetchImmersiveMedia(pinnedPostId: seed.id, authorScreenName: seed.screenName) { [weak self] result in
@@ -200,14 +234,15 @@ final class VideosFeed: TweetMutationTarget {
                 self.isLoading = false
                 switch result {
                 case .success(let batch):
-                    // The starting post is already first; keep each video once, by its own post or the one it reposts
+                    // The starting post is already first; keep each video once, by its own post or the one it reposts,
+                    // and leave out the ones watched before
                     let known = Set(self.posts.map(\.canonicalId))
-                    let fresh = batch.filter { !known.contains($0.canonicalId) }
+                    let fresh = batch.filter { !known.contains($0.canonicalId) && !self.seen.contains($0.canonicalId) }
                     self.emptyBatches = fresh.isEmpty ? self.emptyBatches + 1 : 0
                     self.posts.append(contentsOf: fresh)
                     self.downloadAhead()
-                    // A short first batch would leave nothing to swipe to
-                    if let index = self.currentIndex, index >= self.posts.count - Self.loadAheadCount, !fresh.isEmpty {
+                    // A short batch, or one that was all repeats, would leave nothing to swipe to
+                    if let index = self.currentIndex, index >= self.posts.count - Self.loadAheadCount {
                         self.loadMore()
                     }
                 case .failure:
@@ -232,20 +267,77 @@ final class VideosFeed: TweetMutationTarget {
     func didSettle() {
         // Arriving on a video means you want to watch it, as on X's own feed
         isPlaying = true
+        if let index = currentIndex { seen.insert(posts[index].canonicalId) }
         if let index = currentIndex, index >= posts.count - Self.loadAheadCount { loadMore() }
+        releaseDownloadsBehind()
         downloadAhead()
         if !NavigationManager.shared.sidebarExpanded { NavigationManager.shared.hideVideosChrome() }
     }
 
-    // Into the disk cache that a player looks in first (the same file the timeline's prefetching fetches), with the
-    // stills and avatars that show before the video does
+    // MARK: Downloading ahead
+
+    // The file a player looks for first in the disk cache (see MediaHelpers.previewPlaybackURL)
+    private static func cacheURL(of post: Tweet) -> String? {
+        post.feedVideo?.videoInfo?.highestBitrateVariant?.url
+    }
+
+    // Fetches the first of the next few videos that isn't on disk yet, then, when it lands, the one after. A download
+    // that falls outside that window, because the reader has moved past it, is dropped for the one now nearest.
     private func downloadAhead() {
         guard let index = currentIndex else { return }
         let cache = MediaCacheManager.shared
-        for post in posts.dropFirst(index + 1).prefix(Self.downloadAheadCount) {
-            guard let media = post.feedVideo else { continue }
-            cache.prefetchImages(urls: [media.mediaUrl, post.author.avatarUrl].compactMap { $0 })
-            if let url = media.videoInfo?.highestBitrateVariant?.url { cache.prefetchVideo(urlStr: url) }
+        let window = Array(posts.dropFirst(index + 1).prefix(Self.downloadAheadCount))
+        // The stills and avatars that show before the video does are small; they all go at once
+        cache.prefetchImages(urls: window.flatMap { [$0.feedVideo?.mediaUrl, $0.author.avatarUrl].compactMap { $0 } })
+
+        let wanted = window.compactMap(Self.cacheURL)
+        if let current = download {
+            if wanted.contains(current.url) { return }
+            cancelDownload()
+        }
+        guard let next = wanted.first(where: { cache.cachedVideoURL(for: $0) == nil }),
+              let url = URL(string: next) else { return }
+        let generation = generation
+        let task = Self.downloadSession.downloadTask(with: url) { [weak self] tempURL, response, error in
+            let ok = error == nil && tempURL != nil
+                && ((response as? HTTPURLResponse).map { (200...299).contains($0.statusCode) } ?? false)
+                && cache.storeDownloadedVideo(at: tempURL!, for: next)
+            DispatchQueue.main.async {
+                guard let self = self, self.download?.url == next else { return }
+                self.download = nil
+                if ok {
+                    // Kept track of even if the feed has moved on, so it is removed with the rest
+                    self.downloadedVideos.insert(next)
+                    if self.generation != generation { cache.removeCachedVideo(for: next) }
+                }
+                if self.generation == generation && ok { self.downloadAhead() }
+            }
+        }
+        download = (next, task)
+        task.priority = URLSessionTask.highPriority
+        task.resume()
+    }
+
+    // Its own connections: the shared session's are often taken by the timeline's prefetching, behind which the next
+    // video waited long enough to be passed before it arrived
+    private static let downloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpMaximumConnectionsPerHost = 2
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }()
+
+    private func cancelDownload() {
+        download?.task.cancel()
+        download = nil
+    }
+
+    // Once the reader is more than a few videos on, the earliest downloads are given back
+    private func releaseDownloadsBehind() {
+        guard let index = currentIndex, index > Self.keepBehindCount else { return }
+        for post in posts.prefix(index - Self.keepBehindCount) {
+            guard let url = Self.cacheURL(of: post), downloadedVideos.remove(url) != nil else { continue }
+            MediaCacheManager.shared.removeCachedVideo(for: url)
         }
     }
 
@@ -272,5 +364,35 @@ final class VideosFeed: TweetMutationTarget {
         let index = currentIndex ?? 0
         posts.removeAll { $0.isCopy(ofPost: id) }
         if wasCurrent { currentID = posts.indices.contains(index) ? posts[index].id : posts.last?.id }
+    }
+}
+
+// MARK: - Recent IDs
+
+// A set of ids saved in the defaults, oldest dropped first past `limit`, so it stays small however long it is used
+struct RecentIDs {
+    private let key: String
+    private let limit: Int
+    private var order: [String]
+    private var members: Set<String>
+
+    init(key: String, limit: Int) {
+        self.key = key
+        self.limit = limit
+        order = UserDefaults.standard.stringArray(forKey: key) ?? []
+        members = Set(order)
+    }
+
+    func contains(_ id: String) -> Bool { members.contains(id) }
+
+    mutating func insert(_ id: String) {
+        guard !members.contains(id) else { return }
+        order.append(id)
+        members.insert(id)
+        if order.count > limit {
+            order.prefix(order.count - limit).forEach { members.remove($0) }
+            order.removeFirst(order.count - limit)
+        }
+        UserDefaults.standard.set(order, forKey: key)
     }
 }

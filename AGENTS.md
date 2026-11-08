@@ -59,6 +59,8 @@ Other screens
 - `Article.swift`, `ArticleReaderView.swift` — X Articles rendered natively.
 - `VideosFeed.swift`, `VideosView.swift` — the Videos tab: X's immersive video feed (`ImmersiveMedia`), one video to
   a page, with paging scroll, keyboard and the action rail. Its player is `AutoplayVideoView`, with sound and pausing.
+  It downloads the next few videos ahead, keeps the pages either side paused on their first frame, and pages a finger
+  itself (`TouchPaging`); double-tap likes.
 - `PressDragSelection.swift` — capsule tab bars that select on press and follow a drag.
 - `ListSupport.swift` — X Lists, and the shared helpers for hosting scrolling screens in a SwiftUI `List`.
 
