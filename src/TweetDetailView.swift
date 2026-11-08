@@ -6,7 +6,7 @@
 import SwiftUI
 import AppKit
 
-// Pull-down to refresh for the post page, owned by the page itself (the timeline's coordinator is a single shared
+// Pull-down to refresh for the post page and profiles, owned by each page itself (the timeline's coordinator is a single shared
 // object tied to the page underneath). Works like the timeline's: a pull past the threshold that starts to spring
 // back refreshes.
 final class DetailPullController: ObservableObject {
