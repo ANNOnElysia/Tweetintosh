@@ -130,7 +130,8 @@ final class VideosFeed: TweetMutationTarget {
     // The page on screen, shared by the scroll view and the keyboard so a swipe and ↓ always agree
     var currentID: String?
     var isPlaying = true
-    var isMuted = false
+    // Starts silent, as videos that play by themselves should; the rail's speaker button turns the sound on
+    var isMuted = true
     private(set) var isLoading = false
     // Why the feed is empty, in the reader's language
     private(set) var emptyReason: String?
