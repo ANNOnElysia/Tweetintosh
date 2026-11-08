@@ -420,6 +420,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func selectMessages() {
         NavigationManager.shared.selectTab(.messages)
     }
+    @objc func selectVideos() {
+        NavigationManager.shared.selectTab(.videos)
+    }
+    @objc func videosTogglePlayback() {
+        VideosFeed.shared.togglePlayback()
+    }
+    @objc func videosNext() {
+        VideosFeed.shared.move(by: 1)
+    }
+    @objc func videosPrevious() {
+        VideosFeed.shared.move(by: -1)
+    }
+    @objc func videosToggleMute() {
+        VideosFeed.shared.isMuted.toggle()
+    }
     @objc func toggleSearchAction() {
         NavigationManager.shared.toggleSearch()
     }
@@ -613,6 +628,11 @@ final class SettingsWindow: NSWindow {
         msgItem.target = self
         navMenu.addItem(msgItem)
         
+        let videosItem = NSMenuItem(title: "Videos", action: #selector(selectVideos), keyEquivalent: "4")
+        videosItem.keyEquivalentModifierMask = .option
+        videosItem.target = self
+        navMenu.addItem(videosItem)
+        
         navMenu.addItem(NSMenuItem.separator())
         
         let searchItem = NSMenuItem(title: "Search", action: #selector(toggleSearchAction), keyEquivalent: "s")
@@ -623,7 +643,33 @@ final class SettingsWindow: NSWindow {
         navMenuItem.submenu = navMenu
         mainMenu.addItem(navMenuItem)
         
-        // 5. Window Menu
+        // 6. Controls Menu: the Videos tab's playback. The keys are handled by NavigationManager's key monitor before
+        // the menu sees them; the items are here so the commands can be found, and are enabled only while the Videos tab
+        // has the keyboard, so Space and the arrows keep their usual jobs everywhere else.
+        let controlsMenuItem = NSMenuItem()
+        let controlsMenu = NSMenu(title: "Controls")
+        let playItem = NSMenuItem(title: "Play", action: #selector(videosTogglePlayback), keyEquivalent: " ")
+        playItem.keyEquivalentModifierMask = []
+        playItem.target = self
+        controlsMenu.addItem(playItem)
+        let nextItem = NSMenuItem(title: "Next Video", action: #selector(videosNext),
+                                  keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))
+        nextItem.keyEquivalentModifierMask = []
+        nextItem.target = self
+        controlsMenu.addItem(nextItem)
+        let previousItem = NSMenuItem(title: "Previous Video", action: #selector(videosPrevious),
+                                      keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
+        previousItem.keyEquivalentModifierMask = []
+        previousItem.target = self
+        controlsMenu.addItem(previousItem)
+        controlsMenu.addItem(NSMenuItem.separator())
+        let muteItem = NSMenuItem(title: "Mute", action: #selector(videosToggleMute), keyEquivalent: "")
+        muteItem.target = self
+        controlsMenu.addItem(muteItem)
+        controlsMenuItem.submenu = controlsMenu
+        mainMenu.addItem(controlsMenuItem)
+        
+        // 7. Window Menu
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
@@ -672,5 +718,26 @@ final class SettingsWindow: NSWindow {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+}
+
+// MARK: - Menu Validation
+extension AppDelegate: NSMenuItemValidation {
+    // The Controls menu works only on the Videos tab, and its titles say what a press would do now
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let nav = NavigationManager.shared
+        let feed = VideosFeed.shared
+        switch menuItem.action {
+        case #selector(videosTogglePlayback):
+            menuItem.title = feed.isPlaying && nav.currentTab == .videos ? "Pause" : "Play"
+            return nav.videosOwnKeyboard
+        case #selector(videosNext), #selector(videosPrevious):
+            return nav.videosOwnKeyboard
+        case #selector(videosToggleMute):
+            menuItem.title = feed.isMuted ? "Unmute" : "Mute"
+            return nav.currentTab == .videos
+        default:
+            return true
+        }
     }
 }

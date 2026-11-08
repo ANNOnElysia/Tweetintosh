@@ -92,6 +92,97 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "私信",
             .traditionalChinese: "私訊"
         ],
+        "tab_videos": [
+            .english: "Videos",
+            .japanese: "動画",
+            .korean: "동영상",
+            .simplifiedChinese: "视频",
+            .traditionalChinese: "影片"
+        ],
+        "open_in_videos": [
+            .english: "Open in Videos",
+            .japanese: "動画で開く",
+            .korean: "동영상에서 열기",
+            .simplifiedChinese: "在视频中打开",
+            .traditionalChinese: "在影片中開啟"
+        ],
+        "videos_no_seed": [
+            .english: "There are no videos in For You yet. Open one from a post's menu with “Open in Videos”.",
+            .japanese: "「おすすめ」にまだ動画がありません。投稿のメニューの「動画で開く」から始められます。",
+            .korean: "추천 피드에 아직 동영상이 없습니다. 게시물 메뉴의 ‘동영상에서 열기’로 시작할 수 있습니다.",
+            .simplifiedChinese: "“为你推荐”里还没有视频。可以在帖子菜单里选“在视频中打开”。",
+            .traditionalChinese: "「為你推薦」裡還沒有影片。可以在貼文選單裡選「在影片中開啟」。"
+        ],
+        "videos_load_failed": [
+            .english: "Videos couldn’t be loaded. Try again later.",
+            .japanese: "動画を読み込めませんでした。しばらくしてからもう一度お試しください。",
+            .korean: "동영상을 불러올 수 없습니다. 잠시 후 다시 시도하세요.",
+            .simplifiedChinese: "无法加载视频，请稍后再试。",
+            .traditionalChinese: "無法載入影片，請稍後再試。"
+        ],
+        "videos_show_sidebar": [
+            .english: "Show Sidebar",
+            .japanese: "サイドバーを表示",
+            .korean: "사이드바 보기",
+            .simplifiedChinese: "显示边栏",
+            .traditionalChinese: "顯示側邊欄"
+        ],
+        "videos_next": [
+            .english: "Next Video",
+            .japanese: "次の動画",
+            .korean: "다음 동영상",
+            .simplifiedChinese: "下一个视频",
+            .traditionalChinese: "下一部影片"
+        ],
+        "videos_previous": [
+            .english: "Previous Video",
+            .japanese: "前の動画",
+            .korean: "이전 동영상",
+            .simplifiedChinese: "上一个视频",
+            .traditionalChinese: "上一部影片"
+        ],
+        "videos_play": [
+            .english: "Play",
+            .japanese: "再生",
+            .korean: "재생",
+            .simplifiedChinese: "播放",
+            .traditionalChinese: "播放"
+        ],
+        "videos_pause": [
+            .english: "Pause",
+            .japanese: "一時停止",
+            .korean: "일시 정지",
+            .simplifiedChinese: "暂停",
+            .traditionalChinese: "暫停"
+        ],
+        "videos_mute": [
+            .english: "Mute",
+            .japanese: "消音",
+            .korean: "음소거",
+            .simplifiedChinese: "静音",
+            .traditionalChinese: "靜音"
+        ],
+        "videos_unmute": [
+            .english: "Unmute",
+            .japanese: "消音を解除",
+            .korean: "음소거 해제",
+            .simplifiedChinese: "取消静音",
+            .traditionalChinese: "取消靜音"
+        ],
+        "videos_open_post": [
+            .english: "Open Post",
+            .japanese: "ポストを開く",
+            .korean: "게시물 열기",
+            .simplifiedChinese: "打开帖子",
+            .traditionalChinese: "開啟貼文"
+        ],
+        "videos_open_profile": [
+            .english: "Open Profile",
+            .japanese: "プロフィールを開く",
+            .korean: "프로필 열기",
+            .simplifiedChinese: "打开个人主页",
+            .traditionalChinese: "開啟個人檔案"
+        ],
         "messages_search": [
             .english: "Search",
             .japanese: "検索",

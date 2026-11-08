@@ -310,6 +310,19 @@ private struct TweetMenuContentView: View {
                 }
             }
             
+            // 5. Open in Videos: X's video feed, starting with this one
+            if tweet.feedVideo != nil {
+                menuRow(
+                    title: loc.t("open_in_videos"),
+                    icon: AppTab.videos.iconName,
+                    iconColor: theme.isLight ? ThemeManager.primaryText.opacity(0.85) : .white.opacity(0.90),
+                    isDestructive: false
+                ) {
+                    onDismiss()
+                    NavigationManager.shared.openInVideos(tweet)
+                }
+            }
+            
             // Group 2 for your own posts: deleting, last and in red as destructive actions are
             if isSelf {
                 Rectangle()

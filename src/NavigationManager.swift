@@ -10,6 +10,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
     case home = 0
     case notifications = 1
     case messages = 2
+    case videos = 3
     
     var id: Int { rawValue }
     
@@ -18,6 +19,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
         case .home: return "Home"
         case .notifications: return "Notifications"
         case .messages: return "Messages"
+        case .videos: return "Videos"
         }
     }
     
@@ -26,6 +28,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .notifications: return "bell.fill"
         case .messages: return "bubble.left.and.bubble.right.fill"
+        case .videos: return "play.rectangle.on.rectangle.fill"
         }
     }
 }
@@ -52,7 +55,57 @@ struct OverlayEntry: Identifiable {
 final class NavigationManager {
     static let shared = NavigationManager()
     
-    var currentTab: AppTab = .home
+    var currentTab: AppTab = .home {
+        didSet {
+            guard currentTab != oldValue else { return }
+            if currentTab == .videos { enterVideos() } else if oldValue == .videos { leaveVideos() }
+        }
+    }
+
+    // MARK: Videos
+
+    // The Videos tab fills the window: the sidebar and the top bar step aside while it is in front, and come back
+    // with Esc or the sidebar button, as a video app's controls do. Leaving the tab puts the sidebar back as it was.
+    private(set) var isVideosChromeHidden = false
+    @ObservationIgnored private var sidebarWasExpandedBeforeVideos = false
+
+    private func enterVideos() {
+        sidebarWasExpandedBeforeVideos = sidebarExpanded
+        sidebarExpanded = false
+        isVideosChromeHidden = true
+        VideosFeed.shared.prepare()
+    }
+
+    private func leaveVideos() {
+        isVideosChromeHidden = false
+        if sidebarWasExpandedBeforeVideos { sidebarExpanded = true }
+    }
+
+    func revealVideosChrome() {
+        guard isVideosChromeHidden else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) { isVideosChromeHidden = false }
+    }
+
+    // Moving on to the next video is a return to watching, so the controls step aside again
+    func hideVideosChrome() {
+        guard currentTab == .videos, !isVideosChromeHidden, !sidebarExpanded, !isSearchActive else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) { isVideosChromeHidden = true }
+    }
+
+    // Opens the Videos tab on a feed that starts with this post
+    func openInVideos(_ post: Tweet) {
+        guard post.feedVideo != nil else { return }
+        VideosFeed.shared.start(from: post)
+        overlayStack = []
+        selectTab(.videos)
+    }
+
+    // Whether the keyboard's ↑ ↓ and Space belong to the Videos tab right now
+    var videosOwnKeyboard: Bool {
+        currentTab == .videos && !hasOverlay && !isShowingCompose && replyTargetTweet == nil && !isReplyComposerOpen
+            && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented
+            && NSApp.mainWindow?.attachedSheet == nil && !isTextInputActive()
+    }
     var sidebarExpanded: Bool = false {
         didSet {
             if !isContactListFolded { isContactListPeeking = false }
@@ -390,6 +443,10 @@ final class NavigationManager {
                         }
                         return nil
                     }
+                    if self.currentTab == .videos && self.isVideosChromeHidden {
+                        self.revealVideosChrome()
+                        return nil
+                    }
                     if self.currentTab == .home && DetailPane.shared.isOpen {
                         DetailPane.shared.goBack()
                         return nil
@@ -406,6 +463,20 @@ final class NavigationManager {
                     }
                 }
                 
+                // Up / Down Arrow and Space without modifiers on the Videos tab -> previous / next video, play / pause.
+                // A held arrow moves one video, not a run of them.
+                if !hasCmd && !hasOption && !hasCtrl && (keyCode == 126 || keyCode == 125 || keyCode == 49)
+                    && event.window === NSApp.mainWindow && self.videosOwnKeyboard {
+                    if !event.isARepeat {
+                        if keyCode == 49 {
+                            VideosFeed.shared.togglePlayback()
+                        } else {
+                            VideosFeed.shared.move(by: keyCode == 125 ? 1 : -1)
+                        }
+                    }
+                    return nil
+                }
+
                 // Up / Down Arrow (keyCodes 126 / 125) without modifiers -> Scroll Home Timeline
                 if !hasCmd && !hasOption && !hasCtrl && (keyCode == 126 || keyCode == 125) {
                     if self.currentTab == .home && !self.hasOverlay && !self.isShowingCompose
@@ -498,7 +569,7 @@ final class NavigationManager {
                     return nil
                 }
                 
-                // Option + 1, 2, 3 (or Cmd + 1, 2, 3) -> Primary Tab Switching
+                // Option + 1, 2, 3, 4 (or Cmd + 1, 2, 3, 4) -> Primary Tab Switching
                 if (hasOption || hasCmd) && !hasCtrl {
                     switch keyCode {
                     case 18: // Key 1 -> Home
@@ -509,6 +580,9 @@ final class NavigationManager {
                         return nil
                     case 20: // Key 3 -> Messages
                         self.selectTab(.messages)
+                        return nil
+                    case 21: // Key 4 -> Videos
+                        self.selectTab(.videos)
                         return nil
                     default:
                         break
@@ -574,7 +648,7 @@ final class NavigationManager {
         }
     }
     
-    private func isTextInputActive() -> Bool {
+    func isTextInputActive() -> Bool {
         guard let responder = NSApp.keyWindow?.firstResponder ?? NSApp.mainWindow?.firstResponder else { return false }
         if let textView = responder as? NSTextView, textView.isEditable {
             return true

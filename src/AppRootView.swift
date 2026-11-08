@@ -167,7 +167,7 @@ struct AppRootView: View {
             // Visible when sidebar is collapsed and not viewing tweet detail.
             // Leftmost button clicks to wake sidebar and capsule disappears.
             // Sidebar close button clicks to hide sidebar and capsule "卷土重来".
-            if !nav.sidebarExpanded && !nav.hasOverlay {
+            if !nav.sidebarExpanded && !nav.hasOverlay && !nav.isVideosChromeHidden {
                 LiquidGlassCapsule(
                     selection: $nav.currentTab,
                     onToggleSidebar: {
@@ -300,6 +300,9 @@ struct AppRootView: View {
             NavigationStack {
                 MessagesView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
             }
+        case .videos:
+            VideosView()
+                .environment(\.peekScope, .videos)
         }
     }
 }
@@ -621,6 +624,9 @@ private struct LiquidGlassCapsule: View {
         case .messages:
             let t = loc.t("tab_messages")
             return t.isEmpty ? "Messages" : t
+        case .videos:
+            let t = loc.t("tab_videos")
+            return t.isEmpty ? "Videos" : t
         }
     }
     
@@ -629,6 +635,7 @@ private struct LiquidGlassCapsule: View {
         case .home: return "⌥1"
         case .notifications: return "⌥2"
         case .messages: return "⌥3"
+        case .videos: return "⌥4"
         }
     }
 }
@@ -864,6 +871,9 @@ private struct LiquidGlassSidebar: View {
         case .messages:
             let t = loc.t("tab_messages")
             return t.isEmpty ? "Messages" : t
+        case .videos:
+            let t = loc.t("tab_videos")
+            return t.isEmpty ? "Videos" : t
         }
     }
     
@@ -872,6 +882,7 @@ private struct LiquidGlassSidebar: View {
         case .home: return "⌥1"
         case .notifications: return "⌥2"
         case .messages: return "⌥3"
+        case .videos: return "⌥4"
         }
     }
     
@@ -1023,7 +1034,7 @@ private struct SidebarContextSection: View {
             case .notifications:
                 section(title: loc.t("sidebar_filter")) { filterRows }
                     .transition(.opacity)
-            case .messages:
+            case .messages, .videos:
                 EmptyView()
             }
         }

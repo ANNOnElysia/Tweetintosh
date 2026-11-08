@@ -265,9 +265,9 @@ struct TweetActionBar: View {
     
     private var iconSize: CGFloat { isProminent ? 16 : 13 }
     private var textSize: CGFloat { isProminent ? 13 : 12 }
-    private static let replyColor = Color(red: 0.114, green: 0.608, blue: 0.941)
-    private static let repostColor = Color(red: 0.0, green: 0.73, blue: 0.49)
-    private static let likeColor = Color(red: 0.976, green: 0.094, blue: 0.502)
+    static let replyColor = Color(red: 0.114, green: 0.608, blue: 0.941)
+    static let repostColor = Color(red: 0.0, green: 0.73, blue: 0.49)
+    static let likeColor = Color(red: 0.976, green: 0.094, blue: 0.502)
     
     var body: some View {
         HStack(alignment: .center, spacing: 0) {

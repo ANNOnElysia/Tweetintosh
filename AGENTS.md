@@ -57,6 +57,8 @@ Other screens
   Mentions feeds, fetched separately.
 - `SearchView.swift`, `SearchAPI.swift`, `SearchSuggestions.swift` — search, typeahead, recent searches.
 - `Article.swift`, `ArticleReaderView.swift` — X Articles rendered natively.
+- `VideosFeed.swift`, `VideosView.swift` — the Videos tab: X's immersive video feed (`ImmersiveMedia`), one video to
+  a page, with paging scroll, keyboard and the action rail. Its player is `AutoplayVideoView`, with sound and pausing.
 - `PressDragSelection.swift` — capsule tab bars that select on press and follow a drag.
 - `ListSupport.swift` — X Lists, and the shared helpers for hosting scrolling screens in a SwiftUI `List`.
 
@@ -93,7 +95,9 @@ Platform
 - **Liquid Glass APIs are macOS 26+**; guard them with `if #available(macOS 26.0, *)` and give older systems the
   existing fallback material.
 - **Scrolling screens are SwiftUI `List`s**, not `ScrollView` + `LazyVStack` (see the header of `ListSupport.swift`
-  for what that costs and the helpers that absorb it).
+  for what that costs and the helpers that absorb it). The one exception is the Videos tab (`VideosView.swift`): a
+  `List` cannot snap to whole pages, so it is a `ScrollView` with `.scrollTargetBehavior(.paging)`; its pages are
+  screen-sized and few, so the costs a `List` avoids don't arise there.
 - **Shared state is moving to `@Observable`.** `NavigationManager` and `TimelineViewModel` are already observed per
   property, so a view refreshes only for what its `body` reads: read them as plain `let` properties (`@Bindable` where a
   `$binding` is needed), mark bookkeeping that no view shows `@ObservationIgnored`, and from AppKit code watch them with
@@ -121,5 +125,9 @@ Whenever the user reviews and approves changes ("通过"), immediately commit th
 - `DebugSupport.swift` holds temporary scaffolding for the reply-threading work: set `MAX_DEBUG_DETAIL=1` in the
   environment to have the app open a busy post on launch and log how X's replies were grouped. It is inert otherwise.
   Delete the file and its two call sites once that work settles.
+- ImmersiveMedia's paging: X's own client sends the same request again (same `pinned_tweet_id`, no cursor) for each
+  further batch, and each answer is a new set of videos; the `cursor-bottom` it returns is never used. Its query id
+  lives in the on-demand chunk `bundle.ImmersiveMediaViewer`, which `GraphQLOperationIDs` locates from the page's
+  inline chunk map.
 - The Messages tab is a placeholder (`NewDestinationPlaceholderView`); X's DMs are not implemented.
 - Bookmarks is a Home feed (sidebar, ⌥E), fetched with X's `Bookmarks` GraphQL operation; lists have no shortcut.
