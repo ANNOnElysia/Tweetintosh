@@ -46,22 +46,25 @@ struct OverlayEntry: Identifiable {
     let page: OverlayPage
 }
 
-final class NavigationManager: ObservableObject {
+// Observed per property, so a view only refreshes for what it reads: the search field changes on every keystroke and the
+// shortcut badges on holding Command, and neither should redraw every page that happens to read the current tab.
+@Observable
+final class NavigationManager {
     static let shared = NavigationManager()
     
-    @Published var currentTab: AppTab = .home
-    @Published var sidebarExpanded: Bool = false {
+    var currentTab: AppTab = .home
+    var sidebarExpanded: Bool = false {
         didSet {
             if !isContactListFolded { isContactListPeeking = false }
             // The sidebar and the top bar each have their own search field, and only one was focused
             if sidebarExpanded != oldValue { isSearchActive = false }
         }
     }
-    @Published var isSearchActive: Bool = false
-    @Published var searchQuery: String = ""
+    var isSearchActive: Bool = false
+    var searchQuery: String = ""
     // Full-pane pages pushed over the tabs (tweet detail, profiles), newest last. Each entry keeps its own
     // identity so a page's state survives while others are pushed on top of it.
-    @Published private(set) var overlayStack: [OverlayEntry] = []
+    private(set) var overlayStack: [OverlayEntry] = []
 
     var selectedTweetDetail: Tweet? {
         if case .tweet(let tweet) = overlayStack.last?.page { return tweet }
@@ -69,8 +72,8 @@ final class NavigationManager: ObservableObject {
     }
 
     var hasOverlay: Bool { !overlayStack.isEmpty }
-    @Published var isShowingCompose: Bool = false
-    @Published var composeQuotedTweet: Tweet? = nil
+    var isShowingCompose: Bool = false
+    var composeQuotedTweet: Tweet? = nil
     
     // Back to a clean Home page, as after launching: used when the active account changes
     func resetForAccountChange() {
@@ -93,9 +96,9 @@ final class NavigationManager: ObservableObject {
     }
     
     // Single app-level reply sheet, so timeline rows don't each carry their own .sheet
-    @Published var replyTargetTweet: Tweet? = nil
+    var replyTargetTweet: Tweet? = nil
     // Set by the sheet itself, because a post page opens its own reply sheet without going through replyTargetTweet
-    var isReplyComposerOpen = false
+    @ObservationIgnored var isReplyComposerOpen = false
 
     func openReply(to tweet: Tweet) {
         guard EngagementGuard.allows(tweet) else { return }
@@ -177,9 +180,9 @@ final class NavigationManager: ObservableObject {
     // MARK: Layout by window width
     
     // The contact list on the Messages page gives way in a narrow window, and can be slid over the chat for a moment
-    @Published private var isTooNarrowForContactList = false
-    @Published var isContactListPeeking = false
-    @Published private var isWideWindow: Bool?
+    private var isTooNarrowForContactList = false
+    var isContactListPeeking = false
+    private var isWideWindow: Bool?
     
     // The sidebar and the contact list only sit side by side past half the screen, so opening the sidebar by hand in a
     // narrower window folds the list for as long as it is open
@@ -230,14 +233,14 @@ final class NavigationManager: ObservableObject {
     }
     
     // Shortcut badges visibility (revealed when holding Command for > 1.5s without any keystroke)
-    @Published var showShortcutBadges: Bool = false
-    private var cmdHoldTimer: Timer?
+    var showShortcutBadges: Bool = false
+    @ObservationIgnored private var cmdHoldTimer: Timer?
     // When Return was last pressed with the keyboard free, for the double-press that opens the composer
-    private var lastReturnPress: CFTimeInterval = 0
+    @ObservationIgnored private var lastReturnPress: CFTimeInterval = 0
     private static let doubleReturnInterval: CFTimeInterval = 0.4
-    private var isCmdDown: Bool = false
+    @ObservationIgnored private var isCmdDown: Bool = false
     
-    private var eventMonitor: Any?
+    @ObservationIgnored private var eventMonitor: Any?
     
     private init() {
         setupKeyboardMonitoring()

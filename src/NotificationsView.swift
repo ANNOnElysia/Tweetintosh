@@ -11,7 +11,7 @@ private struct NotificationsPullRefreshIndicatorOverlay: View {
     @ObservedObject var scrollState = TimelineScrollState.shared
     @ObservedObject var viewModel = NotificationsViewModel.shared
     @ObservedObject var theme = ThemeManager.shared
-    @ObservedObject var nav = NavigationManager.shared
+    let nav = NavigationManager.shared
     
     var body: some View {
         if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
@@ -71,7 +71,7 @@ struct NotificationsGlanceView: View {
 
 struct NotificationsView: View {
     @ObservedObject var viewModel = NotificationsViewModel.shared
-    @ObservedObject var nav = NavigationManager.shared
+    let nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
 
@@ -193,7 +193,7 @@ struct NotificationsView: View {
 // MARK: - Secondary Floating Filter Capsule Bar (Dual-Mode Liquid Glass)
 private struct NotificationFilterCapsuleBar: View {
     @ObservedObject var viewModel = NotificationsViewModel.shared
-    @ObservedObject var nav = NavigationManager.shared
+    let nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @Namespace private var filterTabNamespace

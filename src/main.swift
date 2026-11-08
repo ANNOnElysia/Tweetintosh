@@ -177,15 +177,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applyMinimumSize(to: window)
         updateLayout(for: window)
         // Opening the sidebar in a narrow window widens the window to fit it, rather than squeezing the page beside it.
-        // The new value comes with the announcement, before NavigationManager has stored it.
-        sidebarObserver = NavigationManager.shared.$sidebarExpanded
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self, weak window] expanded in
-                guard let self = self, let window = window else { return }
-                self.applyMinimumSize(to: window, sidebarExpanded: expanded, animate: true)
-            }
+        var lastSidebarExpanded = NavigationManager.shared.sidebarExpanded
+        sidebarObserver = observeChanges(of: { _ = NavigationManager.shared.sidebarExpanded }) { [weak self, weak window] in
+            let expanded = NavigationManager.shared.sidebarExpanded
+            guard expanded != lastSidebarExpanded, let self = self, let window = window else { return }
+            lastSidebarExpanded = expanded
+            self.applyMinimumSize(to: window, sidebarExpanded: expanded, animate: true)
+        }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self, weak window] _ in

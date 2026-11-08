@@ -36,7 +36,12 @@ final class AutoplayCoordinator {
     private init() {
         let trigger: () -> Void = { [weak self] in self?.setNeedsEvaluate() }
         observers = [
-            NavigationManager.shared.objectWillChange.sink { _ in trigger() },
+            // What decides the page in front, plus what moves the pages around: not the search text or the shortcut
+            // badges, which change often and never affect playback
+            observeChanges(of: {
+                let nav = NavigationManager.shared
+                _ = (nav.currentTab, nav.overlayStack.count, nav.sidebarExpanded, nav.isSearchActive)
+            }, perform: trigger),
             LightboxManager.shared.objectWillChange.sink { _ in trigger() },
             VideoLightboxManager.shared.objectWillChange.sink { _ in trigger() },
             // Not only the timeline's scroll state: each kind of page tracks its own, and this has to cover them all

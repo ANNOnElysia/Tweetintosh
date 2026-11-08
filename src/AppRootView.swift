@@ -124,16 +124,12 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     }
 }
 
-private final class WindowWidth: ObservableObject {
-    @Published var width: CGFloat = 0
-}
-
 // MARK: - AppRootView (Adaptive Shell)
 struct AppRootView: View {
-    @ObservedObject private var nav = NavigationManager.shared
+    @Bindable private var nav = NavigationManager.shared
     @ObservedObject private var paneLayout = DetailPane.shared.layout
-    // A plain @State is a macro this command-line toolchain cannot expand, so the width lives in an object
-    @StateObject private var window = WindowWidth()
+    // The window's width, for placing the top bar over the timeline column
+    @State private var windowWidth: CGFloat = 0
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
 
@@ -271,7 +267,7 @@ struct AppRootView: View {
                 .zIndex(9999)
         }
         .background(AppWindowOrigin.Anchor())
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { window.width = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .coordinateSpace(name: "AppWindow")
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
         .sheet(isPresented: $nav.isShowingCompose) {
@@ -284,8 +280,8 @@ struct AppRootView: View {
 
     // The sidebar is closed whenever the bar shows, so Home's columns span the whole window
     private var capsuleColumnWidth: CGFloat? {
-        guard nav.currentTab == .home, paneLayout.isAvailable, window.width > 0 else { return nil }
-        return HomeColumns<EmptyView>.timelineWidth(in: window.width, paneAvailable: true)
+        guard nav.currentTab == .home, paneLayout.isAvailable, windowWidth > 0 else { return nil }
+        return HomeColumns<EmptyView>.timelineWidth(in: windowWidth, paneAvailable: true)
     }
 
     @ViewBuilder private var destination: some View {
@@ -312,7 +308,7 @@ struct AppRootView: View {
 private struct LiquidGlassCapsule: View {
     @Binding var selection: AppTab
     var onToggleSidebar: () -> Void
-    @ObservedObject var nav = NavigationManager.shared
+    @Bindable var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @Namespace private var capsuleTabNamespace
@@ -642,7 +638,7 @@ private struct LiquidGlassSidebar: View {
     @Binding var selection: AppTab
     @Binding var isExpanded: Bool
     var onOpenSettings: () -> Void
-    @ObservedObject var nav = NavigationManager.shared
+    let nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject private var accounts = AccountManager.shared
@@ -915,7 +911,7 @@ private struct LiquidGlassSidebar: View {
 
 // A row until it is used, then the field itself, in place. Suggestions float beside the sidebar.
 private struct SidebarSearchRow: View {
-    @ObservedObject private var nav = NavigationManager.shared
+    @Bindable private var nav = NavigationManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
     @FocusState private var isFocused: Bool
@@ -1006,9 +1002,9 @@ private enum SidebarFeedChoice: Hashable {
 // The middle of the sidebar follows the page: feeds for Home, filters for Notifications, nothing for Messages
 private struct SidebarContextSection: View {
     @Binding var selection: AppTab
-    @ObservedObject private var timelineVM = TimelineViewModel.shared
+    private let timelineVM = TimelineViewModel.shared
     @ObservedObject private var notifications = NotificationsViewModel.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
     

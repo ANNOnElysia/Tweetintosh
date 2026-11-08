@@ -533,9 +533,9 @@ final class TrackpadPullCoordinator {
 // MARK: - Isolated 120Hz Pull-to-Refresh Indicator Overlay
 private struct TimelinePullRefreshIndicatorOverlay: View {
     @ObservedObject var scrollState = TimelineScrollState.shared
-    @ObservedObject var viewModel = TimelineViewModel.shared
+    let viewModel = TimelineViewModel.shared
     @ObservedObject var theme = ThemeManager.shared
-    @ObservedObject var nav = NavigationManager.shared
+    let nav = NavigationManager.shared
     
     var body: some View {
         if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
@@ -563,10 +563,10 @@ private struct TimelinePullRefreshIndicatorOverlay: View {
 }
 
 struct MainTimelineView: View {
-    @ObservedObject var viewModel = TimelineViewModel.shared
+    let viewModel = TimelineViewModel.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
-    @ObservedObject var nav = NavigationManager.shared
+    let nav = NavigationManager.shared
     @ObservedObject var scrollCoordinator = TimelineScrollCoordinator.shared
     @ObservedObject var listMetrics = ListMetrics.shared
 

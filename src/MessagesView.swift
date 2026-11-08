@@ -21,7 +21,7 @@ struct MessagesView: View {
     @StateObject private var vm = DMViewModel.shared
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     
     var body: some View {
         ZStack {
@@ -120,7 +120,7 @@ extension ThemeManager {
 // The contact list as a floating pane, lined up with the app's sidebar
 private struct DMContactPanel: ViewModifier {
     @ObservedObject private var theme = ThemeManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
 
     func body(content: Content) -> some View {
@@ -165,7 +165,7 @@ private struct DMGlassGroup: ViewModifier {
 
 // Shown where the contact list would be when the window is too narrow for it
 private struct DMShowContactListButton: View {
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     
@@ -195,7 +195,7 @@ private struct DMConversationListView: View {
     @ObservedObject private var vm = DMViewModel.shared
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     
     var body: some View {
         VStack(spacing: 0) {
@@ -612,7 +612,7 @@ private struct DMChatDetailView: View {
     @ObservedObject private var vm = DMViewModel.shared
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     
     @ViewBuilder private func glassChat(_ conv: DMConversation) -> some View {
         if #available(macOS 26.0, *) {
@@ -779,7 +779,7 @@ private struct DMContactHeader: View {
     @ObservedObject private var vm = DMViewModel.shared
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @StateObject private var hover = DMHoverState()
     
     var body: some View {

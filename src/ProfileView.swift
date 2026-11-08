@@ -401,7 +401,7 @@ struct ProfileView: View {
     @StateObject private var chrome = ProfileChromeState()
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @Namespace private var tabNamespace
 
     private let bannerHeight: CGFloat = 250

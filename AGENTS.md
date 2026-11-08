@@ -6,10 +6,13 @@ GraphQL/REST endpoints, which `APIClient` talks to directly.
 
 ## Build and run
 
-No Xcode project, no Xcode install needed: this is a Swift Package plus a packaging script.
+No Xcode project: this is a Swift Package plus a packaging script. It does need Xcode's toolchain, though, not just the
+Command Line Tools: the shared state uses the Observation framework (`@Observable`, `@State`, `@Bindable`), whose
+macros the Command Line Tools cannot expand. Select Xcode with `sudo xcode-select -s <path to Xcode.app>`
+(on this machine `~/Xcode/Xcode-beta.app`) and check with `xcode-select -p`.
 
 ```sh
-swift build -c release      # compile check, ~50 s; warnings about CommandLineTools search paths are harmless
+swift build -c release      # compile check, ~50 s
 ./build.sh                  # release build → Tweetintosh.app → ad-hoc codesign, then deletes .build
 open Tweetintosh.app        # run
 ```
@@ -74,6 +77,8 @@ Platform
 - `XFailures.swift` — what X's numeric refusal codes mean, and how to say it in the reader's language.
 - `Engagement.swift` — shared engagement rules: blocked authors, rejection reporting, keeping every on-screen copy of
   a post in sync after a like / repost / bookmark.
+- `ObservationSupport.swift` — `observeChanges(of:perform:)`, the stand-in for subscribing to `objectWillChange` on an
+  `@Observable` object from AppKit code.
 
 ## Conventions
 
@@ -89,6 +94,10 @@ Platform
   existing fallback material.
 - **Scrolling screens are SwiftUI `List`s**, not `ScrollView` + `LazyVStack` (see the header of `ListSupport.swift`
   for what that costs and the helpers that absorb it).
+- **Shared state is moving to `@Observable`.** `NavigationManager` and `TimelineViewModel` are already observed per
+  property, so a view refreshes only for what its `body` reads: read them as plain `let` properties (`@Bindable` where a
+  `$binding` is needed), mark bookkeeping that no view shows `@ObservationIgnored`, and from AppKit code watch them with
+  `observeChanges(of:perform:)`. The other classes are still `ObservableObject`.
 - **Every on-screen copy of a post must stay in sync** after an engagement action: go through `Engagement` rather
   than mutating one view model.
 - **Reads use `URLSession`; writes go through `WebKitWriteChannel`.** X silently drops writes that do not arrive

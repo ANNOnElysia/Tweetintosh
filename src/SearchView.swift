@@ -141,7 +141,7 @@ struct SearchView: View {
     @StateObject private var vm: SearchViewModel
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @Namespace private var tabNamespace
     @FocusState private var isFieldFocused: Bool
 

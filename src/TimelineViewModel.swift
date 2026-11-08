@@ -7,59 +7,60 @@ import SwiftUI
 import os
 
 private let pollLogger = Logger(subsystem: "com.anno.tweetintosh", category: "preload")
-import Combine
-
-final class TimelineViewModel: ObservableObject {
+// Observed per property: it holds all four feeds and their pending posts, and a background poll of one feed shouldn't
+// redraw the timeline of another.
+@Observable
+final class TimelineViewModel {
     static let shared = TimelineViewModel()
     
-    @Published var selectedFeed: HomeFeedType = .forYou {
+    var selectedFeed: HomeFeedType = .forYou {
         didSet {
             updateActiveTweets()
         }
     }
     
-    @Published var tweets: [Tweet] = []
+    var tweets: [Tweet] = []
     
     // Official Twitter Lists for authenticated account
-    @Published var userLists: [TwitterList] = []
-    @Published var selectedListId: String = ""
-    @Published var isLoadingLists: Bool = false
+    var userLists: [TwitterList] = []
+    var selectedListId: String = ""
+    var isLoadingLists: Bool = false
     
     var selectedList: TwitterList? {
         userLists.first { $0.id == selectedListId } ?? userLists.first
     }
     
     // Independent storage for each feed
-    @Published var forYouTweets: [Tweet] = []
-    @Published var followingTweets: [Tweet] = []
-    @Published var bookmarkTweets: [Tweet] = []
-    @Published var listTweets: [String: [Tweet]] = [:]
+    var forYouTweets: [Tweet] = []
+    var followingTweets: [Tweet] = []
+    var bookmarkTweets: [Tweet] = []
+    var listTweets: [String: [Tweet]] = [:]
     
     // Pending new tweets buffer (holds background/auto-fetched tweets so user reading is never disrupted or pushed down)
-    @Published var forYouPendingTweets: [Tweet] = []
-    @Published var followingPendingTweets: [Tweet] = []
-    @Published var listPendingTweets: [String: [Tweet]] = [:]
+    var forYouPendingTweets: [Tweet] = []
+    var followingPendingTweets: [Tweet] = []
+    var listPendingTweets: [String: [Tweet]] = [:]
     
-    @Published var isLoadingInitial = true
-    @Published var isRefreshing = false
-    @Published var isLoadingMore = false
-    @Published var isAuthenticated = false
-    @Published var errorMessage: String?
+    var isLoadingInitial = true
+    var isRefreshing = false
+    var isLoadingMore = false
+    var isAuthenticated = false
+    var errorMessage: String?
     
-    private var forYouTopCursor: String?
-    private var forYouBottomCursor: String?
+    @ObservationIgnored private var forYouTopCursor: String?
+    @ObservationIgnored private var forYouBottomCursor: String?
     
-    private var followingTopCursor: String?
-    private var followingBottomCursor: String?
+    @ObservationIgnored private var followingTopCursor: String?
+    @ObservationIgnored private var followingBottomCursor: String?
 
-    private var bookmarksTopCursor: String?
-    private var bookmarksBottomCursor: String?
+    @ObservationIgnored private var bookmarksTopCursor: String?
+    @ObservationIgnored private var bookmarksBottomCursor: String?
     
-    private var listTopCursors: [String: String] = [:]
-    private var listBottomCursors: [String: String] = [:]
+    @ObservationIgnored private var listTopCursors: [String: String] = [:]
+    @ObservationIgnored private var listBottomCursors: [String: String] = [:]
     
     // Track seen tweet IDs for the algorithmic "For You" feed
-    private var seenTweetIds: [String] = []
+    @ObservationIgnored private var seenTweetIds: [String] = []
     
     var topCursor: String? {
         get {
@@ -133,8 +134,8 @@ final class TimelineViewModel: ObservableObject {
     // chronological feeds (Following, lists) and every 2 minutes on For You. New posts are queued behind the
     // floating "N new posts" pill, never inserted under the reader. Polling pauses while the app is in the
     // background or off the Home tab, and catches up as soon as it comes back.
-    private var pollTimer: Timer?
-    private var lastFetchAt = Date()
+    @ObservationIgnored private var pollTimer: Timer?
+    @ObservationIgnored private var lastFetchAt = Date()
     
     private func pollInterval(for feed: HomeFeedType) -> TimeInterval {
         feed == .forYou ? 120 : 30
@@ -718,7 +719,7 @@ final class TimelineViewModel: ObservableObject {
     // MARK: - Bookmarks Feed
 
     // Where posts taken out of Bookmarks were, so a refused un-bookmark can put them back in their place
-    private var removedBookmarks: [String: (tweet: Tweet, index: Int)] = [:]
+    @ObservationIgnored private var removedBookmarks: [String: (tweet: Tweet, index: Int)] = [:]
 
     // Called as soon as a post is bookmarked or un-bookmarked, from any screen, and again with the opposite value if X
     // refuses. Un-bookmarking takes the post out of Bookmarks at once, as X's own page does; bookmarking puts it at the
