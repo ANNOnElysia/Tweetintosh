@@ -416,6 +416,12 @@ final class NavigationManager {
                     // still being composed
                     if let panel = event.window as? NSSavePanel, panel.isVisible { return event }
                     if (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
+                    // Settings is a window of its own, so Esc there closes it and nothing else: without this check the
+                    // reply box, search or a page open in the main window behind it would take the key instead.
+                    if let settings = event.window as? AppDelegate.SettingsWindow {
+                        settings.cancelOperation(nil)
+                        return nil
+                    }
                     // Handled here because a text field takes Esc before the Cancel button's shortcut can: an empty one
                     // opens the system's word completion list. It also comes first, or Esc would close a post page
                     // underneath the reply box.
@@ -449,6 +455,21 @@ final class NavigationManager {
                     }
                     if self.currentTab == .home && DetailPane.shared.isOpen {
                         DetailPane.shared.goBack()
+                        return nil
+                    }
+                    // Nothing left to close: Esc steps back to Home, so pressing it repeatedly always ends there. Only
+                    // in the main window, and not while something that keeps its own Esc is up over it.
+                    if self.currentTab != .home && event.window === NSApp.mainWindow
+                        && event.window?.attachedSheet == nil
+                        && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented
+                        && PeekCoordinator.shared.target == nil && !DMViewModel.shared.showPasscodeSheet {
+                        // A field being typed in lets go of the cursor first, so a stray Esc doesn't throw away a
+                        // half-written message
+                        if self.isTextInputActive() {
+                            event.window?.makeFirstResponder(nil)
+                            return nil
+                        }
+                        self.selectTab(.home)
                         return nil
                     }
                 }
