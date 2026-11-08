@@ -529,9 +529,9 @@ private struct DMQuickReactionButton: View {
                 .font(.system(size: 19))
                 .frame(width: 30, height: 30)
                 .scaleEffect(hover.isHovered ? 1.22 : 1.0)
-                .contentShape(Circle())
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .animation(.spring(response: 0.22, dampingFraction: 0.6), value: hover.isHovered)
         .onHover { hover.isHovered = $0 }
     }
@@ -558,7 +558,7 @@ private struct DMMoreReactionsButton: View {
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .help(loc.t("messages_more_reactions"))
         .onHover { hover.isHovered = $0 }
     }
@@ -590,7 +590,7 @@ private struct DMForwardTargetRow: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .onHover { hover.isHovered = $0 }
     }
 }

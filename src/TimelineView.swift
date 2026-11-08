@@ -264,7 +264,7 @@ struct NewPostsFloatingPill: View {
                     )
             )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
         .transition(.asymmetric(
             insertion: .scale(scale: 0.85).combined(with: .opacity).combined(with: .move(edge: .top)),
             removal: .scale(scale: 0.9).combined(with: .opacity).combined(with: .move(edge: .top))
@@ -285,8 +285,13 @@ final class TrackpadPullCoordinator {
     private var wheelReleaseTimer: Timer?
     // Single pull-to-refresh threshold shared by the spinner fill, the haptic and the release trigger
     // (Home and Notifications), so a full ring always means "release to refresh"
-    static let refreshThreshold: CGFloat = 38.0
-    private let threshold: CGFloat = TrackpadPullCoordinator.refreshThreshold
+    // A finger pulls the content 1:1 where a trackpad's rubber band resists, so the same pull covers far more distance
+    // and needs a longer way to go before it counts.
+    static var refreshThreshold: CGFloat { ScrollInput.shared.isDirectTouch ? 96 : 38 }
+    // How far a pull past the threshold has to spring back to count as let go. A finger held still wavers by more than
+    // a trackpad's rubber band does.
+    static var releaseSlack: CGFloat { ScrollInput.shared.isDirectTouch ? 24 : 6 }
+    private var threshold: CGFloat { TrackpadPullCoordinator.refreshThreshold }
     private var activeOwner: String?
     // Which page attached the current scroll view. On a tab switch SwiftUI attaches the new page's scroll view
     // before the old page's onDisappear runs, so stopMonitoring must only detach a scroll view its own page attached.
@@ -449,7 +454,7 @@ final class TrackpadPullCoordinator {
             // A List's scroll view tracks the trackpad in its own loop, so the gesture-ended event never reaches
             // the monitor below. Release shows up here instead: past the threshold, the pull starts snapping back.
             pullPeak = max(pullPeak, overscroll)
-            if !pullTriggered && pullPeak >= threshold && overscroll <= pullPeak - 6 {
+            if !pullTriggered && pullPeak >= threshold && overscroll <= pullPeak - TrackpadPullCoordinator.releaseSlack {
                 triggerRefresh()
                 return
             }
@@ -720,7 +725,7 @@ struct MainTimelineView: View {
                             .fill(ThemeManager.accent)
                     )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -742,7 +747,7 @@ struct MainTimelineView: View {
                     .font(.system(size: 14))
                     .foregroundColor(ThemeManager.accent)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

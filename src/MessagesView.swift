@@ -182,7 +182,7 @@ private struct DMShowContactListButton: View {
                     .frame(width: 32, height: 32)
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help(loc.t("messages_show_contacts"))
             .accessibilityLabel(loc.t("messages_show_contacts"))
         }
@@ -223,7 +223,7 @@ private struct DMConversationListView: View {
                         .font(.system(size: 16, weight: .regular))
                         .foregroundColor(vm.filter == .all ? (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70)) : ThemeManager.accent)
                         .frame(width: 28, height: 28)
-                        .contentShape(Circle())
+                        .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -249,7 +249,7 @@ private struct DMConversationListView: View {
                                 .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
             .padding(.horizontal, 16)
             // Safe distance: accounts for macOS traffic lights & top floating droplet capsule
@@ -273,7 +273,7 @@ private struct DMConversationListView: View {
                             .font(.system(size: 12))
                             .foregroundColor(theme.isLight ? Color.black.opacity(0.35) : Color.white.opacity(0.40))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 }
             }
             .padding(.horizontal, 10)
@@ -326,7 +326,7 @@ private struct DMConversationListView: View {
                             )
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 8)
             }
@@ -342,7 +342,7 @@ private struct DMConversationListView: View {
                         .font(theme.appFont(size: 11.5, weight: .medium))
                         .foregroundColor(ThemeManager.accent)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                     .disabled(vm.selectedConversationIds.isEmpty)
                     
                     Spacer()
@@ -355,7 +355,7 @@ private struct DMConversationListView: View {
                         .font(theme.appFont(size: 11.5, weight: .medium))
                         .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.80))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                     .disabled(vm.selectedConversationIds.isEmpty)
                 }
                 .padding(.horizontal, 16)
@@ -386,7 +386,7 @@ private struct DMConversationListView: View {
                                         .frame(width: 56)
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.target)
                         }
                     }
                     .padding(.horizontal, 14)
@@ -556,7 +556,7 @@ private struct DMConversationRow: View {
             .background(rowBackground)
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .onHover { hover.isHovered = $0 }
         .contextMenu {
             Button(action: { vm.togglePin(for: conversation.id) }) {
@@ -741,7 +741,7 @@ private struct DMEncryptedGuidanceCard: View {
                 .clipShape(Capsule())
                 .shadow(color: ThemeManager.accent.opacity(theme.isLight ? 0.25 : 0.40), radius: 8, x: 0, y: 3)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .padding(.top, 8)
         }
         .frame(maxWidth: 380)
@@ -820,7 +820,7 @@ private struct DMContactHeader: View {
                             .fill(hover.isHovered && !theme.usesGlassMessages ? (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)) : Color.clear)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
                 .modifier(DMGlassControl(shape: Capsule()))
                 .onHover { hover.isHovered = $0 }
                 .peekable(.profile(other.asTweetUser)) // Deep-press / Force Click Peek card!
@@ -858,7 +858,7 @@ private struct DMContactHeader: View {
                     }
                     .modifier(DMGlassControl(shape: Capsule()))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
         }
         .padding(.horizontal, 16)
@@ -1040,7 +1040,7 @@ private struct DMBubbleRow: View {
                     )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
     }
     
     // Outgoing bubble (follower of user's chosen Theme Accent Color, iMessage corner contour)
@@ -1233,7 +1233,7 @@ private struct DMReactionAttachment: ViewModifier {
                     } label: {
                         label.contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 } else {
                     label
                 }
@@ -1284,7 +1284,7 @@ private struct DMInputDock: View {
                             .font(.system(size: 14))
                             .foregroundColor(theme.isLight ? Color.black.opacity(0.30) : Color.white.opacity(0.35))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                     .keyboardShortcut(.cancelAction)
                     .help(loc.t("messages_cancel"))
                 }
@@ -1321,7 +1321,7 @@ private struct DMInputDock: View {
                                         .foregroundColor(.white)
                                         .background(Circle().fill(Color.black.opacity(0.70)))
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.target)
                                 .offset(x: 4, y: -4)
                             }
                         }
@@ -1350,7 +1350,7 @@ private struct DMInputDock: View {
                         }
                         .modifier(DMGlassControl(shape: Circle()))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
                 .keyboardShortcut("a", modifiers: [.option])
                 .help(loc.t("attach_media") + " (⌥A)")
                 
@@ -1409,7 +1409,7 @@ private struct DMInputDock: View {
                             .animation(.spring(response: 0.20, dampingFraction: 0.75), value: canSend)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
                 .disabled(!canSend || vm.isSending)
             }
             .modifier(DMGlassGroup())
@@ -1533,7 +1533,7 @@ private struct DMPasscodeModalOverlay: View {
                                 .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70))
                                 .frame(width: 58, height: 58)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.target)
                         .disabled(vm.isVerifyingPasscode)
                         
                         // 0
@@ -1557,7 +1557,7 @@ private struct DMPasscodeModalOverlay: View {
                                         .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.target)
                         .disabled(vm.isVerifyingPasscode)
                     }
                 }
@@ -1641,7 +1641,7 @@ private struct DMPasscodeModalOverlay: View {
                         .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .disabled(vm.isVerifyingPasscode)
     }
     

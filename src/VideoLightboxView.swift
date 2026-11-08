@@ -599,7 +599,7 @@ struct VideoLightboxOverlay: View {
                                     y: 2
                                 )
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(.target)
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
                     }
                     
@@ -630,7 +630,7 @@ struct VideoLightboxOverlay: View {
                                 )
                                 .shadow(color: Color.black.opacity(0.30), radius: 8, x: 0, y: 2)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.target)
                             .fixedSize()
                             
                             // Close Button
@@ -639,7 +639,7 @@ struct VideoLightboxOverlay: View {
                                     .font(.system(size: 26))
                                     .foregroundColor(Color(white: 0.85))
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(.target)
                         }
                         .padding(.horizontal, 28)
                         .padding(.top, 24)
@@ -806,7 +806,7 @@ struct VideoLightboxOverlay: View {
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(Color.white.opacity(0.12)))
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             
             // Current Time
             Text(formatTime(manager.currentTime))
@@ -892,7 +892,7 @@ struct VideoLightboxOverlay: View {
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(Color.white.opacity(0.12)))
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
@@ -933,7 +933,7 @@ struct VideoLightboxOverlay: View {
                 }
                 .foregroundColor(.white.opacity(0.85))
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             
             Spacer()
             
@@ -962,7 +962,7 @@ struct VideoLightboxOverlay: View {
                     y: 3
                 )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
         }
         .padding(.horizontal, 8)
     }
@@ -980,7 +980,7 @@ struct VideoLightboxOverlay: View {
                 }
             }
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private func formatTime(_ seconds: Double) -> String {

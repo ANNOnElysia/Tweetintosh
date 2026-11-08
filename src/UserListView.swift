@@ -95,7 +95,7 @@ struct UserListView: View {
                     .frame(width: 36, height: 36)
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help("\(loc.t("nav_back")) (Esc / ←)")
 
             Text(loc.t(vm.kind.titleKey))

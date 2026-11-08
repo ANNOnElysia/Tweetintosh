@@ -81,6 +81,8 @@ Platform
   a post in sync after a like / repost / bookmark.
 - `ObservationSupport.swift` — `observeChanges(of:perform:)`, the stand-in for subscribing to `objectWillChange` on an
   `@Observable` object from AppKit code.
+- `TouchSupport.swift` — touch screens (macOS 27): `ScrollInput` tells a finger's scroll from a trackpad's, and the
+  app's `.target` button style gives every borderless button a rectangular target of at least 36 points.
 
 ## Conventions
 
@@ -98,6 +100,9 @@ Platform
   for what that costs and the helpers that absorb it). The one exception is the Videos tab (`VideosView.swift`): a
   `List` cannot snap to whole pages, so it is a `ScrollView` with `.scrollTargetBehavior(.paging)`; its pages are
   screen-sized and few, so the costs a `List` avoids don't arise there.
+- **Borderless buttons use `.buttonStyle(.target)`**, never `.plain`: a plain button only answers inside its own frame,
+  which for an icon is far too small for a finger. Test touch with an iPad on iPadOS 27 over Sidecar; a finger's drag
+  reaches a scroll view whose touch scrolling is off as a mouse drag, and never reaches event monitors as a touch.
 - **Shared state is moving to `@Observable`.** `NavigationManager` and `TimelineViewModel` are already observed per
   property, so a view refreshes only for what its `body` reads: read them as plain `let` properties (`@Bindable` where a
   `$binding` is needed), mark bookkeeping that no view shows `@ObservationIgnored`, and from AppKit code watch them with

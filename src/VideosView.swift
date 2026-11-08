@@ -123,7 +123,7 @@ struct VideosView: View {
                 .frame(width: 36, height: 36)
                 .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .help(loc.t("videos_show_sidebar") + " (⌥`)")
         .accessibilityLabel(loc.t("videos_show_sidebar"))
         .padding(.leading, 16)
@@ -228,7 +228,7 @@ private struct VideoPage: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help(loc.t("videos_open_profile"))
 
             if !post.displayBodyText.isEmpty {
@@ -282,7 +282,7 @@ private struct VideoActionRail: View {
 
             if let url = URL(string: "https://x.com/\(post.author.screenName)/status/\(post.id)") {
                 ShareLink(item: url) { RailIcon(systemImage: "square.and.arrow.up") }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                     .help(loc.t("share"))
                     .accessibilityLabel(loc.t("share"))
             }
@@ -318,7 +318,7 @@ private struct RailButton: View {
             Button(action: action) {
                 RailIcon(systemImage: systemImage, tint: tint, effectTrigger: effectTrigger)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help(title)
             .accessibilityLabel(title)
             .accessibilityValue(count.map { $0.formatted() } ?? "")

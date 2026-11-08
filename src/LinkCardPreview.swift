@@ -141,7 +141,7 @@ struct LinkCardPreviewView: View {
                         .frame(width: 24, height: 24)
                         .background(Circle().fill(Color.black.opacity(0.75)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
                 .padding(8)
                 .disabled(isDisabled)
                 .help(loc.t("remove_link_preview"))

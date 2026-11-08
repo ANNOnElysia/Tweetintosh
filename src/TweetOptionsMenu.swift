@@ -150,7 +150,7 @@ struct TweetOptionsMenuButton: View {
                     )
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isHovered)
             .animation(.spring(response: 0.28, dampingFraction: 0.80), value: isMenuOpen)
             .onHover { isHovered in
@@ -583,7 +583,7 @@ struct MenuRowButton: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .animation(.spring(response: 0.18, dampingFraction: 0.82), value: hover.isHovered)
         .onHover { isHovered in
             withAnimation(.spring(response: 0.18, dampingFraction: 0.82)) {

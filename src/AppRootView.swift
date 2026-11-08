@@ -345,9 +345,9 @@ private struct LiquidGlassCapsule: View {
                     Capsule()
                         .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                 )
-                .contentShape(Capsule())
+                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .padding(.leading, 6)
             .help("Toggle Sidebar (⌥`)")
             
@@ -397,7 +397,7 @@ private struct LiquidGlassCapsule: View {
                                         activeTabBackground
                                     }
                                 }
-                                .contentShape(Capsule())
+                                .contentShape(Rectangle())
                             }
                             .pressDragItem(tab)
                         }
@@ -450,7 +450,7 @@ private struct LiquidGlassCapsule: View {
                                     .font(.system(size: 11))
                                     .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(.target)
                             .padding(.trailing, 8)
                         } else {
                             Text("esc")
@@ -520,9 +520,9 @@ private struct LiquidGlassCapsule: View {
                         Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     }
                 }
-                .contentShape(Capsule())
+                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .padding(.trailing, 6)
             .help(nav.isSearchActive ? "Close Search (Esc / ⌥S)" : "Search (⌥S)")
         }
@@ -691,9 +691,9 @@ private struct LiquidGlassSidebar: View {
                         Capsule()
                             .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     )
-                    .contentShape(Capsule())
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .help("Toggle Sidebar (⌥`)")
             }
             .padding(.horizontal, 14)
@@ -746,7 +746,7 @@ private struct LiquidGlassSidebar: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .padding(.horizontal, 8)
             }
             
@@ -789,7 +789,7 @@ private struct LiquidGlassSidebar: View {
                         .fill(ThemeManager.accent)
                 )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .padding(.horizontal, 8)
             .padding(.bottom, 2)
             
@@ -809,7 +809,7 @@ private struct LiquidGlassSidebar: View {
                     .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .help(loc.t(accounts.active == nil ? "settings" : "view_profile"))
 
                 Button(action: onOpenSettings) {
@@ -834,7 +834,7 @@ private struct LiquidGlassSidebar: View {
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .help(loc.t("settings"))
                 .padding(.trailing, 4)
             }
@@ -952,7 +952,7 @@ private struct SidebarSearchRow: View {
                     .padding(.vertical, 8)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
         }
         .onChange(of: nav.isSearchActive) { _, active in
@@ -993,7 +993,7 @@ private struct SidebarSearchRow: View {
                         .font(.system(size: 11))
                         .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
         }
         .padding(.horizontal, 11)
@@ -1097,7 +1097,7 @@ private struct SidebarContextSection: View {
                     iconTile("arrow.up.forward")
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .contextMenu {
                 Button(loc.t("refresh_lists")) { timelineVM.fetchUserLists() }
             }

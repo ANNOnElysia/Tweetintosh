@@ -583,7 +583,7 @@ struct ProfileView: View {
         } label: {
             statPillLabel(count, label)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         // The account's id arrives with the profile when the page was opened from just a handle
         .disabled(vm.userId.isEmpty)
         .help(label)
@@ -627,7 +627,7 @@ struct ProfileView: View {
                     Link(destination: url) {
                         metaItem("link", Text(website).foregroundColor(ThemeManager.accent))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 }
                 if let joined = vm.profile?.joinedAt {
                     metaItem("calendar", Text(loc.format("profile_joined", ["date": Self.joinedFormatter().string(from: joined)])))
@@ -685,7 +685,7 @@ struct ProfileView: View {
                                     .matchedGeometryEffect(id: "profile-tab", in: tabNamespace)
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .pressDragItem(tab)
             }
@@ -777,7 +777,7 @@ struct ProfileView: View {
                     .frame(width: 36, height: 36)
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help("\(loc.t("nav_back")) (Esc / ←)")
 
             // Collapsed identity: avatar, name, and follower count once the banner scrolls away
@@ -848,11 +848,11 @@ struct ProfileView: View {
                 .font(.system(size: 14, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
                 .frame(width: 36, height: 36)
-                .contentShape(Circle())
+                .contentShape(Rectangle())
         }
         // The borderless style flattens its label into a dimmed, left-aligned image; this one draws the view as it is
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .menuIndicator(.hidden)
         .fixedSize()
         .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
@@ -875,7 +875,7 @@ struct ProfileView: View {
                 .frame(height: 36)
                 .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .disabled(vm.profile == nil)
         .help(loc.t("edit_profile"))
         .sheet(isPresented: $vm.isEditing) {
@@ -900,7 +900,7 @@ struct ProfileView: View {
                 .frame(height: 36)
                 .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help(loc.format("profile_blocked_follow", ["name": vm.user.formattedHandle]))
         } else {
             Button(action: vm.toggleFollow) {
@@ -917,7 +917,7 @@ struct ProfileView: View {
                     .modifier(FollowGlass(enabled: vm.isFollowing, isLiquid: theme.useLiquidGlass))
                     .opacity(vm.isFollowBusy ? 0.6 : 1)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(vm.profile == nil && vm.user.id.isEmpty)
             .help(vm.isFollowing ? loc.t("profile_unfollow") : loc.t("profile_follow"))
         }
@@ -1094,7 +1094,7 @@ struct FoldableText<Content: View>: View {
                         .foregroundColor(ThemeManager.accent)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
         }
     }

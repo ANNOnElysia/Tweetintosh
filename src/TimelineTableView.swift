@@ -197,7 +197,8 @@ final class TimelineNSTableView: NSTableView {
     override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?) -> Bool { true }
 }
 
-// Makes a swipe on Home travel further, in proportion to how fast it is. Slow movement stays 1:1 so the content still follows
+// Makes a trackpad swipe on Home travel further, in proportion to how fast it is. A finger on a touch screen is left 1:1,
+// since the content has to stay under it. Slow movement stays 1:1 so the content still follows
 // the finger while reading, and because momentum slows down gradually, the glide eases back to 1:1 with no visible step.
 //
 // Done on the clip view's steps rather than on the scroll events: with responsive scrolling AppKit passes only the first
@@ -244,7 +245,7 @@ final class TimelineClipView: NSClipView {
     }
 
     private func boosted(_ proposed: NSPoint) -> NSPoint {
-        guard isInLiveScroll, Self.maximumGain > 1, let scrollView = enclosingScrollView, let document = documentView else { return proposed }
+        guard isInLiveScroll, !ScrollInput.shared.isDirectTouch, Self.maximumGain > 1, let scrollView = enclosingScrollView, let document = documentView else { return proposed }
         let current = bounds.minY
         let step = proposed.y - current
         let topY = scrollView.restingTopY

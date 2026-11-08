@@ -95,7 +95,7 @@ struct LongTextToggle: View {
                     .foregroundColor(ThemeManager.accent)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .padding(.top, 2)
         }
     }

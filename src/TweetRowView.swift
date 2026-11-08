@@ -142,11 +142,10 @@ struct TweetRowView: View {
             
             // 3. Actions, with the post's views among them
             // Kept outside content onTapGesture to allow direct, uninhibited interaction with buttons & menus
-            TweetActionBar(tweet: tweet)
+            // The space between the post and the divider belongs to the buttons, so a tap anywhere in it lands on one
+            TweetActionBar(tweet: tweet, reachAbove: 8, reachBelow: 12)
                 .padding(.leading, 66) // Aligns with text column (16 horizontal padding + 40 avatar + 10 spacing)
                 .padding(.trailing, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
             
             // 4. Subtle Row Divider (a thread continues into the next row instead)
             if !threadBelow {
@@ -259,6 +258,10 @@ struct TweetActionBar: View {
     var actions = TweetActions()
     // The main post on its page: larger, with a bookmark count, and its views are shown beside the date instead
     var isProminent = false
+    // The free space above and below the bar, which its buttons take in as part of their targets. The bar lays this
+    // space out itself, so callers pass it here instead of padding the bar.
+    var reachAbove: CGFloat = 0
+    var reachBelow: CGFloat = 0
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @StateObject private var like = LikeAnimationState()
@@ -268,83 +271,94 @@ struct TweetActionBar: View {
     static let replyColor = Color(red: 0.114, green: 0.608, blue: 0.941)
     static let repostColor = Color(red: 0.0, green: 0.73, blue: 0.49)
     static let likeColor = Color(red: 0.976, green: 0.094, blue: 0.502)
+    // How far left of its icon each button reaches, into the empty end of the column before it, so the bar is split
+    // between the buttons near the midpoints between icons rather than at each icon's left edge
+    private static let reach: CGFloat = 24
+    private static let bookmarkGap: CGFloat = 18
     
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
             Group {
-                HoverReader(key: tweet.id) { hovered in
-                    Button(action: { actions.reply(tweet) }) {
-                        label(icon: "bubble.left", count: tweet.replyCount,
-                              color: hovered ? Self.replyColor : ThemeManager.secondaryText)
-                    }
-                    .buttonStyle(.plain)
+                cell(help: loc.t("reply"), action: { actions.reply(tweet) }) { hovered in
+                    label(icon: "bubble.left", count: tweet.replyCount,
+                          color: hovered ? Self.replyColor : ThemeManager.secondaryText)
                 }
-                .help(loc.t("reply"))
-                .frame(maxWidth: .infinity, alignment: .leading)
                 
                 // A plain Button that pops up an NSMenu on click: SwiftUI's Menu is backed by an NSPopUpButton,
                 // and creating one per row as rows scroll into view was a major source of scroll hitches.
-                HoverReader(key: tweet.id) { hovered in
-                    Button(action: showRepostMenu) {
-                        label(icon: "arrow.2.squarepath", count: tweet.retweetCount, isActive: tweet.isRetweeted,
-                              color: tweet.isRetweeted || hovered ? Self.repostColor : ThemeManager.secondaryText)
-                    }
-                    .buttonStyle(.plain)
+                cell(help: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), action: showRepostMenu) { hovered in
+                    label(icon: "arrow.2.squarepath", count: tweet.retweetCount, isActive: tweet.isRetweeted,
+                          color: tweet.isRetweeted || hovered ? Self.repostColor : ThemeManager.secondaryText)
                 }
-                .help(tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"))
-                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                HoverReader(key: tweet.id) { hovered in
-                    Button(action: {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
-                            like.scale = 1.35
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                like.scale = 1.0
-                            }
-                        }
-                        actions.like(tweet)
-                    }) {
-                        label(icon: tweet.isFavorited ? "heart.fill" : "heart", count: tweet.favoriteCount,
-                              isActive: tweet.isFavorited, iconScale: like.scale,
-                              color: tweet.isFavorited || hovered ? Self.likeColor : ThemeManager.secondaryText)
+                cell(help: tweet.isFavorited ? loc.t("unlike") : loc.t("like"), action: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
+                        like.scale = 1.35
                     }
-                    .buttonStyle(.plain)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                            like.scale = 1.0
+                        }
+                    }
+                    actions.like(tweet)
+                }) { hovered in
+                    label(icon: tweet.isFavorited ? "heart.fill" : "heart", count: tweet.favoriteCount,
+                          isActive: tweet.isFavorited, iconScale: like.scale,
+                          color: tweet.isFavorited || hovered ? Self.likeColor : ThemeManager.secondaryText)
                 }
-                .help(tweet.isFavorited ? loc.t("unlike") : loc.t("like"))
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .opacity(tweet.author.hasBlockedYou ? 0.35 : 1)
             
             if !isProminent {
                 label(icon: "chart.bar.xaxis", count: tweet.viewCount ?? 0, color: ThemeManager.secondaryText)
                     .help(loc.t("views"))
+                    .padding(.top, reachAbove)
+                    .padding(.bottom, reachBelow)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             
-            HoverReader(key: tweet.id) { hovered in
-                Button(action: { actions.bookmark(tweet) }) {
-                    label(icon: tweet.isBookmarked ? "bookmark.fill" : "bookmark",
-                          count: isProminent ? tweet.bookmarkCount : 0, isActive: tweet.isBookmarked,
-                          color: tweet.isBookmarked || hovered ? ThemeManager.accent : ThemeManager.secondaryText)
-                }
-                .buttonStyle(.plain)
+            // Beside the timeline's share button, with a narrow gap the two split between them
+            cell(help: loc.t(tweet.isBookmarked ? "remove_bookmark" : "bookmark"),
+                 trailing: isProminent ? 0 : Self.bookmarkGap / 2, fills: isProminent,
+                 action: { actions.bookmark(tweet) }) { hovered in
+                label(icon: tweet.isBookmarked ? "bookmark.fill" : "bookmark",
+                      count: isProminent ? tweet.bookmarkCount : 0, isActive: tweet.isBookmarked,
+                      color: tweet.isBookmarked || hovered ? ThemeManager.accent : ThemeManager.secondaryText)
             }
-            .help(loc.t(tweet.isBookmarked ? "remove_bookmark" : "bookmark"))
-            .padding(.trailing, isProminent ? 0 : 18)
-            .frame(maxWidth: isProminent ? .infinity : nil, alignment: .leading)
+            // The cell takes up only its icon; its target reaches halfway across the gap after it
+            .padding(.trailing, isProminent ? 0 : Self.bookmarkGap)
             
-            HoverReader(key: tweet.id) { hovered in
-                Button(action: { actions.share(tweet) }) {
-                    label(icon: "square.and.arrow.up", count: 0,
-                          color: hovered ? ThemeManager.accent : ThemeManager.secondaryText)
-                }
-                .buttonStyle(.plain)
+            cell(help: loc.t("copy_link"), lead: isProminent ? Self.reach : Self.bookmarkGap / 2, fills: false,
+                 action: { actions.share(tweet) }) { hovered in
+                label(icon: "square.and.arrow.up", count: 0,
+                      color: hovered ? ThemeManager.accent : ThemeManager.secondaryText)
             }
-            .help(loc.t("copy_link"))
         }
+    }
+    
+    // One button and its target: `lead` points to the left of its icon, the whole height of the bar with the space
+    // above and below it, and to the right either the rest of its column (`fills`) or `trailing` points. Only the
+    // target grows; padding outside the button gives the space back, so the icons stay where they were.
+    private func cell<Label: View>(help: String, lead: CGFloat = reach, trailing: CGFloat = 0, fills: Bool = true,
+                                   action: @escaping () -> Void,
+                                   @ViewBuilder label: @escaping (Bool) -> Label) -> some View {
+        HoverReader(key: tweet.id) { hovered in
+            Button(action: action) {
+                label(hovered)
+                    .padding(.trailing, trailing)
+                    .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
+                    .padding(.leading, lead)
+                    .padding(.top, reachAbove)
+                    .padding(.bottom, reachBelow)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.target)
+        }
+        .help(help)
+        .padding(.leading, -lead)
+        .padding(.trailing, fills ? lead : -trailing)
+        .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
     }
     
     private func label(icon: String, count: Int, isActive: Bool = false, iconScale: CGFloat = 1, color: Color) -> some View {

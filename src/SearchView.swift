@@ -186,7 +186,7 @@ struct SearchView: View {
                     .frame(width: 36, height: 36)
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help("\(loc.t("nav_back")) (Esc / ←)")
 
             HStack(spacing: 8) {
@@ -212,7 +212,7 @@ struct SearchView: View {
                             .font(.system(size: 12))
                             .foregroundColor(ThemeManager.secondaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 }
             }
             .padding(.horizontal, 14)
@@ -257,7 +257,7 @@ struct SearchView: View {
                                     .matchedGeometryEffect(id: "search-tab", in: tabNamespace)
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .pressDragItem(tab)
             }

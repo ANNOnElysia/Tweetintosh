@@ -87,6 +87,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var welcomeController: WelcomeWindowController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ScrollInput.shared.start()
         setupMainMenu()
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
         if EULA.needsAcceptance {

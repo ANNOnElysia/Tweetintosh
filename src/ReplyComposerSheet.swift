@@ -134,7 +134,7 @@ struct ReplyComposerSheet: View {
                     .font(theme.appFont(size: 13, weight: .medium))
                     .foregroundColor(ThemeManager.secondaryText)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .keyboardShortcut(.escape, modifiers: [])
             
             Spacer()
@@ -159,7 +159,7 @@ struct ReplyComposerSheet: View {
                 .background(canSend ? ThemeManager.accent : ThemeManager.accent.opacity(0.4))
                 .clipShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(!canSend)
             .keyboardShortcut(.return, modifiers: [.command])
         }

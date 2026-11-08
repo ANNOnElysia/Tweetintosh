@@ -243,7 +243,7 @@ struct EditProfileView: View {
                 .frame(width: compact ? 36 : 42, height: compact ? 36 : 42)
                 .background(Circle().fill(Color.black.opacity(0.55)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .help(loc.t(key))
         .accessibilityLabel(loc.t(key))
         .disabled(model.isSaving)

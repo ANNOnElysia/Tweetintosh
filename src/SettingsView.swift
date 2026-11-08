@@ -68,9 +68,9 @@ struct GlassSegmentedAppearancePicker: View {
                     }
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var selectedBackground: some View {
@@ -147,9 +147,9 @@ struct GlassSegmentedTonePicker: View {
                     }
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var selectedBackground: some View {
@@ -227,9 +227,9 @@ struct GlassSegmentedFontPicker: View {
                     }
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var selectedBackground: some View {
@@ -287,7 +287,7 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
                     .padding(2)
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.78), value: configuration.isOn)
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
             .onTapGesture {
                 configuration.isOn.toggle()
             }
@@ -371,9 +371,9 @@ struct GlassDropdownPicker<T: Hashable>: View {
                     defaultMenuBackground
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var currentTitle: String {
@@ -415,6 +415,8 @@ struct SettingsCloseButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .padding(5)
+            .contentShape(Rectangle())
     }
     
     private func defaultCircleBackground(isPressed: Bool) -> some View {
@@ -447,6 +449,8 @@ struct SettingsCloseButton: View {
         .buttonStyle(SettingsCloseButtonStyle())
         .keyboardShortcut(.escape, modifiers: [])
         .help("Esc")
+        // The style grows the button to the 36-point target around its circle; this takes the growth back
+        .padding(-5)
     }
 }
 
@@ -509,7 +513,7 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .help(isActive ? "" : loc.t("switch_account"))
             }
             
@@ -522,9 +526,9 @@ struct SettingsView: View {
                 }
                 .foregroundColor(ThemeManager.accent)
                 .padding(.vertical, 4)
-                .contentShape(Capsule())
+                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
         }
         .padding(14)
         .background(cardBackground)
@@ -723,9 +727,9 @@ struct SettingsView: View {
                                 defaultClearCacheBackground
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(.target)
                     
                     Spacer()
                     
@@ -756,9 +760,9 @@ struct SettingsView: View {
                                 defaultSignOutBackground
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(.target)
                 }
             }
             .padding(14)

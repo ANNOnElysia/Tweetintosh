@@ -25,7 +25,7 @@ struct ComposerAttachButton: View {
                 .foregroundColor(ThemeManager.accent)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(isDisabled)
 
             Text("⌥ + A")
@@ -81,7 +81,7 @@ struct ComposerAttachmentStrip: View {
                                 .background(Circle().fill(Color.black.opacity(0.55)))
                                 .padding(4)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.target)
                         .disabled(isDisabled)
                     }
                 }

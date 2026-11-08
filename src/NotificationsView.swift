@@ -230,7 +230,7 @@ private struct NotificationFilterCapsuleBar: View {
                             activeFilterBackground
                         }
                     }
-                    .contentShape(Capsule())
+                    .contentShape(Rectangle())
                 }
                 .pressDragItem(filter)
                 .help(loc.t(filter.titleKey))

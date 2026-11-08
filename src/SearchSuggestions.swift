@@ -268,7 +268,7 @@ struct SearchSuggestionsPanel: View {
                             .frame(width: 22, height: 22)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 case .user(let user):
                     CachedAsyncImage(urlString: user.avatarUrl, targetSize: CGSize(width: 28, height: 28))
                         .frame(width: 28, height: 28)
@@ -302,7 +302,7 @@ struct SearchSuggestionsPanel: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
     }
 
     private func icon(_ name: String) -> some View {
