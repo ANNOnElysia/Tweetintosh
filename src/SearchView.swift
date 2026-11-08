@@ -125,6 +125,13 @@ final class SearchViewModel: ObservableObject, TweetMutationTarget {
             if changed { tweets[tab] = list }
         }
     }
+
+    func removePost(id: String) {
+        for tab in Array(tweets.keys) {
+            guard let list = tweets[tab], list.contains(where: { $0.isCopy(ofPost: id) }) else { continue }
+            tweets[tab] = list.filter { !$0.isCopy(ofPost: id) }
+        }
+    }
 }
 
 // MARK: - Search Page

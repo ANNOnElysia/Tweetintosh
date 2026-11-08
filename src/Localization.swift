@@ -1184,6 +1184,62 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "静音 {handle}",
             .traditionalChinese: "將 {handle} 設為靜音"
         ],
+        "post_menu_delete": [
+            .english: "Delete Post…",
+            .japanese: "ポストを削除…",
+            .korean: "게시물 삭제…",
+            .simplifiedChinese: "删除帖子…",
+            .traditionalChinese: "刪除貼文…"
+        ],
+        "post_menu_copy_delete": [
+            .english: "Copy Text and Delete…",
+            .japanese: "テキストをコピーして削除…",
+            .korean: "텍스트 복사 후 삭제…",
+            .simplifiedChinese: "复制文本并删除…",
+            .traditionalChinese: "拷貝文字並刪除…"
+        ],
+        "delete_post_title": [
+            .english: "Delete this post?",
+            .japanese: "このポストを削除しますか？",
+            .korean: "이 게시물을 삭제할까요?",
+            .simplifiedChinese: "要删除这条帖子吗？",
+            .traditionalChinese: "要刪除這則貼文嗎？"
+        ],
+        "delete_post_message": [
+            .english: "It will be removed from your profile, from the timelines of people who follow you, and from search. This can't be undone.",
+            .japanese: "プロフィール、フォロワーのタイムライン、検索結果から削除されます。この操作は取り消せません。",
+            .korean: "내 프로필, 팔로워의 타임라인, 검색 결과에서 삭제됩니다. 이 작업은 취소할 수 없습니다.",
+            .simplifiedChinese: "它将从你的个人资料、关注你的人的时间线和搜索结果中移除。此操作无法撤销。",
+            .traditionalChinese: "它將從你的個人檔案、追蹤你的人的時間軸和搜尋結果中移除。此動作無法復原。"
+        ],
+        "copy_delete_post_message": [
+            .english: "Its text will be copied so you can post it again, then the post will be removed from your profile, timelines and search. This can't be undone.",
+            .japanese: "テキストをコピーしてから、ポストをプロフィール、タイムライン、検索結果から削除します。この操作は取り消せません。",
+            .korean: "텍스트를 복사한 뒤 게시물을 프로필, 타임라인, 검색 결과에서 삭제합니다. 이 작업은 취소할 수 없습니다.",
+            .simplifiedChinese: "将先复制它的文本，以便你重新发布，然后从你的个人资料、时间线和搜索结果中移除。此操作无法撤销。",
+            .traditionalChinese: "將先拷貝它的文字，方便你重新發佈，然後從你的個人檔案、時間軸和搜尋結果中移除。此動作無法復原。"
+        ],
+        "delete_action": [
+            .english: "Delete",
+            .japanese: "削除",
+            .korean: "삭제",
+            .simplifiedChinese: "删除",
+            .traditionalChinese: "刪除"
+        ],
+        "post_deleted": [
+            .english: "Post deleted",
+            .japanese: "ポストを削除しました",
+            .korean: "게시물을 삭제했습니다",
+            .simplifiedChinese: "帖子已删除",
+            .traditionalChinese: "貼文已刪除"
+        ],
+        "post_copied_deleted": [
+            .english: "Text copied, post deleted",
+            .japanese: "テキストをコピーし、ポストを削除しました",
+            .korean: "텍스트를 복사하고 게시물을 삭제했습니다",
+            .simplifiedChinese: "已复制文本并删除帖子",
+            .traditionalChinese: "已拷貝文字並刪除貼文"
+        ],
         "post_menu_block": [
             .english: "Block {handle}",
             .japanese: "{handle} をブロック",

@@ -197,6 +197,15 @@ struct Tweet: Codable, Hashable, Identifiable {
     var displayLinks: [DisplayLink] = []
     var cleanText: String { displayBodyText }
     
+    /// The post's words as written, with links in full rather than shortened for display, for copying
+    var copyableText: String {
+        var text = displayBodyText as NSString
+        for link in displayLinks.reversed() {
+            text = text.replacingCharacters(in: NSRange(location: link.location, length: link.length), with: link.url) as NSString
+        }
+        return text as String
+    }
+    
     private static let mmmDDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"

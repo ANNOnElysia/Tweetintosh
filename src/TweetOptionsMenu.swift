@@ -310,6 +310,36 @@ private struct TweetMenuContentView: View {
                 }
             }
             
+            // Group 2 for your own posts: deleting, last and in red as destructive actions are
+            if isSelf {
+                Rectangle()
+                    .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12))
+                    .frame(height: 0.5)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                
+                // Copies the words first, so the post can be written again, corrected, after it is gone
+                menuRow(
+                    title: loc.t("post_menu_copy_delete"),
+                    icon: "doc.on.doc",
+                    iconColor: Color(hex: "#F91880"),
+                    isDestructive: true
+                ) {
+                    onDismiss()
+                    PostDeletion.confirm(tweet, copyingText: true)
+                }
+                
+                menuRow(
+                    title: loc.t("post_menu_delete"),
+                    icon: "trash",
+                    iconColor: Color(hex: "#F91880"),
+                    isDestructive: true
+                ) {
+                    onDismiss()
+                    PostDeletion.confirm(tweet, copyingText: false)
+                }
+            }
+            
             // Group 2: Author Actions (Flattened directly into menu without awkward submenus)
             if !isSelf {
                 // Subtle standard HIG hairline separator
@@ -389,6 +419,55 @@ private struct TweetMenuContentView: View {
             isDestructive: isDestructive,
             action: action
         )
+    }
+}
+
+// MARK: - Deleting Your Own Post
+
+enum PostDeletion {
+    /// Asks before deleting, as nothing brings a deleted post back. With `copyingText`, the post's words go to the
+    /// clipboard once the deletion is confirmed, so cancelling leaves the clipboard as it was.
+    static func confirm(_ tweet: Tweet, copyingText: Bool) {
+        let loc = LocalizationManager.shared
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = loc.t("delete_post_title")
+        alert.informativeText = loc.t(copyingText ? "copy_delete_post_message" : "delete_post_message")
+        let deleteButton = alert.addButton(withTitle: loc.t("delete_action"))
+        deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: loc.t("cancel"))
+
+        let handle: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .alertFirstButtonReturn else { return }
+            if copyingText {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(tweet.copyableText, forType: .string)
+            }
+            delete(tweet, copiedText: copyingText)
+        }
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            alert.beginSheetModal(for: window, completionHandler: handle)
+        } else {
+            handle(alert.runModal())
+        }
+    }
+
+    private static func delete(_ tweet: Tweet, copiedText: Bool) {
+        let loc = LocalizationManager.shared
+        // The original, so deleting your post from a repost of it still deletes the post itself
+        let postId = tweet.canonicalId
+        APIClient.shared.deleteTweet(id: postId) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    TimelineViewModel.shared.removePost(id: postId)
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+                    AppToastManager.shared.show(loc.t(copiedText ? "post_copied_deleted" : "post_deleted"), icon: "trash")
+                case .failure(let error):
+                    AppToastManager.shared.show(error.localizedDescription, icon: "xmark.circle")
+                }
+            }
+        }
     }
 }
 

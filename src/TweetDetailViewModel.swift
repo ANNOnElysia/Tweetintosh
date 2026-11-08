@@ -306,6 +306,21 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
         return (ancestors + replies).first { $0.canonicalId == id }
     }
 
+    // The page of a deleted post closes; the post leaves any other page's thread
+    func removePost(id: String) {
+        if focalTweet.isCopy(ofPost: id) {
+            if case .tweet(let shown) = NavigationManager.shared.overlayStack.last?.page, shown.isCopy(ofPost: id) {
+                NavigationManager.shared.dismissTweetDetail()
+            }
+            if DetailPane.shared.stack.last?.tweet.isCopy(ofPost: id) == true {
+                DetailPane.shared.goBack()
+            }
+            return
+        }
+        ancestors.removeAll { $0.isCopy(ofPost: id) }
+        replies.removeAll { $0.isCopy(ofPost: id) }
+    }
+    
     func applyMutation(id: String, transform: (inout Tweet) -> Void) {
         if focalTweet.canonicalId == id {
             transform(&focalTweet)

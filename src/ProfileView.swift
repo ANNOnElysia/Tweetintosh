@@ -67,6 +67,13 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
         }
     }
     
+    func removePost(id: String) {
+        for tab in Array(tweets.keys) {
+            guard let list = tweets[tab], list.contains(where: { $0.tweet.isCopy(ofPost: id) }) else { continue }
+            tweets[tab] = list.filter { !$0.tweet.isCopy(ofPost: id) }
+        }
+    }
+    
     var isBlockedByUser: Bool { user.hasBlockedYou }
 
     var userId: String { profile?.user.id ?? user.id }

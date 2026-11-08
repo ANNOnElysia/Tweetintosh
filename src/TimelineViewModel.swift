@@ -675,6 +675,21 @@ final class TimelineViewModel: ObservableObject {
         TweetMutationHub.shared.apply(id: id, transform: transform)
     }
     
+    /// Takes a deleted post, and reposts of it, off every feed and every open page
+    func removePost(id: String) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            let matches: (Tweet) -> Bool = { $0.isCopy(ofPost: id) }
+            forYouTweets.removeAll(where: matches)
+            followingTweets.removeAll(where: matches)
+            bookmarkTweets.removeAll(where: matches)
+            for (listId, list) in listTweets {
+                listTweets[listId] = list.filter { !matches($0) }
+            }
+            tweets.removeAll(where: matches)
+        }
+        TweetMutationHub.shared.remove(id: id)
+    }
+    
     /// Removes all tweets from a blocked or muted author across all timeline feeds
     func removeTweets(byAuthorId authorId: String, screenName: String? = nil) {
         withAnimation(.easeInOut(duration: 0.25)) {
