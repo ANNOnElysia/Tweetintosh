@@ -20,6 +20,8 @@ struct ReplyComposerSheet: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @StateObject private var state = ReplyComposerState()
+    @StateObject private var linkCard = LinkCardPreviewModel()
+    @FocusState private var editorFocused: Bool
     
     private let characterLimit = 280
     
@@ -31,6 +33,10 @@ struct ReplyComposerSheet: View {
         let trimmed = state.replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         return (!trimmed.isEmpty || !state.attachments.isEmpty) && remainingCharacters >= 0 && !state.isSending
     }
+    
+    // Attached media takes the place of the link's card, as on X
+    private var showsLinkCard: Bool { state.attachments.isEmpty }
+    private var linkCardShown: Bool { showsLinkCard && linkCard.preview != nil }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -45,7 +51,15 @@ struct ReplyComposerSheet: View {
                 VStack(alignment: .leading, spacing: 0) {
                     originalTweetSnippet
                     composerInputRow
-                    
+
+                    if let card = linkCard.preview, showsLinkCard {
+                        LinkCardPreviewView(card: card, isDisabled: state.isSending) { linkCard.dismiss() }
+                            .padding(.leading, 60)   // under the text, past the avatar
+                            .padding(.trailing, 16)
+                            .padding(.top, 4)
+                            .transition(.opacity)
+                    }
+
                     if !state.attachments.isEmpty {
                         ComposerAttachmentStrip(attachments: $state.attachments, isDisabled: state.isSending)
                             .padding(.top, 8)
@@ -70,7 +84,9 @@ struct ReplyComposerSheet: View {
             
             bottomControlsBar
         }
-        .frame(width: 520, height: 340 + (state.attachments.isEmpty ? 0 : 110))
+        .frame(width: 520, height: 340 + (state.attachments.isEmpty ? 0 : 110)
+               + (linkCardShown ? max(0, LinkCardPreviewView.height(for: linkCard.preview, width: 520 - 76) - 60) : 0))
+        .onChange(of: state.replyText) { linkCard.textChanged(state.replyText) }
         .background(ThemeManager.background)
         .onAppear { NavigationManager.shared.isReplyComposerOpen = true }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_CancelReply"))) { _ in
@@ -218,9 +234,13 @@ struct ReplyComposerSheet: View {
             .textFieldStyle(.plain)
             .font(.system(size: 14))
             .foregroundColor(ThemeManager.primaryText)
-            .lineLimit(5...10)
+            // Room held by a frame, not a minimum line count, so a link's card can move up under the text
+            .lineLimit(1...10)
+            .focused($editorFocused)
             .returnStartsNewLine()
-            .frame(minHeight: 110, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: linkCardShown ? 40 : 110, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture { editorFocused = true }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -311,7 +331,8 @@ struct ReplyComposerSheet: View {
                 return
             }
             
-            TimelineViewModel.shared.postReply(to: tweet, text: textToSend, mediaIds: mediaIds) { result in
+            let cardUri = linkCard.cardIsDismissed(for: textToSend) ? "tombstone://card" : nil
+            TimelineViewModel.shared.postReply(to: tweet, text: textToSend, mediaIds: mediaIds, cardUri: cardUri) { result in
                 DispatchQueue.main.async {
                     self.state.isSending = false
                     switch result {

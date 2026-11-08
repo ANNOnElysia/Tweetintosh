@@ -21,6 +21,8 @@ struct TweetComposerSheet: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @StateObject private var state = TweetComposerState()
+    @StateObject private var linkCard = LinkCardPreviewModel()
+    @FocusState private var editorFocused: Bool
     
     private let characterLimit = 280
     
@@ -33,6 +35,10 @@ struct TweetComposerSheet: View {
         return (!trimmed.isEmpty || !state.attachments.isEmpty) && remainingCharacters >= 0 && !state.isSending
     }
     
+    // X gives a post one card: attached media or a quoted post takes the place of the link's card
+    private var showsLinkCard: Bool { quotedTweet == nil && state.attachments.isEmpty }
+    private var linkCardShown: Bool { showsLinkCard && linkCard.preview != nil }
+    
     var body: some View {
         VStack(spacing: 0) {
             headerBar
@@ -43,7 +49,15 @@ struct TweetComposerSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     composerInputRow
-                    
+
+                    if let card = linkCard.preview, showsLinkCard {
+                        LinkCardPreviewView(card: card, isDisabled: state.isSending) { linkCard.dismiss() }
+                            .padding(.leading, 64)
+                            .padding(.trailing, 16)
+                            .padding(.top, 4)
+                            .transition(.opacity)
+                    }
+
                     if !state.attachments.isEmpty {
                         ComposerAttachmentStrip(attachments: $state.attachments, isDisabled: state.isSending)
                     }
@@ -74,7 +88,9 @@ struct TweetComposerSheet: View {
             
             bottomControlsBar
         }
-        .frame(width: 540, height: (quotedTweet != nil ? 430 : 320) + (state.attachments.isEmpty ? 0 : 110))
+        .frame(width: 540, height: (quotedTweet != nil ? 430 : 320) + (state.attachments.isEmpty ? 0 : 110)
+               + (linkCardShown ? max(0, LinkCardPreviewView.height(for: linkCard.preview, width: 540 - 80) - 110) : 0))
+        .onChange(of: state.text) { linkCard.textChanged(state.text) }
         .background(ThemeManager.background)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_AttachMedia"))) { _ in
             chooseMedia()
@@ -155,9 +171,15 @@ struct TweetComposerSheet: View {
             .textFieldStyle(.plain)
             .font(theme.appFont(size: 14.5))
             .foregroundColor(ThemeManager.primaryText)
-            .lineLimit(quotedTweet != nil ? 4...8 : 7...14)
+            // The writing room is a frame rather than a minimum line count, which a text field never gives back, so
+            // a link's card can move up under the text as it does on X. A click anywhere in that room still lands in
+            // the text.
+            .lineLimit(1...14)
+            .focused($editorFocused)
             .returnStartsNewLine()
-            .frame(minHeight: quotedTweet != nil ? 90 : 160, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: quotedTweet != nil ? 90 : (linkCardShown ? 40 : 160), alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture { editorFocused = true }
         }
         .padding(.horizontal, 16)
     }
@@ -264,7 +286,8 @@ struct TweetComposerSheet: View {
             }
             state.uploadStatus = nil
             
-            TimelineViewModel.shared.postTweet(text: textToSend, quoting: quotedTweet, mediaIds: mediaIds) { result in
+            let cardUri = linkCard.cardIsDismissed(for: textToSend) ? "tombstone://card" : nil
+            TimelineViewModel.shared.postTweet(text: textToSend, quoting: quotedTweet, mediaIds: mediaIds, cardUri: cardUri) { result in
                 DispatchQueue.main.async {
                     self.state.isSending = false
                     switch result {

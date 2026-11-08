@@ -1480,8 +1480,8 @@ final class APIClient {
     }
     
     /// Reply to a tweet
-    func reply(to tweetId: String, text: String, mediaIds: [String] = [], completion: @escaping (Result<String, APIError>) -> Void) {
-        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, mediaIds: mediaIds, completion: completion)
+    func reply(to tweetId: String, text: String, mediaIds: [String] = [], cardUri: String? = nil, completion: @escaping (Result<String, APIError>) -> Void) {
+        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, mediaIds: mediaIds, cardUri: cardUri, completion: completion)
     }
     
     // MARK: - Mute & Block Actions
@@ -1657,6 +1657,7 @@ final class APIClient {
         replyToTweetId: String? = nil,
         attachmentUrl: String? = nil,
         mediaIds: [String] = [],
+        cardUri: String? = nil,
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
         let features: [String: Any] = [
@@ -1700,6 +1701,10 @@ final class APIClient {
         
         if let attach = attachmentUrl, !attach.isEmpty {
             variables["attachment_url"] = attach
+        }
+        
+        if let cardUri = cardUri {
+            variables["card_uri"] = cardUri
         }
         
         func attempt(qids: [String]) {

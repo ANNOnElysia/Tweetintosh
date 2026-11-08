@@ -797,7 +797,7 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
-    func postReply(to tweet: Tweet, text: String, mediaIds: [String] = [], completion: @escaping (Result<String, APIError>) -> Void) {
+    func postReply(to tweet: Tweet, text: String, mediaIds: [String] = [], cardUri: String? = nil, completion: @escaping (Result<String, APIError>) -> Void) {
         let tweetId = tweet.id
         let postId = tweet.canonicalId
         
@@ -805,7 +805,7 @@ final class TimelineViewModel: ObservableObject {
             t.replyCount += 1
         }
         
-        APIClient.shared.reply(to: tweetId, text: text, mediaIds: mediaIds) { [weak self] result in
+        APIClient.shared.reply(to: tweetId, text: text, mediaIds: mediaIds, cardUri: cardUri) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
@@ -827,6 +827,7 @@ final class TimelineViewModel: ObservableObject {
         text: String,
         quoting tweet: Tweet? = nil,
         mediaIds: [String] = [],
+        cardUri: String? = nil,
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
         let attachmentUrl = tweet.map { "https://x.com/\($0.author.screenName)/status/\($0.id)" }
@@ -837,7 +838,7 @@ final class TimelineViewModel: ObservableObject {
             }
         }
         
-        APIClient.shared.createTweet(text: text, attachmentUrl: attachmentUrl, mediaIds: mediaIds) { [weak self] result in
+        APIClient.shared.createTweet(text: text, attachmentUrl: attachmentUrl, mediaIds: mediaIds, cardUri: cardUri) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {

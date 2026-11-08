@@ -1114,6 +1114,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "回复",
             .traditionalChinese: "回覆"
         ],
+        "remove_link_preview": [
+            .english: "Remove Link Preview",
+            .japanese: "リンクのプレビューを削除",
+            .korean: "링크 미리보기 제거",
+            .simplifiedChinese: "移除链接预览",
+            .traditionalChinese: "移除連結預覽"
+        ],
         "cancel": [
             .english: "Cancel",
             .japanese: "キャンセル",

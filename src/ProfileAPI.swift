@@ -106,6 +106,7 @@ final class GraphQLOperationIDs {
         // Who an account follows, and who follows it: read from X's web client on first use, like the two above
         "Following": [],
         "Followers": [],
+        "composerCardPreviewQuery": ["C1r84YfBL_DG4qOwIaQfjA"],
         "UserMedia": [
             "eF8kYZ4r9zFLqcYno3I17A", "oMVVrI5kt3kOpyHHTTKf5Q","BGmkmGDG0kZPM-aoQtNTTw", "dexO_2tohK86JDudXXG3Yw",
             "MOLbHrtk8Ovu7DUNOLcXiA", "Le6KlbilFmSu-5VltFND-Q"
