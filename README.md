@@ -21,6 +21,7 @@ Tweetintosh focuses on utility, keyboard navigation, and desktop ergonomics that
 - **Dual-Pane Navigation**: Takes advantage of wide displays by pairing your timeline alongside selected posts, threads, and quote tweets.
 - **Adaptive Sidebar**: The toggle follows an eased curve between the top bar and sidebar, carrying their shared glass surface with it. Respects the system Reduce Motion setting.
 - **Stable Reading Position**: Background timeline polling never auto-scrolls or displaces the text you are reading. New items wait behind a top indicator until summoned.
+- **Responsive Timeline**: The Home timeline prioritizes visible and nearby posts when measuring rows, and prepares media in the background.
 - **Multi-Account Switching**: Save multiple profiles and switch between them without re-authenticating.
 - **Instant Launch & Offline Cache**: Recent timelines are stored locally so you can read previously loaded posts immediately upon launch, even in poor connectivity or airplane mode.
 - **Transient Authentication**: WebKit is loaded only once on first run to capture your session cookies, then immediately released from memory.
@@ -40,6 +41,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 - **桌面双栏浏览**：在大屏幕上左侧保留时间线上下文，右侧展开阅读当前讨论串与引用，减少来回前进后退。
 - **自适应侧栏**：切换按钮沿缓入缓出的弧线在顶栏与侧栏之间移动，带动玻璃框变形，并遵循系统“减少动态效果”设置。
 - **阅读位置保护**：后台检测到新推文时仅在顶部显示更新计数，绝不会自动将时间线强制置顶移位。
+- **流畅浏览时间线**：主页优先测量屏幕内及附近的推文，并在后台准备媒体内容。
 - **多账号快速切换**：支持保存多个 X 账号，随时一键切换身份。
 - **即时启动与离线缓存**：推文快照持久化保存在本地，断网或飞行模式下打开即可浏览既有内容，网络连通时静默更新。
 - **瞬态登录认证**：仅在初次登录时启动一次临时网页组件读取 Cookie 凭证，提取完毕后立即销毁该实例，日常运行不驻留网页运行时。

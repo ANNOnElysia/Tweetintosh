@@ -358,6 +358,7 @@ final class TrackpadPullCoordinator {
         lastScrollActivity = CACurrentMediaTime()
         if !TimelineLiveScrollState.shared.isLiveScrolling {
             TimelineLiveScrollState.shared.isLiveScrolling = true
+            WindowDragging.setScrolling(true)
         }
         if scrollIdleTimer == nil {
             scheduleScrollIdleCheck(after: scrollIdleDelay)
@@ -384,6 +385,7 @@ final class TrackpadPullCoordinator {
         scrollIdleTimer = nil
         if TimelineLiveScrollState.shared.isLiveScrolling {
             TimelineLiveScrollState.shared.isLiveScrolling = false
+            WindowDragging.setScrolling(false)
         }
     }
     
