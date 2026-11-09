@@ -218,8 +218,10 @@ struct TweetDetailView: View {
             
             DetailPullIndicator(pull: state.pull, viewModel: viewModel)
             
-            // Top Floating Liquid Glass Navigation Bar
-            topNavigationBar
+            // Top Floating Liquid Glass Navigation Bar; in the pane, the pane's own header stands in for it
+            if !isInDetailPane {
+                topNavigationBar
+            }
             
             // Bottom Sticky Liquid Glass Reply Dock
             bottomReplyDock
