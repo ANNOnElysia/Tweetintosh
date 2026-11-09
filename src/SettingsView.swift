@@ -346,6 +346,8 @@ struct SettingsCloseButton: View {
 
 // MARK: - SettingsView Main Interface
 struct SettingsView: View {
+    private static let headerHeight: CGFloat = 54
+
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var mediaCache = MediaCacheManager.shared
@@ -440,22 +442,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header Bar: Title on left, Close ("小麻叉") on right
-            HStack(alignment: .center) {
-                Text(loc.t("settings"))
-                    .font(theme.appFont(size: 16, weight: .bold))
-                    .foregroundColor(ThemeManager.primaryText)
-                
-                Spacer()
-                
-                SettingsCloseButton(action: onClose)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
-            .background(ThemeManager.background)
-            
+        ZStack(alignment: .top) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     // 0. Accounts
@@ -680,9 +667,30 @@ struct SettingsView: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 4)
+        .padding(.top, Self.headerHeight + 4)
         .padding(.bottom, 16)
         }
+
+            HStack(alignment: .center) {
+                Text(loc.t("settings"))
+                    .font(theme.appFont(size: 16, weight: .bold))
+                    .foregroundColor(ThemeManager.primaryText)
+
+                Spacer()
+
+                SettingsCloseButton(action: onClose)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            .frame(height: Self.headerHeight)
+            // Match the notifications pane so settings scroll beneath the same fading surface.
+            .background(
+                LinearGradient(colors: [ThemeManager.background, ThemeManager.background.opacity(0.85), .clear],
+                               startPoint: .top, endPoint: .bottom)
+                    .padding(.bottom, -12)
+                    .allowsHitTesting(false)
+            )
         }
         .frame(width: 480, height: 860)
         .background(ThemeManager.background)

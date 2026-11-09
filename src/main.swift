@@ -590,6 +590,8 @@ final class SettingsWindow: NSWindow {
         )
         
         let hostingView = NSHostingView(rootView: settingsView)
+        // Settings draws its own header across the full window, including the hidden native title bar.
+        hostingView.safeAreaRegions = []
         hostingView.frame = win.contentView!.bounds
         hostingView.autoresizingMask = [.width, .height]
         win.contentView?.addSubview(hostingView)
