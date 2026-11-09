@@ -12,6 +12,8 @@ final class ReplyComposerState: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var attachments: [ComposerAttachment] = []
     @Published var uploadStatus: String? = nil
+    // How much of the attached media has uploaded, while posting with media
+    @Published var uploadProgress: Double? = nil
 }
 
 struct ReplyComposerSheet: View {
@@ -44,8 +46,7 @@ struct ReplyComposerSheet: View {
                 .onAppear { WebKitWriteChannel.shared.warmUp() }
 
             
-            Divider()
-                .background(ThemeManager.divider)
+            ComposerSendingBar(isSending: state.isSending, progress: state.uploadProgress)
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -147,9 +148,6 @@ struct ReplyComposerSheet: View {
             
             Button(action: submitReply) {
                 HStack(spacing: 6) {
-                    if state.isSending {
-                        LoadingIndicator(compactHeight: 16, tint: ThemeManager.onAccent)
-                    }
                     Text(loc.t("post_reply"))
                         .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.onAccent)
@@ -319,12 +317,14 @@ struct ReplyComposerSheet: View {
         
         state.isSending = true
         state.errorMessage = nil
+        state.uploadProgress = state.attachments.isEmpty ? nil : 0
         let attachments = state.attachments
         
         Task { @MainActor in
             let mediaIds: [String]
             do {
-                mediaIds = try await MediaAttachments.upload(attachments) { state.uploadStatus = $0 }
+                mediaIds = try await MediaAttachments.upload(attachments, status: { state.uploadStatus = $0 },
+                                                           progress: { state.uploadProgress = $0 })
             } catch {
                 state.isSending = false
                 state.errorMessage = error.localizedDescription
