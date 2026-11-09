@@ -5,6 +5,7 @@
 
 import SwiftUI
 import Combine
+import AppKit
 
 // The feeds X's own apps show. X builds each one on its server, so they are fetched separately rather than filtered
 // here: Priority is everything from people you follow, and Mentions is replies and @mentions.
@@ -232,64 +233,108 @@ struct NotificationItem: Identifiable, Hashable, Codable {
 final class NotificationsViewModel: ObservableObject {
     static let shared = NotificationsViewModel()
     
-    @Published var selectedFilter: NotificationFilter = .all
-    @Published private var pages: [NotificationFilter: Page] = [:]
-    @Published private var loadingFeeds: Set<NotificationFilter> = []
-    @Published var isLoading: Bool = false
-    @Published var isRefreshing: Bool = false
-    @Published var isLoadingMore: Bool = false
-    
+    @Published private(set) var selectedFilter: NotificationFilter = .all
+    // What the list is showing. It trails `selectedFilter` until the chosen feed has rows to show, so a filter
+    // change animates as rows leaving and arriving in one list instead of the list being replaced.
+    @Published private(set) var displayedFilter: NotificationFilter = .all
+    @Published private(set) var displayedItems: [NotificationItem] = []
+    // Rows on their way out: faded where they stand before their space collapses.
+    @Published private(set) var fadingItemIDs: Set<String> = []
+    @Published private var feeds: [NotificationFilter: FeedState] = [:]
+
     private struct Page {
         var items: [NotificationItem]
         var topCursor: String?
         var bottomCursor: String?
+        var refreshedAt: Date
     }
-    
-    var filteredItems: [NotificationItem] {
-        pages[selectedFilter]?.items ?? []
+
+    private struct FeedState {
+        var page: Page?
+        var refreshID: UUID?
+        var paginationID: UUID?
+        var showsRefresh = false
+        var failed = false
     }
-    
-    /// The selected feed has never loaded and is on its way, so it is not empty yet.
+
+    // Leaving rows fade in place first, then the survivors close the gap
+    private static let leaveDuration = 0.12
+    private static let settleDuration = 0.22
+    private var transitionID = UUID()
+
+    var isRefreshing: Bool {
+        feeds[selectedFilter]?.showsRefresh == true
+    }
+
+    var hasFailed: Bool {
+        feeds[selectedFilter]?.failed == true
+    }
+
+    /// The selected feed has no rows yet and is on its way.
+    var isAwaitingSelectedFeed: Bool {
+        feeds[selectedFilter]?.page == nil && feeds[selectedFilter]?.refreshID != nil
+    }
+
+    /// Nothing is on screen and the selected feed is on its way, so it is not empty yet.
     var isLoadingSelectedFeed: Bool {
-        pages[selectedFilter] == nil && loadingFeeds.contains(selectedFilter)
+        displayedItems.isEmpty && isAwaitingSelectedFeed
     }
+
+    // Handed to the list, which animates only changes to these values; the same timing the model uses
+    var leaveAnimation: Animation? { Self.motion(Self.leaveDuration) }
+    var settleAnimation: Animation? { Self.motion(Self.settleDuration) }
     
     private init() {
         loadInitialData()
     }
     
     func resetForSignOut() {
-        pages = [:]
-        loadingFeeds = []
-        isLoading = false
-        isRefreshing = false
-        isLoadingMore = false
+        // Clearing the request IDs also rejects callbacks from the previous account.
+        feeds = [:]
+        selectedFilter = .all
+        displayedFilter = .all
+        displayedItems = []
+        fadingItemIDs = []
+        transitionID = UUID()
     }
     
     func signedIn() {
         refresh(silently: false)
     }
+
+    /// Loads the categories that have never loaded, so picking one animates from the current rows instead of waiting
+    /// for the network. Silent: nothing on screen changes until the reader picks a category.
+    func preloadMissingFeeds() {
+        guard AccountManager.shared.active != nil else { return }
+        for feed in NotificationFilter.allCases where feeds[feed]?.page == nil && feeds[feed]?.refreshID == nil {
+            refresh(silently: true, feed: feed)
+        }
+    }
     
     private func loadInitialData() {
         // 1. Load cached snapshot from disk if available
         if let snapshot = NotificationCacheManager.shared.loadCachedSnapshot(), !snapshot.items.isEmpty {
-            pages[.all] = Page(items: snapshot.items, topCursor: snapshot.topCursor, bottomCursor: snapshot.bottomCursor)
+            feeds[.all] = FeedState(page: Page(items: snapshot.items, topCursor: snapshot.topCursor,
+                                             bottomCursor: snapshot.bottomCursor, refreshedAt: snapshot.savedAt))
+            displayedItems = snapshot.items
             prefetchMedia(for: snapshot.items)
         }
         
         // 2. Refresh live notifications from network
-        refresh(silently: pages[.all] != nil)
+        refresh(silently: feeds[.all]?.page != nil)
     }
     
     func selectFilter(_ filter: NotificationFilter) {
-        DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                self.selectedFilter = filter
-            }
-            if self.pages[filter] == nil {
-                self.refresh(silently: true, feed: filter)
-            }
+        selectedFilter = filter
+        if let page = feeds[filter]?.page {
+            transition(to: filter, items: page.items)
+        } else {
+            // Nothing to show yet: keep the current rows, undoing any half-finished fade so they stay visible.
+            cancelPendingTransition()
         }
+        if let refreshedAt = feeds[filter]?.page?.refreshedAt,
+           Date().timeIntervalSince(refreshedAt) < 60 { return }
+        refresh(silently: true, feed: filter)
     }
     
     func nextFilter() {
@@ -308,29 +353,35 @@ final class NotificationsViewModel: ObservableObject {
     
     func refresh(silently: Bool = false, feed: NotificationFilter? = nil) {
         let feed = feed ?? selectedFilter
-        if !silently {
-            isRefreshing = true
-        }
-        loadingFeeds.insert(feed)
-        
+        var state = feeds[feed] ?? FeedState()
+        guard state.refreshID == nil else { return }
+        let requestID = UUID()
+        state.refreshID = requestID
+        // A refreshed first page makes any outstanding pagination response obsolete.
+        state.paginationID = nil
+        state.showsRefresh = !silently
+        state.failed = false
+        feeds[feed] = state
+
         let startTime = Date()
         APIClient.shared.fetchNotifications(feed: feed) { [weak self] result in
             let elapsed = Date().timeIntervalSince(startTime)
             let remainingDelay = max(0.0, 2.4 - elapsed)
-            
+
             DispatchQueue.main.asyncAfter(deadline: .now() + (silently ? 0 : remainingDelay)) {
-                guard let self = self else { return }
-                self.loadingFeeds.remove(feed)
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
-                    self.isRefreshing = false
-                }
+                guard let self = self, var state = self.feeds[feed], state.refreshID == requestID else { return }
+                state.refreshID = nil
+                state.showsRefresh = false
                 switch result {
                 case .success(let data):
-                    self.store(Page(items: data.items, topCursor: data.topCursor, bottomCursor: data.bottomCursor), for: feed)
+                    state.page = Page(items: data.items, topCursor: data.topCursor,
+                                      bottomCursor: data.bottomCursor, refreshedAt: Date())
+                    self.store(state, for: feed)
+                    self.applyIfSelected(feed)
                     self.prefetchMedia(for: data.items)
                 case .failure:
-                    // Nothing is shown in place of notifications that could not be fetched, signed out included
-                    break
+                    state.failed = true
+                    self.feeds[feed] = state
                 }
             }
         }
@@ -338,30 +389,92 @@ final class NotificationsViewModel: ObservableObject {
     
     func loadMore() {
         let feed = selectedFilter
-        guard !isLoadingMore, var page = pages[feed], let cursor = page.bottomCursor else { return }
-        isLoadingMore = true
-        
+        guard var state = feeds[feed], state.refreshID == nil, state.paginationID == nil,
+              let cursor = state.page?.bottomCursor else { return }
+        let requestID = UUID()
+        state.paginationID = requestID
+        feeds[feed] = state
+
         APIClient.shared.fetchNotifications(feed: feed, cursor: cursor) { [weak self] result in
-            guard let self = self else { return }
             DispatchQueue.main.async {
-                self.isLoadingMore = false
+                guard let self = self, var state = self.feeds[feed], state.paginationID == requestID,
+                      var page = state.page else { return }
+                state.paginationID = nil
                 if case .success(let data) = result {
                     var seen = Set(page.items.map { $0.id })
                     for item in data.items where seen.insert(item.id).inserted {
                         page.items.append(item)
                     }
                     page.bottomCursor = data.bottomCursor
-                    self.store(page, for: feed)
+                    state.page = page
+                    self.store(state, for: feed)
+                    self.applyIfSelected(feed)
                     self.prefetchMedia(for: data.items)
+                } else {
+                    self.feeds[feed] = state
                 }
             }
         }
     }
+
+    private func applyIfSelected(_ feed: NotificationFilter) {
+        guard selectedFilter == feed, let page = feeds[feed]?.page else { return }
+        transition(to: feed, items: page.items)
+    }
+
+    /// Moves the list from what it shows to `feed`'s rows. Rows both feeds share keep their identity and slide into
+    /// place; the ones only the old feed has fade first, so the change reads as notifications being filtered out
+    /// rather than a new page being swapped in.
+    private func transition(to feed: NotificationFilter, items: [NotificationItem]) {
+        guard displayedFilter != feed else {
+            commit(feed, items)
+            return
+        }
+        let targetIDs = Set(items.map(\.id))
+        let leaving = displayedItems.map(\.id).filter { !targetIDs.contains($0) }
+        guard !leaving.isEmpty else {
+            commit(feed, items)
+            return
+        }
+        let id = UUID()
+        transitionID = id
+        withAnimation(Self.motion(Self.leaveDuration)) {
+            fadingItemIDs = Set(leaving)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.leaveDuration) { [weak self] in
+            guard let self = self, self.transitionID == id, self.selectedFilter == feed,
+                  let page = self.feeds[feed]?.page else { return }
+            self.commit(feed, page.items)
+        }
+    }
+
+    private func cancelPendingTransition() {
+        transitionID = UUID()
+        guard !fadingItemIDs.isEmpty else { return }
+        withAnimation(Self.motion(Self.leaveDuration)) {
+            fadingItemIDs = []
+        }
+    }
+
+    private func commit(_ feed: NotificationFilter, _ items: [NotificationItem]) {
+        transitionID = UUID()
+        guard displayedFilter != feed || displayedItems != items || !fadingItemIDs.isEmpty else { return }
+        withAnimation(Self.motion(Self.settleDuration)) {
+            displayedFilter = feed
+            displayedItems = items
+            fadingItemIDs = []
+        }
+    }
+
+    // Reduce Motion keeps the row changes but drops the movement, as the HIG asks of repeated transitions.
+    private static func motion(_ duration: Double) -> Animation? {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: duration)
+    }
     
     // Only All is kept on disk: it is the one shown on launch
-    private func store(_ page: Page, for feed: NotificationFilter) {
-        pages[feed] = page
-        if feed == .all {
+    private func store(_ state: FeedState, for feed: NotificationFilter) {
+        feeds[feed] = state
+        if feed == .all, let page = state.page {
             NotificationCacheManager.shared.saveSnapshot(items: page.items, topCursor: page.topCursor, bottomCursor: page.bottomCursor)
         }
     }

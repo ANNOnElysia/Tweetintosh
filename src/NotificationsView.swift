@@ -14,16 +14,19 @@ private struct NotificationsPullRefreshIndicatorOverlay: View {
     let nav = NavigationManager.shared
     
     var body: some View {
-        if viewModel.isRefreshing || scrollState.pullDistance > 2.0 {
+        // A feed with no cache keeps the old rows on screen while it loads, overlaid with the same spinner
+        let isBusy = viewModel.isRefreshing
+            || (viewModel.isAwaitingSelectedFeed && !viewModel.displayedItems.isEmpty)
+        if isBusy || scrollState.pullDistance > 2.0 {
             let baseTop: CGFloat = nav.sidebarExpanded ? 36 : 118
-            let pullDist = viewModel.isRefreshing ? 40.0 : scrollState.pullDistance
-            let pullProg: CGFloat = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, pullDist / TrackpadPullCoordinator.refreshThreshold))
-            let opac: Double = viewModel.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(pullDist - 2.0) / 8.0))
+            let pullDist = isBusy ? 40.0 : scrollState.pullDistance
+            let pullProg: CGFloat = isBusy ? 1.0 : min(1.0, max(0.0, pullDist / TrackpadPullCoordinator.refreshThreshold))
+            let opac: Double = isBusy ? 1.0 : min(1.0, max(0.0, Double(pullDist - 2.0) / 8.0))
             let offsetY: CGFloat = baseTop + (pullDist - 40.0) / 2.0
             
             SVGRefreshIndicatorView(
                 pullProgress: pullProg,
-                isRefreshing: viewModel.isRefreshing,
+                isRefreshing: isBusy,
                 colorScheme: theme.themeColor
             )
             .frame(height: 40)
@@ -43,7 +46,7 @@ struct NotificationsGlanceView: View {
     @ObservedObject private var theme = ThemeManager.shared
     
     var body: some View {
-        ScrollContainer(topSpacer: 8) {
+        ScrollColumn(topSpacer: 8) {
             Text(loc.t("tab_notifications"))
                 .font(theme.appFont(size: 15, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
@@ -51,21 +54,47 @@ struct NotificationsGlanceView: View {
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
             
-            if viewModel.filteredItems.isEmpty {
+            ForEach(viewModel.displayedItems) { item in
+                VStack(spacing: 0) {
+                    NotificationRowView(item: item)
+                    Rectangle()
+                        .fill(ThemeManager.divider)
+                        .frame(height: 0.5)
+                }
+                .id(item.id)
+                .opacity(viewModel.fadingItemIDs.contains(item.id) ? 0 : 1)
+                .transition(.opacity)
+            }
+            if viewModel.displayedItems.isEmpty && !viewModel.hasFailed {
                 LoadingIndicator(active: viewModel.isLoadingSelectedFeed)
                     .padding(.vertical, 24)
-            } else {
-                ForEach(viewModel.filteredItems) { item in
-                    VStack(spacing: 0) {
-                        NotificationRowView(item: item)
-                        Rectangle()
-                            .fill(ThemeManager.divider)
-                            .frame(height: 0.5)
-                    }
-                    .id(item.id)
-                }
+            }
+            if viewModel.hasFailed {
+                NotificationsLoadFailureView()
             }
         }
+        .animation(viewModel.leaveAnimation, value: viewModel.fadingItemIDs)
+        .animation(viewModel.settleAnimation, value: viewModel.displayedItems)
+    }
+}
+
+private struct NotificationsLoadFailureView: View {
+    @ObservedObject private var viewModel = NotificationsViewModel.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(loc.t("notifications_load_failed"))
+                .font(theme.appFont(size: 13.5))
+                .foregroundColor(ThemeManager.secondaryText)
+            Button(loc.t("profile_retry")) {
+                viewModel.refresh(silently: true)
+            }
+            .font(theme.appFont(size: 13))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
 }
 
@@ -86,7 +115,7 @@ struct NotificationsView: View {
             // Notifications Scrollable Content
             notificationsContent
             
-            // Secondary Floating Capsule: Filter Bar (All / Likes & Reposts / Comments / Mentions)
+            // Secondary Floating Capsule: Filter Bar (All / Priority / Mentions)
             // Dual-Mode (Liquid Glass vs Frosted Glass)
             // With the sidebar open the same filters sit under Notifications in the sidebar instead
             if !nav.sidebarExpanded {
@@ -96,6 +125,8 @@ struct NotificationsView: View {
             }
         }
         .onAppear {
+            // Categories nobody has opened yet load in the background, so the first switch can animate instead of wait
+            viewModel.preloadMissingFeeds()
             TrackpadPullCoordinator.shared.onPullProgress = { distance in
                 TimelineScrollState.shared.pullDistance = distance
                 TimelineScrollState.shared.isPullThresholdExceeded = (distance >= TrackpadPullCoordinator.refreshThreshold)
@@ -128,43 +159,56 @@ struct NotificationsView: View {
     // MARK: - Notifications Scroll Content
     private var notificationsContent: some View {
         ScrollViewReader { scrollProxy in
-            // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule)
-            // During refreshing, expands by 40pt so items stay pushed down for the 40pt animation area!
-            ScrollContainer(
-                topSpacer: (nav.sidebarExpanded ? 36 : 118) + (viewModel.isRefreshing ? 40 : 0),
+            // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule). Fixed even while
+            // refreshing: the spinner draws over the first rows, so no feed's refresh state can shift the page.
+            // A stack rather than a List: rows have to fade out and close the gap on a filter change, and a List
+            // skips that animation for a contiguous block of removals.
+            ScrollColumn(
+                topSpacer: nav.sidebarExpanded ? 36 : 118,
                 onScrollView: { sv in
                     TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")
                 },
                 onNearBottom: { viewModel.loadMore() }
             ) {
                     
-                    // Items List or Empty Placeholder
-                    if viewModel.isLoadingSelectedFeed {
-                        LoadingIndicator()
-                            .padding(.vertical, 48)
-                    } else if viewModel.filteredItems.isEmpty {
-                        emptyFilterView
-                    } else {
-                        ForEach(viewModel.filteredItems) { item in
-                            // Row and its divider in one view: a 0.5pt divider on its own would be padded to a full
-                            // row height in a List
-                            VStack(spacing: 0) {
-                                NotificationRowView(item: item)
-                                
-                                // Subtle divider separating notification items (matching Home)
-                                Rectangle()
-                                    .fill(ThemeManager.divider)
-                                    .frame(height: 0.5)
-                            }
-                            .id(item.id)
+                    // One ForEach for every feed: rows the chosen feed shares keep their identity and slide into
+                    // place, and the ones it excludes fade before their space closes.
+                    ForEach(viewModel.displayedItems) { item in
+                        // Row and its divider in one view: a 0.5pt divider on its own would be padded to a full
+                        // row height in a List
+                        VStack(spacing: 0) {
+                            NotificationRowView(item: item)
+                            
+                            // Subtle divider separating notification items (matching Home)
+                            Rectangle()
+                                .fill(ThemeManager.divider)
+                                .frame(height: 0.5)
                         }
+                        .id(item.id)
+                        .opacity(viewModel.fadingItemIDs.contains(item.id) ? 0 : 1)
+                        .transition(.opacity)
+                    }
+                    
+                    if viewModel.displayedItems.isEmpty {
+                        if viewModel.isLoadingSelectedFeed {
+                            LoadingIndicator()
+                                .padding(.vertical, 48)
+                        } else if viewModel.hasFailed {
+                            NotificationsLoadFailureView()
+                        } else {
+                            emptyFilterView
+                        }
+                    } else if viewModel.hasFailed {
+                        // The chosen feed failed; the rows above are what was showing before it
+                        NotificationsLoadFailureView()
                     }
                     
                     // Bottom Spacer
                     Color.clear
                         .frame(height: 40)
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isRefreshing)
+            .animation(viewModel.leaveAnimation, value: viewModel.fadingItemIDs)
+            .animation(viewModel.settleAnimation, value: viewModel.displayedItems)
             .coordinateSpace(name: "notifScrollViewSpace")
             .environment(\.peekScope, .notifications)
             .overlay(alignment: .top) {
@@ -249,6 +293,7 @@ private struct NotificationFilterCapsuleBar: View {
             )
         )
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: viewModel.selectedFilter)
         .fixedSize()
     }
     

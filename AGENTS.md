@@ -102,7 +102,9 @@ Platform
 - **Scrolling screens are SwiftUI `List`s**, not `ScrollView` + `LazyVStack` (see the header of `ListSupport.swift`
   for what that costs and the helpers that absorb it). The one exception is the Videos tab (`VideosView.swift`): a
   `List` cannot snap to whole pages, so it is a `ScrollView` with `.scrollTargetBehavior(.paging)`; its pages are
-  screen-sized and few, so the costs a `List` avoids don't arise there.
+  screen-sized and few, so the costs a `List` avoids don't arise there. The notifications page is a second exception:
+  it uses `ScrollColumn` so its rows can fade out and close the gap on a filter change, which a List does not animate
+  for every removal.
 - **Borderless buttons use `.buttonStyle(.target)`**, never `.plain`: a plain button only answers inside its own frame,
   which for an icon is far too small for a finger. Test touch with an iPad on iPadOS 27 over Sidecar; a finger's drag
   reaches a scroll view whose touch scrolling is off as a mouse drag, and never reaches event monitors as a touch.

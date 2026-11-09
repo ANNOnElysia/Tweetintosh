@@ -1166,6 +1166,7 @@ private struct SidebarContextSection: View {
             nav.closeAllPages()
             notifications.selectFilter(filter)
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: notifications.selectedFilter)
     }
     
     private func row<Icon: View>(title: String, badge: String?, isSelected: Bool, titleColor: Color? = nil,

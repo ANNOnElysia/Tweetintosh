@@ -792,6 +792,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "该筛选下暂无新通知",
             .traditionalChinese: "該篩選下暫無新通知"
         ],
+        "notifications_load_failed": [
+            .english: "Couldn't load notifications.",
+            .japanese: "通知を読み込めませんでした。",
+            .korean: "알림을 불러오지 못했습니다.",
+            .simplifiedChinese: "无法加载通知。",
+            .traditionalChinese: "無法載入通知。"
+        ],
         "search_placeholder": [
             .english: "Search…",
             .japanese: "検索…",

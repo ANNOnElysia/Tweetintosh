@@ -3,7 +3,9 @@
 //  Tweetintosh - Headless Data-driven Client
 //
 //  Scrolling screens are hosted in a SwiftUI List (backed by NSTableView on macOS), which scrolls far more
-//  smoothly than ScrollView + LazyVStack.
+//  smoothly than ScrollView + LazyVStack. Notifications are the exception: their rows fade out and close the gap on
+//  a filter change, and a List collapses a contiguous block of removals without animating it, so that screen uses
+//  ScrollColumn below instead.
 //
 //  Differences from ScrollView that this file handles:
 //  - List has no titlebar safe area, so screens with floating bars add the titlebar height to their top spacer
@@ -142,6 +144,37 @@ struct ScrollContainer<Content: View>: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .environment(\.listScrollReporter, reporter)
+    }
+}
+
+// A screen's scrolling content in a ScrollView and LazyVStack, with the same top spacer and reporting contract as
+// ScrollContainer. Used where rows animate in and out themselves: a List collapses a contiguous block of removed rows
+// by reloading it without animation, while a stack lays every change out itself, so each row can fade and the rows
+// below close the gap smoothly.
+struct ScrollColumn<Content: View>: View {
+    var topSpacer: CGFloat? = nil
+    var onScrollView: ((NSScrollView) -> Void)? = nil
+    var onNearBottom: (() -> Void)? = nil
+    @ViewBuilder let content: () -> Content
+
+    @StateObject private var watcher = NearBottomWatcher()
+
+    var body: some View {
+        let reporter = watcher.reporter
+        reporter.onScrollView = { [watcher, onNearBottom, onScrollView] sv in
+            watcher.attach(sv, onNearBottom: onNearBottom)
+            onScrollView?(sv)
+        }
+        return ScrollView {
+            LazyVStack(spacing: 0) {
+                if let topSpacer = topSpacer {
+                    Color.clear.frame(height: topSpacer)
+                }
+                content()
+            }
+            .reportsListScrollView()
+        }
         .environment(\.listScrollReporter, reporter)
     }
 }
