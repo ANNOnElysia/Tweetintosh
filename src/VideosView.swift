@@ -111,8 +111,7 @@ struct VideosView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             } else {
-                ProgressView()
-                    .controlSize(.regular)
+                LoadingIndicator(compactHeight: 28, tint: .white)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

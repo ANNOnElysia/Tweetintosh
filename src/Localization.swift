@@ -2207,6 +2207,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "视频流",
             .traditionalChinese: "影片串流"
         ],
+        "loading": [
+            .english: "Loading",
+            .japanese: "読み込み中",
+            .korean: "로딩 중",
+            .simplifiedChinese: "加载中",
+            .traditionalChinese: "載入中"
+        ],
         "experimental": [
             .english: "Experimental",
             .japanese: "試験運用",
