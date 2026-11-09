@@ -311,7 +311,7 @@ private struct TweetMenuContentView: View {
             }
             
             // 5. Open in Videos: X's video feed, starting with this one
-            if tweet.feedVideo != nil {
+            if tweet.feedVideo != nil && theme.showVideosTab {
                 menuRow(
                     title: loc.t("open_in_videos"),
                     icon: AppTab.videos.iconName,

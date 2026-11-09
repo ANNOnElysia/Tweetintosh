@@ -394,7 +394,7 @@ private struct LiquidGlassCapsule: View {
                 if !nav.isSearchActive {
                     // Center Tabs: Home, Notifications, Messages (Dynamic Width, No Truncation)
                     HStack(spacing: 3) {
-                        ForEach(AppTab.allCases) { tab in
+                        ForEach(AppTab.available) { tab in
                             let isSelected = selection == tab && !nav.isSearchActive
                             Group {
                                 HStack(spacing: 5) {
@@ -751,7 +751,7 @@ private struct LiquidGlassSidebar: View {
                 .padding(.horizontal, 8)
             
             // Navigation Tabs
-            ForEach(AppTab.allCases) { tab in
+            ForEach(AppTab.available) { tab in
                 let isSelected = selection == tab
                 Button {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {

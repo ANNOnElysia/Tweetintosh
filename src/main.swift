@@ -82,6 +82,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var settingsWindow: NSWindow?
     private var tilingMonitor: Any?
     private var settingsTitleObserver: AnyCancellable?
+    // Shows the Videos menu items only while the Videos tab is turned on in Settings
+    private var videosMenuObserver: AnyCancellable?
     private var sidebarObserver: AnyCancellable?
     var loginController: LoginWindowController?
     private var welcomeController: WelcomeWindowController?
@@ -669,6 +671,13 @@ final class SettingsWindow: NSWindow {
         controlsMenu.addItem(muteItem)
         controlsMenuItem.submenu = controlsMenu
         mainMenu.addItem(controlsMenuItem)
+        // Without the Videos tab these commands have nothing to act on, so they leave the menu bar altogether. Hidden
+        // items' key equivalents stay live, so the actions check the setting too (selectTab, videosOwnKeyboard).
+        videosMenuObserver = ThemeManager.shared.$showVideosTab
+            .sink { [weak videosItem, weak controlsMenuItem] isShown in
+                videosItem?.isHidden = !isShown
+                controlsMenuItem?.isHidden = !isShown
+            }
         
         // 7. Window Menu
         let windowMenuItem = NSMenuItem()

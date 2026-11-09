@@ -12,6 +12,11 @@ enum AppTab: Int, CaseIterable, Identifiable {
     case messages = 2
     case videos = 3
     
+    // The tabs on offer: Videos only once it is turned on in Settings
+    static var available: [AppTab] {
+        allCases.filter { $0 != .videos || ThemeManager.shared.showVideosTab }
+    }
+
     var id: Int { rawValue }
     
     var title: String {
@@ -94,7 +99,7 @@ final class NavigationManager {
 
     // Opens the Videos tab on a feed that starts with this post
     func openInVideos(_ post: Tweet) {
-        guard post.feedVideo != nil else { return }
+        guard post.feedVideo != nil, ThemeManager.shared.showVideosTab else { return }
         // Already on the tab, there is no entry to keep it through
         VideosFeed.shared.start(from: post, keepingOnEntry: currentTab != .videos)
         overlayStack = []
@@ -103,7 +108,7 @@ final class NavigationManager {
 
     // Whether the keyboard's ↑ ↓ and Space belong to the Videos tab right now
     var videosOwnKeyboard: Bool {
-        currentTab == .videos && !hasOverlay && !isShowingCompose && replyTargetTweet == nil && !isReplyComposerOpen
+        currentTab == .videos && ThemeManager.shared.showVideosTab && !hasOverlay && !isShowingCompose && replyTargetTweet == nil && !isReplyComposerOpen
             && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented
             && NSApp.mainWindow?.attachedSheet == nil && !isTextInputActive()
     }
@@ -308,6 +313,8 @@ final class NavigationManager {
     }
     
     func selectTab(_ tab: AppTab) {
+        // ⌥4 and the menu do nothing while the Videos tab is turned off
+        guard AppTab.available.contains(tab) else { return }
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
                 self.currentTab = tab
@@ -332,14 +339,14 @@ final class NavigationManager {
     }
     
     func nextTab() {
-        let all = AppTab.allCases
+        let all = AppTab.available
         if let idx = all.firstIndex(of: currentTab), idx < all.count - 1 {
             selectTab(all[idx + 1])
         }
     }
     
     func prevTab() {
-        let all = AppTab.allCases
+        let all = AppTab.available
         if let idx = all.firstIndex(of: currentTab), idx > 0 {
             selectTab(all[idx - 1])
         }
