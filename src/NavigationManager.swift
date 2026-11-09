@@ -273,7 +273,7 @@ final class NavigationManager {
         let isWide = windowWidth >= screenWidth * 0.51
         let isFolded = windowWidth < (screenWidth * 2 / 5).rounded(.down)
         guard isWide != isWideWindow || isFolded != isTooNarrowForContactList else { return }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+        withAnimation(SidebarMotion.toggle) {
             if isWide != isWideWindow {
                 isWideWindow = isWide
                 sidebarExpanded = isWide
@@ -285,7 +285,7 @@ final class NavigationManager {
     
     func toggleSidebar() {
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+            withAnimation(SidebarMotion.toggle) {
                 self.sidebarExpanded.toggle()
             }
         }
