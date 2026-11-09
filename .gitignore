@@ -22,3 +22,5 @@ Tweetintosh.app/
 *.mov
 *.tmp
 
+AGENTS.md
+.gitignore
