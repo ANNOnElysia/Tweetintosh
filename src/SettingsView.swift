@@ -534,6 +534,20 @@ struct SettingsView: View {
         .background(cardBackground)
     }
     
+    // The Video Feed switch's name, marked as an experiment: the feed rests on an X endpoint the web client only
+    // calls from its video viewer, and its behaviour is still being tuned
+    private var videoFeedLabel: some View {
+        HStack(spacing: 6) {
+            Text(loc.t("show_videos_tab"))
+            Text(loc.t("experimental"))
+                .font(theme.appFont(size: 10, weight: .semibold))
+                .foregroundColor(ThemeManager.accent)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.18)))
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header Bar: Title on left, Close ("小麻叉") on right
@@ -695,14 +709,18 @@ struct SettingsView: View {
                     .padding(.leading, 2)
                 
                 if theme.useLiquidGlass {
-                    Toggle(loc.t("show_videos_tab"), isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8)))
-                        .toggleStyle(GlassCapsuleToggleStyle())
-                        .foregroundColor(ThemeManager.primaryText)
+                    Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
+                        videoFeedLabel
+                    }
+                    .toggleStyle(GlassCapsuleToggleStyle())
+                    .foregroundColor(ThemeManager.primaryText)
                 } else {
-                    Toggle(loc.t("show_videos_tab"), isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8)))
-                        .toggleStyle(.switch)
-                        .tint(ThemeManager.accent)
-                        .foregroundColor(ThemeManager.primaryText)
+                    Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
+                        videoFeedLabel
+                    }
+                    .toggleStyle(.switch)
+                    .tint(ThemeManager.accent)
+                    .foregroundColor(ThemeManager.primaryText)
                 }
                 
                 Text(loc.t("show_videos_tab_desc"))

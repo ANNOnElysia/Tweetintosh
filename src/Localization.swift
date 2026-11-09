@@ -2207,6 +2207,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "视频流",
             .traditionalChinese: "影片串流"
         ],
+        "experimental": [
+            .english: "Experimental",
+            .japanese: "試験運用",
+            .korean: "실험적",
+            .simplifiedChinese: "实验性",
+            .traditionalChinese: "實驗性"
+        ],
         "show_videos_tab_desc": [
             .english: "Adds a Videos tab with X's full-screen video feed, one video at a time, swiped through vertically. The next few videos are downloaded ahead.",
             .japanese: "X の全画面動画フィードを表示する「動画」タブを追加します。1本ずつ縦にスワイプして見られます。次の数本は先にダウンロードされます。",
