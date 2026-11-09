@@ -91,7 +91,7 @@ struct LongTextToggle: View {
                 TimelineViewModel.shared.setTextExpanded(!tweet.isTextExpanded, for: tweet)
             } label: {
                 Text(loc.t(tweet.isTextExpanded ? "show_less" : "show_more"))
-                    .font(theme.appFont(size: fontSize, weight: .medium))
+                    .font(theme.appFont(size: theme.postSize(fontSize), weight: .medium))
                     .foregroundColor(ThemeManager.accent)
                     .contentShape(Rectangle())
             }

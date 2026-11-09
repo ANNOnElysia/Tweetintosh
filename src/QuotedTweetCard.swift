@@ -74,12 +74,12 @@ struct QuotedTweetCard: View {
             if !tweet.displayBodyText.isEmpty {
                 TweetText.text(tweet)
                     .handlesTweetLinks()
-                    .font(theme.tweetFont(size: 13))
+                    .font(theme.tweetFont(size: theme.postSize(13)))
                     .lineSpacing(theme.lineSpacing() * 0.8)
                     .foregroundColor(ThemeManager.primaryText.opacity(0.92))
                     .lineLimit(4)
                     .fixedSize(horizontal: false, vertical: true)
-                    .peeksText(of: tweet, fontSize: 13, lineSpacing: theme.lineSpacing() * 0.8)
+                    .peeksText(of: tweet, fontSize: theme.postSize(13), lineSpacing: theme.lineSpacing() * 0.8)
             }
             
             // 3. Media Preview (reusing ImageGridView with isQuoted scaling)

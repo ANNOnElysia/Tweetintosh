@@ -100,13 +100,13 @@ struct TweetRowView: View {
                         // Tweet Body Text (Clean text with leading reply mentions & trailing media t.co URLs stripped)
                         if !tweet.displayBodyText.isEmpty {
                             bodyText
-                                .font(theme.tweetFont(size: 14.5))
+                                .font(theme.tweetFont(size: theme.postSize(14.5)))
                                 .lineSpacing(theme.lineSpacing())
                                 .foregroundColor(ThemeManager.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                                 // A deep press on a link previews it; its release must not also open the browser
                                 .handlesTweetLinks()
-                                .peeksText(of: tweet, fontSize: 14.5, lineSpacing: theme.lineSpacing())
+                                .peeksText(of: tweet, fontSize: theme.postSize(14.5), lineSpacing: theme.lineSpacing())
                             LongTextToggle(tweet: tweet)
                         }
                         

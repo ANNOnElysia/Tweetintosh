@@ -2,12 +2,13 @@
 //  MenuCommands.swift
 //  Tweetintosh - Headless Data-driven Client
 //
-//  The menu bar's commands beyond the app, edit and window basics: New Post, the feeds, going back, the Post menu that
-//  acts on the post open in front, and Help. The menu bar is where a Mac app shows what it can do and which keys do it,
+//  The menu bar's commands beyond the app, edit and window basics: the accounts, New Post, the feeds, the size of post
+//  text, going back, the Post menu that acts on the post open in front, and Help. The menu bar is where a Mac app shows what it can do and which keys do it,
 //  so every command the app answers to by keyboard is listed here too.
 //
 
 import AppKit
+import Combine
 
 extension AppDelegate {
     // MARK: Building
@@ -37,6 +38,60 @@ extension AppDelegate {
             position += 1
         }
         menu.insertItem(NSMenuItem.separator(), at: position)
+    }
+
+    // Tweetintosh: the signed-in accounts, ticked when active, on ⌃⌘1, ⌃⌘2… in order, then Add Account…. Rebuilt in
+    // place whenever an account is added, removed or switched to.
+    func addAccountCommands(to menu: NSMenu, at index: Int) {
+        let placeholder = NSMenuItem.separator()
+        placeholder.tag = Self.accountItemTag
+        menu.insertItem(placeholder, at: index)
+        let accounts = AccountManager.shared
+        accountMenuObserver = accounts.$accounts.combineLatest(accounts.$activeId)
+            // @Published announces a change before storing it, so read the accounts on the next turn
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak menu] _ in
+                guard let self, let menu else { return }
+                self.fillAccountCommands(in: menu)
+            }
+    }
+
+    private static let accountItemTag = 7_302
+
+    private func fillAccountCommands(in menu: NSMenu) {
+        guard let start = menu.items.firstIndex(where: { $0.tag == Self.accountItemTag }) else { return }
+        for item in menu.items.filter({ $0.tag == Self.accountItemTag }) { menu.removeItem(item) }
+        let loc = LocalizationManager.shared
+        var items: [NSMenuItem] = []
+        for (number, account) in AccountManager.shared.accounts.enumerated() {
+            let title = account.name.isEmpty ? "@\(account.screenName)" : "\(account.name) (@\(account.screenName))"
+            let key = number < 9 ? String(number + 1) : ""
+            let item = NSMenuItem(title: title, action: #selector(menuSwitchAccount(_:)), keyEquivalent: key)
+            item.keyEquivalentModifierMask = [.control, .command]
+            item.representedObject = account.id
+            items.append(item)
+        }
+        items.append(NSMenuItem(title: loc.t("menu_add_account"), action: #selector(menuAddAccount), keyEquivalent: ""))
+        items.append(NSMenuItem.separator())
+        for (offset, item) in items.enumerated() {
+            item.tag = Self.accountItemTag
+            item.target = self
+            menu.insertItem(item, at: start + offset)
+        }
+    }
+
+    // View: the size of post text, as in Safari and Mail. ⌘= reaches Bigger too, as it does there: on most
+    // keyboards + is Shift-=.
+    func addTextSizeCommands(to menu: NSMenu) {
+        let loc = LocalizationManager.shared
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(command(loc.t("menu_text_bigger"), #selector(menuTextBigger), "+"))
+        let equals = command(loc.t("menu_text_bigger"), #selector(menuTextBigger), "=")
+        equals.isHidden = true
+        equals.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(equals)
+        menu.addItem(command(loc.t("menu_text_smaller"), #selector(menuTextSmaller), "-"))
+        menu.addItem(command(loc.t("menu_text_actual_size"), #selector(menuTextActualSize), "0"))
     }
 
     // View: hide or show the pane beside Home, after the sidebar's own command
@@ -126,6 +181,29 @@ extension AppDelegate {
 
     // MARK: Actions
 
+    @objc func menuSwitchAccount(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        switchAccount(to: id)
+    }
+
+    @objc func menuAddAccount() {
+        startLoginFlow()
+    }
+
+    @objc func menuTextBigger() {
+        let theme = ThemeManager.shared
+        theme.postTextStep = min(theme.postTextStep + 1, ThemeManager.postTextScales.count - 1)
+    }
+
+    @objc func menuTextSmaller() {
+        let theme = ThemeManager.shared
+        theme.postTextStep = max(theme.postTextStep - 1, 0)
+    }
+
+    @objc func menuTextActualSize() {
+        ThemeManager.shared.postTextStep = ThemeManager.actualPostTextStep
+    }
+
     @objc func menuNewPost() {
         NavigationManager.shared.openComposer()
     }
@@ -213,6 +291,17 @@ extension AppDelegate {
         let loc = LocalizationManager.shared
         let nav = NavigationManager.shared
         switch item.action {
+        case #selector(menuSwitchAccount(_:)):
+            item.state = (item.representedObject as? String) == AccountManager.shared.activeId ? .on : .off
+            return loginController == nil
+        case #selector(menuAddAccount):
+            return loginController == nil
+        case #selector(menuTextBigger):
+            return ThemeManager.shared.postTextStep < ThemeManager.postTextScales.count - 1
+        case #selector(menuTextSmaller):
+            return ThemeManager.shared.postTextStep > 0
+        case #selector(menuTextActualSize):
+            return ThemeManager.shared.postTextStep != ThemeManager.actualPostTextStep
         case #selector(menuNewPost):
             return !nav.isShowingCompose && !nav.isReplyComposerOpen
         case #selector(menuSelectFeed(_:)):

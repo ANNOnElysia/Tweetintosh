@@ -253,15 +253,29 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
         HStack {
             configuration.label
             Spacer(minLength: 12)
-            Toggle("", isOn: configuration.$isOn)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .accessibilityHidden(true)
+            ThemedSwitch(isOn: configuration.$isOn)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? "1" : "0")
         .accessibilityAction { configuration.isOn.toggle() }
+    }
+}
+
+// The system switch, on in the app's theme colour as the HIG allows. It watches the theme itself, so a new colour
+// reaches it at once, and is rebuilt for each colour because the AppKit switch underneath keeps the tint it was made
+// with.
+private struct ThemedSwitch: View {
+    @Binding var isOn: Bool
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        Toggle("", isOn: $isOn)
+            .toggleStyle(.switch)
+            .tint(ThemeManager.accent)
+            .labelsHidden()
+            .accessibilityHidden(true)
+            .id(theme.themeColor)
     }
 }
 
@@ -447,25 +461,6 @@ struct SettingsView: View {
                     // 0. Accounts
                     accountsSection
             
-            // 1. Language Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text(loc.t("language"))
-                    .font(theme.appFont(size: 13, weight: .semibold))
-                    .foregroundColor(ThemeManager.secondaryText)
-                
-                // The system pop-up button, which takes on the current macOS look (Liquid Glass included) by itself
-                Picker("", selection: $loc.currentLanguage) {
-                    ForEach(AppLanguage.allCases) { lang in
-                        Text(lang.displayName).tag(lang)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .fixedSize()
-            }
-            .padding(14)
-            .background(cardBackground)
-            
             // 2. Appearance Section (Merged Appearance & Typography)
             VStack(alignment: .leading, spacing: 12) {
                 Text(loc.t("theme_appearance"))
@@ -489,6 +484,21 @@ struct SettingsView: View {
                 
                 // High-contrast Font Selector (Fixes unreadable black Hiragino Mincho text)
                 GlassSegmentedFontPicker(selection: $theme.fontType)
+
+                HStack {
+                    Text(loc.t("language"))
+                        .font(theme.appFont(size: 13))
+                        .foregroundColor(ThemeManager.primaryText)
+                    Spacer(minLength: 12)
+                    Picker("", selection: $loc.currentLanguage) {
+                        ForEach(AppLanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
+                }
                 
                 // Liquid Glass Switches (Apple Official HIG Glass Switches)
                 if theme.useLiquidGlass {
@@ -507,11 +517,13 @@ struct SettingsView: View {
                         .foregroundColor(ThemeManager.primaryText)
                 }
                 
-                VStack(alignment: .leading, spacing: 6) {
+                // Language and theme colour as rows, label on the left and the system pop-up on the right, like the
+                // switches
+                HStack {
                     Text(loc.t("theme_colour"))
-                        .font(theme.appFont(size: 12, weight: .medium))
-                        .foregroundColor(ThemeManager.secondaryText)
-                    
+                        .font(theme.appFont(size: 13))
+                        .foregroundColor(ThemeManager.primaryText)
+                    Spacer(minLength: 12)
                     Picker("", selection: $theme.themeColor) {
                         ForEach(AppThemeColor.allCases) { color in
                             Label {
@@ -528,7 +540,7 @@ struct SettingsView: View {
                     .labelsHidden()
                     .fixedSize()
                 }
-                .padding(.top, 2)
+
             }
             .padding(14)
             .background(cardBackground)
