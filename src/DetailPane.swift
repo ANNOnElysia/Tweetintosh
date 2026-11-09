@@ -173,10 +173,15 @@ struct HomeColumns<Timeline: View>: View {
             let width = proxy.size.width
             let timelineWidth = Self.timelineWidth(in: width, paneAvailable: layout.isAvailable)
             let paneWidth = width - timelineWidth
+            let marginWidth = layout.isAvailable ? 0 : max(0, (width - timelineWidth) / 2)
             HStack(spacing: 0) {
+                TimelineScrollMargin()
+                    .frame(width: marginWidth)
                 timeline()
                     .frame(width: timelineWidth)
                     .environment(\.mediaColumnWidth, timelineWidth - Self.mediaInset)
+                TimelineScrollMargin()
+                    .frame(width: marginWidth)
                 if layout.isAvailable {
                     PaneSlideIn {
                         HStack(spacing: 0) {
@@ -204,6 +209,21 @@ struct HomeColumns<Timeline: View>: View {
                         .transition(.opacity)
                 }
             }
+        }
+    }
+}
+
+// Forward the original event so the timeline keeps AppKit's wheel acceleration, gesture phases and momentum.
+private struct TimelineScrollMargin: NSViewRepresentable {
+    func makeNSView(context: Context) -> MarginView { MarginView() }
+    func updateNSView(_ nsView: MarginView, context: Context) {}
+
+    final class MarginView: NSView {
+        override func scrollWheel(with event: NSEvent) {
+            guard let scrollView = TimelineScrollCoordinator.shared.scrollView,
+                  let window, scrollView.window === window,
+                  !scrollView.isHiddenOrHasHiddenAncestor else { return }
+            scrollView.scrollWheel(with: event)
         }
     }
 }
