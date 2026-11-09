@@ -34,6 +34,46 @@ final class FocusCachingHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+private final class MainWindow: NSWindow {
+    private var frameBeforeTitlebarFill: NSRect?
+
+    override func sendEvent(_ event: NSEvent) {
+        if handleTitlebarDoubleClick(event) { return }
+        super.sendEvent(event)
+    }
+
+    private func handleTitlebarDoubleClick(_ event: NSEvent) -> Bool {
+        guard event.type == .leftMouseDown, event.clickCount == 2, event.window === self,
+              !styleMask.contains(.fullScreen), attachedSheet == nil,
+              let screen = screen else { return false }
+
+        let point = event.locationInWindow
+        guard point.x >= 0, point.x < frame.width,
+              point.y >= contentLayoutRect.maxY, point.y < frame.height,
+              !hitsWindowButton(.closeButton, at: point),
+              !hitsWindowButton(.miniaturizeButton, at: point),
+              !hitsWindowButton(.zoomButton, at: point) else { return false }
+
+        // A custom transparent title bar can route clicks through the hosting view instead of AppKit's title bar.
+        let area = screen.visibleFrame
+        let target: NSRect
+        if frame == area, let previous = frameBeforeTitlebarFill {
+            target = previous
+            frameBeforeTitlebarFill = nil
+        } else {
+            frameBeforeTitlebarFill = frame
+            target = area
+        }
+        setFrame(target, display: true, animate: true)
+        return true
+    }
+
+    private func hitsWindowButton(_ type: NSWindow.ButtonType, at point: NSPoint) -> Bool {
+        guard let button = standardWindowButton(type), !button.isHiddenOrHasHiddenAncestor else { return false }
+        return button.convert(button.bounds, to: nil).contains(point)
+    }
+}
+
 // The app used to be called MaX (bundle id com.antigravity.max). On first launch under the new identity, bring
 // over its saved settings and its data folder (login credentials and caches) so nothing has to be set up again.
 enum LegacyMigration {
@@ -160,7 +200,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         
         let initialRect = NSRect(x: 0, y: 0, width: 720, height: 880)
-        let window = NSWindow(
+        let window = MainWindow(
             contentRect: initialRect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
