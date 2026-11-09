@@ -71,6 +71,27 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "关于 Tweetintosh",
             .traditionalChinese: "關於 Tweetintosh"
         ],
+        "about_version": [
+            .english: "Version {version}",
+            .japanese: "バージョン {version}",
+            .korean: "버전 {version}",
+            .simplifiedChinese: "版本 {version}",
+            .traditionalChinese: "版本 {version}"
+        ],
+        "about_repository": [
+            .english: "GitHub Repository",
+            .japanese: "GitHub リポジトリ",
+            .korean: "GitHub 저장소",
+            .simplifiedChinese: "GitHub 仓库",
+            .traditionalChinese: "GitHub 儲存庫"
+        ],
+        "about_website": [
+            .english: "Visit Website",
+            .japanese: "公式サイトを開く",
+            .korean: "공식 웹사이트 방문",
+            .simplifiedChinese: "访问官网",
+            .traditionalChinese: "造訪官網"
+        ],
         "menu_hide_app": [
             .english: "Hide Tweetintosh",
             .japanese: "Tweetintoshを非表示",

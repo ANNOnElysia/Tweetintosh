@@ -120,6 +120,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     var mainWindow: NSWindow?
     var settingsWindow: NSWindow?
+    private var aboutWindow: AboutWindow?
     private var tilingMonitor: Any?
     private var settingsTitleObserver: AnyCancellable?
     private var menuLanguageObserver: AnyCancellable?
@@ -140,6 +141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.setupMainMenu()
+                self?.aboutWindow?.title = LocalizationManager.shared.t("menu_about")
             }
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
         if EULA.needsAcceptance {
@@ -174,6 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let bg = ThemeManager.windowBackgroundColor
         mainWindow?.backgroundColor = bg
         settingsWindow?.backgroundColor = bg
+        aboutWindow?.backgroundColor = bg
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -782,12 +785,11 @@ final class SettingsWindow: NSWindow {
     }
     
     @objc func showAbout() {
-        let alert = NSAlert()
-        alert.messageText = "Tweetintosh v\(AppVersion.short)"
-        alert.informativeText = "Headless Data-driven Native macOS Client for X.\nBuilt with pure SwiftUI, high performance GraphQL synchronization, and 120Hz micro-animations."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        if aboutWindow == nil {
+            aboutWindow = AboutWindow(screen: mainWindow?.screen)
+        }
+        aboutWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
