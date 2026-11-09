@@ -145,7 +145,7 @@ struct AppRootView: View {
                     )
                     .frame(width: 216)
                     .padding(.leading, 12)
-                    .padding(.top, 42) // Leaves clean space for macOS traffic lights above
+                    .padding(.top, 12) // The safe area already keeps the sidebar below the window controls.
                     .padding(.bottom, 12)
                     .padding(.trailing, 6)
                     .transition(
@@ -187,7 +187,7 @@ struct AppRootView: View {
             if nav.isSearchActive && (nav.sidebarExpanded || !nav.hasOverlay) {
                 // Beside the sidebar's field when it is open, under the top bar's otherwise
                 SearchSuggestionsPanel()
-                    .padding(.top, nav.sidebarExpanded ? 100 : 66)
+                    .padding(.top, nav.sidebarExpanded ? 70 : 66)
                     .padding(.leading, nav.sidebarExpanded ? 222 : 0)
                     .frame(maxWidth: .infinity, alignment: nav.sidebarExpanded ? .topLeading : .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
