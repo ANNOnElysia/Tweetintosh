@@ -339,6 +339,10 @@ struct TweetDetailView: View {
                 }
             }
             .help(loc.t("copy_link"))
+            
+            if isInDetailPane {
+                PaneToggleButton(style: .round)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -391,6 +395,10 @@ struct TweetDetailView: View {
             .buttonStyle(.target)
             .onHover { h in state.isHoveredShare = h }
             .help(loc.t("copy_link"))
+            
+            if isInDetailPane {
+                PaneToggleButton(style: .bar)
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 44)

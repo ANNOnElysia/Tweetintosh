@@ -11,7 +11,34 @@ import AppKit
 
 // Published apart from the stack: the columns depend only on this, so opening a post doesn't touch the timeline's views
 final class DetailPaneLayout: ObservableObject {
-    @Published var isAvailable = false
+    private static let collapsedKey = "Tweetintosh_DetailPaneCollapsed"
+    private static let widthKey = "Tweetintosh_DetailPaneWidth"
+
+    // The pane is showing: the window is wide enough and the reader hasn't hidden it
+    @Published fileprivate(set) var isAvailable = false
+    // Wide enough for three columns, whether or not the pane is hidden
+    @Published fileprivate(set) var fitsWindow = false
+    @Published fileprivate(set) var isCollapsed = UserDefaults.standard.bool(forKey: collapsedKey)
+    // The width the reader dragged the pane to; nil keeps the default share. Kept while the window is too narrow for
+    // it, so it comes back when the window is wide enough again.
+    @Published var paneWidth: CGFloat? = {
+        let stored = UserDefaults.standard.double(forKey: widthKey)
+        return stored > 0 ? CGFloat(stored) : nil
+    }()
+
+    fileprivate func setCollapsed(_ collapsed: Bool) {
+        isCollapsed = collapsed
+        UserDefaults.standard.set(collapsed, forKey: Self.collapsedKey)
+    }
+
+    // Saved once a drag ends rather than on every step of it
+    func saveWidth() {
+        if let paneWidth {
+            UserDefaults.standard.set(Double(paneWidth), forKey: Self.widthKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.widthKey)
+        }
+    }
 }
 
 final class DetailPane: ObservableObject {
@@ -33,10 +60,26 @@ final class DetailPane: ObservableObject {
 
     var isOpen: Bool { isAvailable && !stack.isEmpty }
 
-    // Answers whether that changed anything
+    var fitsWindow: Bool { layout.fitsWindow }
+    var isCollapsed: Bool { layout.isCollapsed }
+
+    // Answers whether the pane appeared or went away
     func updateAvailability(windowWidth: CGFloat, screenWidth: CGFloat) -> Bool {
-        let available = windowWidth >= max(screenWidth * 2 / 3, Self.minimumWindowWidth)
-        guard available != isAvailable else { return false }
+        let fits = windowWidth >= max(screenWidth * 2 / 3, Self.minimumWindowWidth)
+        if fits != layout.fitsWindow { layout.fitsWindow = fits }
+        return refreshAvailability()
+    }
+
+    // Hides or shows the pane by the reader's choice; answers whether the pane appeared or went away
+    func setCollapsed(_ collapsed: Bool) -> Bool {
+        guard collapsed != layout.isCollapsed else { return false }
+        layout.setCollapsed(collapsed)
+        return refreshAvailability()
+    }
+
+    private func refreshAvailability() -> Bool {
+        let available = layout.fitsWindow && !layout.isCollapsed
+        guard available != layout.isAvailable else { return false }
         layout.isAvailable = available
         return true
     }
@@ -107,15 +150,23 @@ struct HomeColumns<Timeline: View>: View {
     // left, so the columns meet the window's edges with nothing blank around them.
     private static var aloneWidth: CGFloat { 760 }
     private static var besidePaneMaxWidth: CGFloat { 900 }
-    private static var paneMinWidth: CGFloat { 380 }
+    static var paneMinWidth: CGFloat { 380 }
+    static var timelineMinWidth: CGFloat { 520 }
     // Margins, avatar and spacing beside a post's media
     private static var mediaInset: CGFloat { 82 }
 
     /// How wide the timeline column is in a window of `width`; with no pane beside it, the column is centred.
     static func timelineWidth(in width: CGFloat, paneAvailable: Bool) -> CGFloat {
-        paneAvailable
-            ? min(besidePaneMaxWidth, width * 0.6, width - paneMinWidth)
-            : min(aloneWidth, width)
+        guard paneAvailable else { return min(aloneWidth, width) }
+        if let chosen = DetailPane.shared.layout.paneWidth, width - timelineMinWidth >= paneMinWidth {
+            return width - clampedPaneWidth(chosen, in: width)
+        }
+        return min(besidePaneMaxWidth, width * 0.6, width - paneMinWidth)
+    }
+
+    // The pane keeps at least its minimum and leaves the timeline at least its own
+    static func clampedPaneWidth(_ width: CGFloat, in windowWidth: CGFloat) -> CGFloat {
+        min(max(width, paneMinWidth), max(windowWidth - timelineMinWidth, paneMinWidth))
     }
 
     var body: some View {
@@ -134,6 +185,8 @@ struct HomeColumns<Timeline: View>: View {
                                 .fill(ThemeManager.divider)
                                 .frame(width: 0.5)
                                 .ignoresSafeArea()
+                                .overlay { PaneDivider(windowWidth: width) }
+                                .zIndex(1)
                             DetailPaneColumn(sidebarExpanded: sidebarExpanded)
                                 .frame(width: paneWidth)
                                 .environment(\.mediaColumnWidth, paneWidth - Self.mediaInset)
@@ -142,6 +195,90 @@ struct HomeColumns<Timeline: View>: View {
                 }
             }
             .frame(width: width, height: proxy.size.height)
+            .coordinateSpace(name: PaneDivider.space)
+            .overlay(alignment: .topTrailing) {
+                // Brings the hidden pane back, at the top bar's height, opposite the sidebar button
+                if layout.fitsWindow && layout.isCollapsed {
+                    PaneToggleButton(style: .bar)
+                        .padding(.top, 14)
+                        .padding(.trailing, 14)
+                        .transition(.opacity)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Resizing and Hiding
+
+// The line between the timeline and the pane, with an 8-point band either side of it to drag. The pointer becomes the
+// column-resize arrows over it; a double-click puts the pane back to its default width.
+private struct PaneDivider: View {
+    static let space = "HomeColumns"
+    let windowWidth: CGFloat
+    @ObservedObject private var layout = DetailPane.shared.layout
+
+    var body: some View {
+        Color.clear
+            .frame(width: 16)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .pointerStyle(.columnResize)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
+                    .onChanged { value in
+                        layout.paneWidth = HomeColumns<EmptyView>.clampedPaneWidth(windowWidth - value.location.x,
+                                                                                  in: windowWidth)
+                    }
+                    .onEnded { _ in layout.saveWidth() }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { layout.paneWidth = nil }
+                layout.saveWidth()
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+// Hides the pane, or brings it back. In the pane it matches the round buttons at the top of a post; over the timeline
+// it matches the sidebar button in the top bar.
+struct PaneToggleButton: View {
+    enum Style { case round, bar }
+    let style: Style
+    @ObservedObject private var layout = DetailPane.shared.layout
+    @ObservedObject private var theme = ThemeManager.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+
+    var body: some View {
+        let title = loc.t(layout.isCollapsed ? "menu_show_pane" : "menu_hide_pane")
+        Button { NavigationManager.shared.toggleDetailPane() } label: {
+            Image(systemName: "sidebar.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ThemeManager.primaryText)
+                .frame(width: style == .round ? 36 : nil, height: style == .round ? 36 : 32)
+                .padding(.horizontal, style == .bar ? 8 : 0)
+                .background { background }
+        }
+        .buttonStyle(.target)
+        .help("\(title) (⌥⌘I)")
+        .accessibilityLabel(title)
+    }
+
+    @ViewBuilder private var background: some View {
+        switch style {
+        case .bar:
+            Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
+        case .round:
+            if theme.useLiquidGlass, #available(macOS 26.0, *) {
+                Circle()
+                    .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
+                    .tweetGlass(.regular.interactive(), in: Circle())
+            } else {
+                Circle()
+                    .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.45))
+                    .overlay(Circle().stroke(theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.22),
+                                             lineWidth: 0.75))
+            }
         }
     }
 }
@@ -180,6 +317,11 @@ private struct DetailPaneColumn: View {
     var body: some View {
         ZStack {
             NotificationsGlanceView()
+                .overlay(alignment: .topTrailing) {
+                    PaneToggleButton(style: .round)
+                        .padding(.top, 10)
+                        .padding(.trailing, 16)
+                }
                 .modifier(PaneLayer(isFront: pane.stack.isEmpty))
             ForEach(Array(pane.stack.enumerated()), id: \.element.id) { index, entry in
                 TweetDetailView(tweet: entry.tweet, backIcon: index > 0 ? "chevron.left" : "xmark") {
