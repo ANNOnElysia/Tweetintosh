@@ -626,6 +626,7 @@ final class SettingsWindow: NSWindow {
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: loc.t("menu_file"))
         fileMenu.addItem(withTitle: loc.t("menu_close_window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        addFileCommands(to: fileMenu)
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)
         
@@ -655,6 +656,7 @@ final class SettingsWindow: NSWindow {
         viewMenu.addItem(toggleSidebarItem)
         
         viewMenu.addItem(NSMenuItem.separator())
+        addFeedCommands(to: viewMenu, at: viewMenu.items.count)
         let toggleFullscreen = NSMenuItem(title: loc.t("menu_enter_full_screen"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         toggleFullscreen.keyEquivalentModifierMask = [.command, .control]
         viewMenu.addItem(toggleFullscreen)
@@ -680,7 +682,7 @@ final class SettingsWindow: NSWindow {
         msgItem.target = self
         navMenu.addItem(msgItem)
         
-        let videosItem = NSMenuItem(title: "Videos", action: #selector(selectVideos), keyEquivalent: "4")
+        let videosItem = NSMenuItem(title: loc.t("tab_videos"), action: #selector(selectVideos), keyEquivalent: "4")
         videosItem.keyEquivalentModifierMask = .option
         videosItem.target = self
         navMenu.addItem(videosItem)
@@ -691,31 +693,33 @@ final class SettingsWindow: NSWindow {
         searchItem.keyEquivalentModifierMask = .option
         searchItem.target = self
         navMenu.addItem(searchItem)
+        addNavigationCommands(to: navMenu)
         
         navMenuItem.submenu = navMenu
         mainMenu.addItem(navMenuItem)
+        mainMenu.addItem(makePostMenu())
         
         // 6. Controls Menu: the Videos tab's playback. The keys are handled by NavigationManager's key monitor before
         // the menu sees them; the items are here so the commands can be found, and are enabled only while the Videos tab
         // has the keyboard, so Space and the arrows keep their usual jobs everywhere else.
         let controlsMenuItem = NSMenuItem()
-        let controlsMenu = NSMenu(title: "Controls")
-        let playItem = NSMenuItem(title: "Play", action: #selector(videosTogglePlayback), keyEquivalent: " ")
+        let controlsMenu = NSMenu(title: loc.t("menu_controls"))
+        let playItem = NSMenuItem(title: loc.t("videos_play"), action: #selector(videosTogglePlayback), keyEquivalent: " ")
         playItem.keyEquivalentModifierMask = []
         playItem.target = self
         controlsMenu.addItem(playItem)
-        let nextItem = NSMenuItem(title: "Next Video", action: #selector(videosNext),
+        let nextItem = NSMenuItem(title: loc.t("videos_next"), action: #selector(videosNext),
                                   keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))
         nextItem.keyEquivalentModifierMask = []
         nextItem.target = self
         controlsMenu.addItem(nextItem)
-        let previousItem = NSMenuItem(title: "Previous Video", action: #selector(videosPrevious),
+        let previousItem = NSMenuItem(title: loc.t("videos_previous"), action: #selector(videosPrevious),
                                       keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
         previousItem.keyEquivalentModifierMask = []
         previousItem.target = self
         controlsMenu.addItem(previousItem)
         controlsMenu.addItem(NSMenuItem.separator())
-        let muteItem = NSMenuItem(title: "Mute", action: #selector(videosToggleMute), keyEquivalent: "")
+        let muteItem = NSMenuItem(title: loc.t("videos_mute"), action: #selector(videosToggleMute), keyEquivalent: "")
         muteItem.target = self
         controlsMenu.addItem(muteItem)
         controlsMenuItem.submenu = controlsMenu
@@ -735,6 +739,7 @@ final class SettingsWindow: NSWindow {
         windowMenu.addItem(withTitle: loc.t("menu_zoom"), action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
+        mainMenu.addItem(makeHelpMenu())
         
         NSApp.mainMenu = mainMenu
         installWindowTilingShortcuts()
@@ -786,17 +791,19 @@ extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let nav = NavigationManager.shared
         let feed = VideosFeed.shared
+        let loc = LocalizationManager.shared
         switch menuItem.action {
         case #selector(videosTogglePlayback):
-            menuItem.title = feed.isPlaying && nav.currentTab == .videos ? "Pause" : "Play"
+            menuItem.title = loc.t(feed.isPlaying && nav.currentTab == .videos ? "videos_pause" : "videos_play")
             return nav.videosOwnKeyboard
         case #selector(videosNext), #selector(videosPrevious):
             return nav.videosOwnKeyboard
         case #selector(videosToggleMute):
-            menuItem.title = feed.isMuted ? "Unmute" : "Mute"
+            menuItem.title = loc.t(feed.isMuted ? "videos_unmute" : "videos_mute")
             return nav.currentTab == .videos
         default:
-            return true
+            // The commands in MenuCommands.swift answer for themselves
+            return validateCommand(menuItem) ?? true
         }
     }
 }

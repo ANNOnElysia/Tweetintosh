@@ -2368,6 +2368,55 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "视频流",
             .traditionalChinese: "影片串流"
         ],
+        "menu_post": [
+            .english: "Post",
+            .japanese: "ポスト",
+            .korean: "게시물",
+            .simplifiedChinese: "帖子",
+            .traditionalChinese: "貼文"
+        ],
+        "menu_controls": [
+            .english: "Controls",
+            .japanese: "コントロール",
+            .korean: "컨트롤",
+            .simplifiedChinese: "控制",
+            .traditionalChinese: "控制"
+        ],
+        "menu_help": [
+            .english: "Help",
+            .japanese: "ヘルプ",
+            .korean: "도움말",
+            .simplifiedChinese: "帮助",
+            .traditionalChinese: "說明"
+        ],
+        "menu_report_problem": [
+            .english: "Report a Problem…",
+            .japanese: "問題を報告…",
+            .korean: "문제 신고…",
+            .simplifiedChinese: "报告问题…",
+            .traditionalChinese: "回報問題…"
+        ],
+        "menu_back": [
+            .english: "Back",
+            .japanese: "戻る",
+            .korean: "뒤로",
+            .simplifiedChinese: "返回",
+            .traditionalChinese: "返回"
+        ],
+        "menu_my_profile": [
+            .english: "My Profile",
+            .japanese: "自分のプロフィール",
+            .korean: "내 프로필",
+            .simplifiedChinese: "我的主页",
+            .traditionalChinese: "我的個人檔案"
+        ],
+        "menu_scroll_to_top": [
+            .english: "Scroll to Top",
+            .japanese: "トップへスクロール",
+            .korean: "맨 위로 스크롤",
+            .simplifiedChinese: "滚动到顶部",
+            .traditionalChinese: "捲動到頂端"
+        ],
         "loading": [
             .english: "Loading",
             .japanese: "読み込み中",

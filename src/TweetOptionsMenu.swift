@@ -229,15 +229,7 @@ private struct TweetMenuContentView: View {
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     
-    private var isSelf: Bool {
-        let activeId = AccountManager.shared.activeId
-        let activeAccount = AccountManager.shared.accounts.first { $0.id == activeId }
-        if let acc = activeAccount {
-            if !tweet.author.id.isEmpty && tweet.author.id == acc.id { return true }
-            if !acc.screenName.isEmpty && tweet.author.screenName.caseInsensitiveCompare(acc.screenName) == .orderedSame { return true }
-        }
-        return false
-    }
+    private var isSelf: Bool { PostDeletion.isOwn(tweet) }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -438,6 +430,15 @@ private struct TweetMenuContentView: View {
 // MARK: - Deleting Your Own Post
 
 enum PostDeletion {
+    // Whether the signed-in account wrote this post, by id or, for a post whose author id is missing, by handle
+    static func isOwn(_ tweet: Tweet) -> Bool {
+        let activeId = AccountManager.shared.activeId
+        guard let account = AccountManager.shared.accounts.first(where: { $0.id == activeId }) else { return false }
+        if !tweet.author.id.isEmpty && tweet.author.id == account.id { return true }
+        return !account.screenName.isEmpty
+            && tweet.author.screenName.caseInsensitiveCompare(account.screenName) == .orderedSame
+    }
+
     /// Asks before deleting, as nothing brings a deleted post back. With `copyingText`, the post's words go to the
     /// clipboard once the deletion is confirmed, so cancelling leaves the clipboard as it was.
     static func confirm(_ tweet: Tweet, copyingText: Bool) {
