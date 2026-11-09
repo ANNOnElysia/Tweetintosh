@@ -130,6 +130,23 @@ Conventional commits, lowercase, imperative, scoped by area: `feat(detail):`, `f
 
 Whenever the user reviews and approves changes ("通过"), immediately commit them to git following this format.
 
+No `Co-Authored-By` line or any other AI attribution in commit messages or pull request descriptions.
+
+## Working together
+
+Two people work on this repository, ANNOnElysia and Dreaminko, each with their own agents. What is being worked on, and
+by whom, lives in GitHub issues on the Tweetintosh project board: https://github.com/users/ANNOnElysia/projects/1
+(new issues in this repository are added to it automatically).
+
+- **Before starting**, pull `main` and look at the board. Work on an issue assigned to you, or pick an unassigned one,
+  assign yourself and move it to In Progress. If the work has no issue yet, open one first, even a one-line one. Leave
+  issues assigned to the other person alone; ask them instead.
+- **One branch and one pull request per issue**, with `Fixes #N` in the pull request description, so merging closes
+  the issue and moves its card to Done. Keep pull requests small; several small ones conflict less than one big one.
+- **Something else found along the way** (a bug, an idea) becomes a new issue rather than part of an unrelated change.
+- **Before pushing**, pull `main` again and resolve any conflict. Never force-push `main`.
+- When a change needs the other person to do something (pull, rebuild, a setting), say so in the pull request.
+
 ## Known state
 
 - `DebugSupport.swift` holds temporary scaffolding for the reply-threading work: set `MAX_DEBUG_DETAIL=1` in the
