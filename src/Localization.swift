@@ -2445,6 +2445,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "我的主页",
             .traditionalChinese: "我的個人檔案"
         ],
+        "menu_hide_pane": [
+            .english: "Hide Side Pane",
+            .japanese: "サイドパネルを隠す",
+            .korean: "사이드 패널 숨기기",
+            .simplifiedChinese: "隐藏侧边栏",
+            .traditionalChinese: "隱藏側邊欄"
+        ],
+        "menu_show_pane": [
+            .english: "Show Side Pane",
+            .japanese: "サイドパネルを表示",
+            .korean: "사이드 패널 보기",
+            .simplifiedChinese: "显示侧边栏",
+            .traditionalChinese: "顯示側邊欄"
+        ],
         "menu_scroll_to_top": [
             .english: "Scroll to Top",
             .japanese: "トップへスクロール",

@@ -39,6 +39,15 @@ extension AppDelegate {
         menu.insertItem(NSMenuItem.separator(), at: position)
     }
 
+    // View: hide or show the pane beside Home, after the sidebar's own command
+    func addPaneCommand(to menu: NSMenu) {
+        let item = NSMenuItem(title: LocalizationManager.shared.t("menu_hide_pane"),
+                              action: #selector(menuToggleDetailPane), keyEquivalent: "i")
+        item.keyEquivalentModifierMask = [.command, .option]
+        item.target = self
+        menu.addItem(item)
+    }
+
     // Navigate: back out of a page, your own profile, and the top of the timeline
     func addNavigationCommands(to menu: NSMenu) {
         let loc = LocalizationManager.shared
@@ -127,6 +136,10 @@ extension AppDelegate {
         TimelineViewModel.shared.selectFeed(feed)
     }
 
+    @objc func menuToggleDetailPane() {
+        NavigationManager.shared.toggleDetailPane()
+    }
+
     @objc func menuGoBack() {
         let nav = NavigationManager.shared
         if nav.hasOverlay {
@@ -206,6 +219,10 @@ extension AppDelegate {
             let feed = (item.representedObject as? String).flatMap(HomeFeedType.init(rawValue:))
             item.state = nav.currentTab == .home && TimelineViewModel.shared.selectedFeed == feed ? .on : .off
             return true
+        case #selector(menuToggleDetailPane):
+            let pane = DetailPane.shared
+            item.title = loc.t(pane.isCollapsed ? "menu_show_pane" : "menu_hide_pane")
+            return pane.fitsWindow && nav.currentTab == .home
         case #selector(menuGoBack):
             return nav.hasOverlay || (nav.currentTab == .home && DetailPane.shared.isOpen)
         case #selector(menuOpenOwnProfile):

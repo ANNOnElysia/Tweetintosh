@@ -243,6 +243,35 @@ final class NavigationManager {
     var isContactListPeeking = false
     private var isWideWindow: Bool?
     
+    // Hides the pane beside Home, or brings it back. Hidden, the timeline takes the window and posts open as full pages,
+    // as in a narrower window.
+    func toggleDetailPane() {
+        let pane = DetailPane.shared
+        guard pane.fitsWindow else { return }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? nil : SidebarMotion.toggle) {
+            if pane.setCollapsed(!pane.isCollapsed) { movePostsWithPane() }
+        }
+    }
+
+    // Open posts move with the pane: to full pages when it goes away, and into it when it comes back, or a post open as
+    // a full page would hide the three columns. Anything else on the stack stays a full page.
+    private func movePostsWithPane() {
+        guard currentTab == .home else { return }
+        if DetailPane.shared.isAvailable {
+            let tweets = overlayStack.compactMap { entry -> Tweet? in
+                if case .tweet(let tweet) = entry.page { return tweet }
+                return nil
+            }
+            if tweets.count == overlayStack.count && !tweets.isEmpty {
+                DetailPane.shared.adopt(tweets)
+                overlayStack = []
+            }
+        } else {
+            overlayStack.append(contentsOf: DetailPane.shared.takeStack().map { OverlayEntry(page: .tweet($0)) })
+        }
+    }
+    
     // The sidebar and the contact list only sit side by side past half the screen, so opening the sidebar by hand in a
     // narrower window folds the list for as long as it is open
     var isContactListFolded: Bool {
@@ -256,19 +285,8 @@ final class NavigationManager {
     func updateLayout(windowWidth: CGFloat, screenWidth: CGFloat) {
         // Open posts move with the layout: to full pages when the pane goes away, and into the pane when it arrives, or
         // a post open as a full page would hide the three columns. Anything else on the stack stays a full page.
-        if DetailPane.shared.updateAvailability(windowWidth: windowWidth, screenWidth: screenWidth), currentTab == .home {
-            if DetailPane.shared.isAvailable {
-                let tweets = overlayStack.compactMap { entry -> Tweet? in
-                    if case .tweet(let tweet) = entry.page { return tweet }
-                    return nil
-                }
-                if tweets.count == overlayStack.count && !tweets.isEmpty {
-                    DetailPane.shared.adopt(tweets)
-                    overlayStack = []
-                }
-            } else {
-                overlayStack.append(contentsOf: DetailPane.shared.takeStack().map { OverlayEntry(page: .tweet($0)) })
-            }
+        if DetailPane.shared.updateAvailability(windowWidth: windowWidth, screenWidth: screenWidth) {
+            movePostsWithPane()
         }
         let isWide = windowWidth >= screenWidth * 0.51
         let isFolded = windowWidth < (screenWidth * 2 / 5).rounded(.down)

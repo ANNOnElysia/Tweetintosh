@@ -653,6 +653,7 @@ final class SettingsWindow: NSWindow {
         toggleSidebarItem.keyEquivalentModifierMask = .option
         toggleSidebarItem.target = self
         viewMenu.addItem(toggleSidebarItem)
+        addPaneCommand(to: viewMenu)
         
         viewMenu.addItem(NSMenuItem.separator())
         addFeedCommands(to: viewMenu, at: viewMenu.items.count)
