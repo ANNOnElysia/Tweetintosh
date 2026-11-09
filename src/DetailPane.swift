@@ -141,7 +141,6 @@ extension EnvironmentValues {
 // The timeline is held to a comfortable reading width. It keeps the same place in the view tree whether or not the pane
 // is showing, so resizing the window doesn't rebuild it and lose the scroll position.
 struct HomeColumns<Timeline: View>: View {
-    let sidebarExpanded: Bool
     @ViewBuilder let timeline: () -> Timeline
     @ObservedObject private var layout = DetailPane.shared.layout
     @ObservedObject private var theme = ThemeManager.shared
@@ -187,7 +186,7 @@ struct HomeColumns<Timeline: View>: View {
                                 .ignoresSafeArea()
                                 .overlay { PaneDivider(windowWidth: width) }
                                 .zIndex(1)
-                            DetailPaneColumn(sidebarExpanded: sidebarExpanded)
+                            DetailPaneColumn()
                                 .frame(width: paneWidth)
                                 .environment(\.mediaColumnWidth, paneWidth - Self.mediaInset)
                         }
@@ -310,8 +309,9 @@ private struct PaneSlideIn<Content: View>: View {
 
 // Every page stays mounted, with only the top one receiving input. Going back then needs no reload and keeps the scroll
 // position, and opening a post doesn't rebuild the notifications table on closing it, which was most of the cost.
+// It runs the full height of the window whatever the sidebar does: the top bar only ever floats over the timeline
+// column, never over the pane.
 private struct DetailPaneColumn: View {
-    let sidebarExpanded: Bool
     @ObservedObject private var pane = DetailPane.shared
 
     var body: some View {
@@ -333,8 +333,6 @@ private struct DetailPaneColumn: View {
             }
         }
         .environment(\.isInDetailPane, true)
-        // The floating bar sits across the top of the window while the sidebar is closed
-        .padding(.top, sidebarExpanded ? 0 : 52)
     }
 }
 
