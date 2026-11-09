@@ -12,6 +12,7 @@ struct ComposerAttachButton: View {
     let isDisabled: Bool
     let action: () -> Void
     @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
 
     var body: some View {
         HStack(spacing: 8) {
@@ -42,6 +43,7 @@ struct ComposerAttachButton: View {
 struct ComposerAttachmentStrip: View {
     @Binding var attachments: [ComposerAttachment]
     let isDisabled: Bool
+    @ObservedObject private var theme = ThemeManager.shared
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {

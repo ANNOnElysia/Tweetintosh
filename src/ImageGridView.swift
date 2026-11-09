@@ -540,6 +540,7 @@ private struct MediaTile: View {
     var isInteractive: Bool = true
     
     @StateObject private var frameBox = FrameBox()
+    @ObservedObject private var theme = ThemeManager.shared
     
     var body: some View {
         ZStack {

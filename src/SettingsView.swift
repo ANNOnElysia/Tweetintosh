@@ -438,6 +438,7 @@ struct SettingsCloseButtonStyle: ButtonStyle {
 
 struct SettingsCloseButton: View {
     var action: () -> Void
+    @ObservedObject private var theme = ThemeManager.shared
     
     var body: some View {
         Button(action: action) {

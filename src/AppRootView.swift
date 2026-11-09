@@ -159,6 +159,8 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 struct AppRootView: View {
     @Bindable private var nav = NavigationManager.shared
     @ObservedObject private var paneLayout = DetailPane.shared.layout
+    // The root background does not follow the window's appearance on its own: it reads the theme's resolved colour
+    @ObservedObject private var theme = ThemeManager.shared
     // The window's width, for placing the top bar over the timeline column
     @State private var windowWidth: CGFloat = 0
     var onOpenSettings: () -> Void = {}
@@ -1211,6 +1213,7 @@ private struct SidebarContextSection: View {
 struct NewDestinationPlaceholderView: View {
     let title: String
     let icon: String
+    @ObservedObject private var theme = ThemeManager.shared
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: icon)

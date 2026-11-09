@@ -520,6 +520,7 @@ struct PeekOverlay: View {
 private struct PeekCard: View {
     let target: PeekTarget
     let container: CGSize
+    @ObservedObject private var theme = ThemeManager.shared
 
     var body: some View {
         content
@@ -764,6 +765,7 @@ private final class PeekLinkState: ObservableObject {
 private struct PeekLinkCard: View {
     let url: URL
     @StateObject private var state = PeekLinkState()
+    @ObservedObject private var theme = ThemeManager.shared
 
     var body: some View {
         VStack(spacing: 0) {

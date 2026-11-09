@@ -335,6 +335,7 @@ private struct NotificationFilterCapsuleBar: View {
 /// and a deep press previews it.
 private struct NotificationAvatarPile: View {
     let actors: [TweetUser]
+    @ObservedObject private var theme = ThemeManager.shared
 
     private static let size: CGFloat = 26
     private static let overlap: CGFloat = 8

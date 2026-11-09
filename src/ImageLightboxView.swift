@@ -343,6 +343,7 @@ final class LightboxManager: ObservableObject {
 // MARK: - Lightbox Overlay View
 struct ImageLightboxOverlay: View {
     @ObservedObject var manager = LightboxManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
     @GestureState private var pinchScale: CGFloat = 1.0
     
     var body: some View {

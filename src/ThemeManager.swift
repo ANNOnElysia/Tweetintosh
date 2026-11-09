@@ -82,7 +82,9 @@ enum AppThemeColor: String, CaseIterable, Identifiable, Codable {
         }
     }
     
-    var gradientColors: [NSColor] {
+    // The appearance is a parameter rather than read from ThemeManager so the callers can cache by it: the gray
+    // gradient is inverted between light and dark, and the colours are copied into a CALayer that won't resolve them again
+    func gradientColors(isLight: Bool) -> [NSColor] {
         switch self {
         case .blue:
             return [
@@ -104,7 +106,7 @@ enum AppThemeColor: String, CaseIterable, Identifiable, Codable {
             ]
         case .gray:
             // Near-white on a dark background and slate on a light one: the same shades are invisible on the other
-            return ThemeManager.shared.isLight
+            return isLight
                 ? [NSColor(hex: "#374151"), NSColor(hex: "#4b5563"), NSColor(hex: "#6b7280")]
                 : [NSColor(hex: "#ffffff"), NSColor(hex: "#e2e8f0"), NSColor(hex: "#94a3b8")]
         case .orangeRed:

@@ -20,6 +20,8 @@ final class SVGRefreshIndicatorNSView: NSView {
     private var pullProgress: CGFloat = 0.0
     private var isRefreshing: Bool = false
     private var colorScheme: AppThemeColor = .blue
+    // Part of what the cached gradient depends on: gray changes with the appearance while the colour option stays put
+    private var isLight = false
     private var isAnimatingLoop: Bool = false
     // A single colour instead of the theme gradient, for places the gradient would vanish into (an accent button)
     private var tint: NSColor?
@@ -125,17 +127,18 @@ final class SVGRefreshIndicatorNSView: NSView {
         if let tint = tint {
             gradientLayer.colors = [tint.cgColor, tint.cgColor, tint.cgColor]
         } else {
-            gradientLayer.colors = colorScheme.gradientColors.map { $0.cgColor }
+            gradientLayer.colors = colorScheme.gradientColors(isLight: isLight).map { $0.cgColor }
         }
     }
     
-    func configure(progress: CGFloat, isRefreshing: Bool, color: AppThemeColor, tint: NSColor? = nil) {
-        let colorChanged = (self.colorScheme != color) || self.tint != tint
+    func configure(progress: CGFloat, isRefreshing: Bool, color: AppThemeColor, isLight: Bool, tint: NSColor? = nil) {
+        let colorChanged = (self.colorScheme != color) || self.isLight != isLight || self.tint != tint
         self.tint = tint
         let refreshStateChanged = (self.isRefreshing != isRefreshing)
         self.pullProgress = progress
         self.isRefreshing = isRefreshing
         self.colorScheme = color
+        self.isLight = isLight
         
         if colorChanged {
             updateGradientColors()
@@ -276,15 +279,16 @@ struct SVGRefreshIndicatorView: NSViewRepresentable {
     var isRefreshing: Bool
     var colorScheme: AppThemeColor
     var tint: NSColor? = nil
+    @ObservedObject private var theme = ThemeManager.shared
     
     func makeNSView(context: Context) -> SVGRefreshIndicatorNSView {
         let view = SVGRefreshIndicatorNSView(frame: .zero)
-        view.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme, tint: tint)
+        view.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme, isLight: theme.isLight, tint: tint)
         return view
     }
     
     func updateNSView(_ nsView: SVGRefreshIndicatorNSView, context: Context) {
-        nsView.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme, tint: tint)
+        nsView.configure(progress: pullProgress, isRefreshing: isRefreshing, color: colorScheme, isLight: theme.isLight, tint: tint)
     }
 }
 
@@ -317,6 +321,7 @@ struct LoadingIndicator: View {
 struct SpinnerRing: View {
     var active: Bool = true
     var tint: Color? = nil
+    @ObservedObject private var theme = ThemeManager.shared
 
     // One stretch-and-shrink of the arc
     private static let cycle: Double = 1.4

@@ -1064,6 +1064,7 @@ struct FoldableText<Content: View>: View {
     @ViewBuilder let content: () -> Content
     @StateObject private var fold = FoldState()
     @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {

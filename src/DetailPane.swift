@@ -101,6 +101,7 @@ struct HomeColumns<Timeline: View>: View {
     let sidebarExpanded: Bool
     @ViewBuilder let timeline: () -> Timeline
     @ObservedObject private var layout = DetailPane.shared.layout
+    @ObservedObject private var theme = ThemeManager.shared
 
     // Alone, the timeline stops at a reading width. Beside the pane it takes the larger share, and the pane fills what is
     // left, so the columns meet the window's edges with nothing blank around them.

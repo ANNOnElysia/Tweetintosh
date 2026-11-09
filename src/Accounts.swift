@@ -214,6 +214,7 @@ import SwiftUI
 struct CurrentUserAvatar: View {
     var size: CGFloat
     @ObservedObject private var accounts = AccountManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
 
     var body: some View {
         if let url = accounts.active?.avatarUrl {
