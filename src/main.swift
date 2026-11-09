@@ -329,16 +329,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     // The window stays at least a third of its screen wide, so it follows the screen it is on. A window saved narrower,
     // or moved over from a smaller display, grows to fit rather than waiting to be resized.
-    // The sidebar's column (216 points plus its margins), and the narrowest page that still fits a profile's banner: the
-    // photo and name on one side, and the following and follower counts on the other without wrapping
-    private static let sidebarColumnWidth: CGFloat = 234
+    // The narrowest page that still fits a profile's banner: the photo and name on one side, and the following and
+    // follower counts on the other without wrapping
     private static let minimumPageWidth: CGFloat = 520
 
     private func applyMinimumSize(to window: NSWindow, sidebarExpanded: Bool? = nil, animate: Bool = false) {
         guard let screen = window.screen ?? NSScreen.main else { return }
         var minWidth = max(500, (screen.frame.width / 3).rounded(.up))
         if sidebarExpanded ?? NavigationManager.shared.sidebarExpanded {
-            minWidth = max(minWidth, Self.sidebarColumnWidth + Self.minimumPageWidth)
+            minWidth = max(minWidth, SidebarLayout.columnWidth + Self.minimumPageWidth)
         }
         minWidth = min(minWidth, screen.visibleFrame.width)
         window.minSize = NSSize(width: minWidth, height: 600)

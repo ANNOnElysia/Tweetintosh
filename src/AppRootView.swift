@@ -156,6 +156,18 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 }
 
 // MARK: - AppRootView (Adaptive Shell)
+
+// The floating sidebar's column. The leading margin is wider than the window-edge margins so the system glass shadow
+// has room on the left; the width shrinks by the same amount, keeping the right edge where it was so the timeline does
+// not move. The trailing and bottom margins give the shadow room before it is cut off by the page and the window edge.
+enum SidebarLayout {
+    static let width: CGFloat = 208
+    static let leadingMargin: CGFloat = 20
+    static let trailingMargin: CGFloat = 32
+    static let bottomMargin: CGFloat = 32
+    static let columnWidth = leadingMargin + width + trailingMargin
+}
+
 struct AppRootView: View {
     @Bindable private var nav = NavigationManager.shared
     @ObservedObject private var paneLayout = DetailPane.shared.layout
@@ -179,11 +191,11 @@ struct AppRootView: View {
                         isExpanded: $nav.sidebarExpanded,
                         onOpenSettings: onOpenSettings
                     )
-                    .frame(width: 216)
-                    .padding(.leading, 12)
+                    .frame(width: SidebarLayout.width)
+                    .padding(.leading, SidebarLayout.leadingMargin)
                     .padding(.top, 12) // The safe area already keeps the sidebar below the window controls.
-                    .padding(.bottom, 12)
-                    .padding(.trailing, 6)
+                    .padding(.bottom, SidebarLayout.bottomMargin)
+                    .padding(.trailing, SidebarLayout.trailingMargin)
                     .transition(
                         .asymmetric(
                             insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.94)),
@@ -264,7 +276,7 @@ struct AppRootView: View {
                 }
                 .environment(\.peekScope, .overlay(index))
                 // Beside the sidebar when it is open, whose rows stay usable and lead back out of the page
-                .padding(.leading, nav.sidebarExpanded ? 234 : 0)
+                .padding(.leading, nav.sidebarExpanded ? SidebarLayout.columnWidth : 0)
                 .transition(
                     .asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -745,7 +757,7 @@ private struct LiquidGlassSidebar: View {
                 .padding(-12)
                 .help("Toggle Sidebar (⌥`)")
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 19)
             .padding(.top, 14)
             .padding(.bottom, 6)
             
