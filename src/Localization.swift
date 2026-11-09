@@ -2215,11 +2215,11 @@ final class LocalizationManager: ObservableObject {
             .traditionalChinese: "實驗性"
         ],
         "show_videos_tab_desc": [
-            .english: "Adds a Videos tab with X's full-screen video feed, one video at a time, swiped through vertically. The next few videos are downloaded ahead.",
-            .japanese: "X の全画面動画フィードを表示する「動画」タブを追加します。1本ずつ縦にスワイプして見られます。次の数本は先にダウンロードされます。",
-            .korean: "X의 전체 화면 동영상 피드를 보여 주는 '동영상' 탭을 추가합니다. 한 번에 하나씩 세로로 넘겨 볼 수 있으며, 다음 몇 개의 동영상은 미리 다운로드됩니다.",
-            .simplifiedChinese: "添加“视频”标签页，显示 X 的全屏视频流，一次一个，上下滑动切换。接下来的几个视频会提前下载。",
-            .traditionalChinese: "新增「影片」分頁，顯示 X 的全螢幕影片串流，一次一部，上下滑動切換。接下來的幾部影片會預先下載。"
+            .english: "Adds a Videos tab for watching X's videos full screen.",
+            .japanese: "X の動画を全画面で見られる「動画」タブを追加します。",
+            .korean: "X의 동영상을 전체 화면으로 볼 수 있는 '동영상' 탭을 추가합니다.",
+            .simplifiedChinese: "添加“视频”标签页，全屏观看 X 上的视频。",
+            .traditionalChinese: "新增「影片」分頁，全螢幕觀看 X 上的影片。"
         ],
         "autoplay_media_desc": [
             .english: "Plays videos and GIFs on the timeline and post pages without sound. Click one to open it with sound.",
