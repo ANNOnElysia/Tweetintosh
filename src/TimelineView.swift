@@ -561,6 +561,14 @@ private struct TimelinePullRefreshIndicatorOverlay: View {
             )
             .frame(height: 40)
             .frame(maxWidth: .infinity)
+            .mask {
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.12),
+                    .init(color: .black, location: 0.88),
+                    .init(color: .clear, location: 1)
+                ], startPoint: .leading, endPoint: .trailing)
+            }
             .offset(y: offsetY)
             .opacity(opac)
             .allowsHitTesting(false)
