@@ -24,6 +24,7 @@ Tweetintosh focuses on utility, keyboard navigation, and desktop ergonomics that
 - **About Window**: A centered native window shows the app icon and version, with icon buttons to open the GitHub repository and website.
 - **Stable Reading Position**: Background timeline polling never auto-scrolls or displaces the text you are reading. New items wait behind a top indicator until summoned.
 - **Responsive Timeline**: The Home timeline prioritizes visible and nearby posts when measuring rows, and prepares media in the background. With the detail pane hidden, scrolling either blank margin also scrolls the timeline, with or without the sidebar.
+- **Soft Refresh Edges**: The Home pull-to-refresh animation fades to transparent at both sides, blending into the surrounding interface.
 - **Multi-Account Switching**: Save multiple profiles and switch between them without re-authenticating.
 - **Instant Launch & Offline Cache**: Recent timelines are stored locally so you can read previously loaded posts immediately upon launch, even in poor connectivity or airplane mode.
 - **Transient Authentication**: WebKit is loaded only once on first run to capture your session cookies, then immediately released from memory.
@@ -46,6 +47,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 - **关于窗口**：居中展示应用图标与版本，通过图标按钮在浏览器中打开 GitHub 仓库及官网。
 - **阅读位置保护**：后台检测到新推文时仅在顶部显示更新计数，绝不会自动将时间线强制置顶移位。
 - **流畅浏览时间线**：主页优先测量屏幕内及附近的推文，并在后台准备媒体内容。详情栏隐藏时，无论是否展开左侧栏，在时间线两侧留白处滚动也能滚动时间线。
+- **柔和刷新边缘**：主页下拉刷新动画的左右两侧渐隐至透明，与周围界面自然衔接。
 - **多账号快速切换**：支持保存多个 X 账号，随时一键切换身份。
 - **即时启动与离线缓存**：推文快照持久化保存在本地，断网或飞行模式下打开即可浏览既有内容，网络连通时静默更新。
 - **瞬态登录认证**：仅在初次登录时启动一次临时网页组件读取 Cookie 凭证，提取完毕后立即销毁该实例，日常运行不驻留网页运行时。
