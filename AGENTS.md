@@ -1,5 +1,22 @@
 # AGENTS.md
 
+Pull main and read AGENTS.md, especially "Working together" and "Commits".
+
+From now on we share work through GitHub issues on the project board
+https://github.com/users/ANNOnElysia/projects/1 . Before starting anything:
+1. git pull main, then look at the board.
+2. Work only on an issue assigned to me (Dreaminko), or pick an unassigned one, assign me
+   and move it to In Progress. If the task has no issue, open one first.
+   Don't touch issues assigned to ANNOnElysia.
+3. Use one branch and one pull request per issue, and put "Fixes #<number>" in the PR
+   description. Keep PRs small.
+4. Pull main again before pushing, resolve any conflicts, and never force-push main.
+5. Commit messages follow AGENTS.md (conventional, lowercase) with no Co-Authored-By
+   or other AI attribution lines.
+If you find another bug or idea along the way, open a new issue for it instead of
+fixing it inside the current PR.
+
+
 A native macOS client for X, in plain SwiftUI + AppKit. There is no web view in the main UI: credentials are captured
 once from a throwaway `WKWebView` (`LoginWindowController`), then everything is drawn natively from X's private
 GraphQL/REST endpoints, which `APIClient` talks to directly.
