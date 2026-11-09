@@ -13,8 +13,6 @@ final class TweetComposerState: ObservableObject {
     @Published var attachments: [ComposerAttachment] = []
     // What the upload is up to ("Uploading 2 of 3…"), shown while posting
     @Published var uploadStatus: String? = nil
-    // How much of the attached media has uploaded, while posting with media
-    @Published var uploadProgress: Double? = nil
 }
 
 struct TweetComposerSheet: View {
@@ -45,7 +43,8 @@ struct TweetComposerSheet: View {
         VStack(spacing: 0) {
             headerBar
             
-            ComposerSendingBar(isSending: state.isSending, progress: state.uploadProgress)
+            Divider()
+                .background(ThemeManager.divider)
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -138,6 +137,9 @@ struct TweetComposerSheet: View {
             
             Button(action: submitPost) {
                 HStack(spacing: 6) {
+                    if state.isSending {
+                        LoadingIndicator(compactHeight: 16, tint: ThemeManager.onAccent)
+                    }
                     Text(loc.t("post_action"))
                         .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.onAccent)
@@ -269,15 +271,13 @@ struct TweetComposerSheet: View {
         
         state.isSending = true
         state.errorMessage = nil
-        state.uploadProgress = state.attachments.isEmpty ? nil : 0
         let attachments = state.attachments
         
         Task { @MainActor in
             // Upload the media first; the post is created once X has every file
             var mediaIds: [String] = []
             do {
-                mediaIds = try await MediaAttachments.upload(attachments, status: { state.uploadStatus = $0 },
-                                                           progress: { state.uploadProgress = $0 })
+                mediaIds = try await MediaAttachments.upload(attachments) { state.uploadStatus = $0 }
             } catch {
                 state.isSending = false
                 state.uploadStatus = nil
