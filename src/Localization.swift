@@ -1100,6 +1100,41 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "清理本地推文缓存",
             .traditionalChinese: "清除本機推文快取"
         ],
+        "auto_clean_cache": [
+            .english: "Clean Up Cache Automatically",
+            .japanese: "キャッシュを自動で整理",
+            .korean: "캐시 자동 정리",
+            .simplifiedChinese: "自动清理缓存",
+            .traditionalChinese: "自動清理快取"
+        ],
+        "auto_clean_cache_desc": [
+            .english: "Clears the oldest images and videos once the cache passes this size.",
+            .japanese: "キャッシュがこのサイズを超えると、古い画像や動画から消去します。",
+            .korean: "캐시가 이 크기를 넘으면 가장 오래된 이미지와 동영상부터 지웁니다.",
+            .simplifiedChinese: "缓存超过这个大小时，自动清掉最早的图片和视频。",
+            .traditionalChinese: "快取超過這個大小時，自動清除最早的圖片和影片。"
+        ],
+        "cache_limit": [
+            .english: "Cache Size",
+            .japanese: "キャッシュサイズ",
+            .korean: "캐시 크기",
+            .simplifiedChinese: "缓存上限",
+            .traditionalChinese: "快取上限"
+        ],
+        "cache_limit_auto": [
+            .english: "Auto ({size})",
+            .japanese: "自動（{size}）",
+            .korean: "자동 ({size})",
+            .simplifiedChinese: "自动（{size}）",
+            .traditionalChinese: "自動（{size}）"
+        ],
+        "cache_limit_auto_desc": [
+            .english: "The cache grows or shrinks with your Mac's free space.",
+            .japanese: "Mac の空き容量に合わせてキャッシュの大きさが変わります。",
+            .korean: "Mac의 여유 공간에 맞춰 캐시 크기가 달라집니다.",
+            .simplifiedChinese: "缓存大小随 Mac 的剩余空间自动调整。",
+            .traditionalChinese: "快取大小隨 Mac 的剩餘空間自動調整。"
+        ],
         "accounts": [
             .english: "Accounts",
             .japanese: "アカウント",

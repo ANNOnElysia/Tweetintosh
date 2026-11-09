@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Observation
 import Foundation
 import CryptoKit
 import ImageIO
@@ -28,10 +29,6 @@ final class MediaCacheManager: ObservableObject {
         q.qualityOfService = .utility
         return q
     }()
-    
-    // Size and pruning limits
-    private let maxDiskBytes: Int64 = 450 * 1024 * 1024 // 450 MB total limit
-    private let maxAgeSeconds: TimeInterval = 7 * 86400  // 7 days TTL
     
     @Published var formattedCacheSize: String = "0 B"
     
@@ -326,53 +323,33 @@ final class MediaCacheManager: ObservableObject {
         }
     }
     
-    // MARK: - Cache Eviction & Cleanup Strategy ("找机会清理掉")
-    // 1. Time-to-Live: Deletes files older than 7 days
-    // 2. LRU: If total size exceeds maxDiskBytes, evicts oldest modified files down to 70% threshold
+    // MARK: - Automatic Cleanup
+    // Once images and videos together pass the size chosen in Settings, the least recently written go first, down to
+    // 80% of it so the next few pages do not set it off again. With the setting off, nothing is cleared on its own.
     func pruneCache() {
+        guard let limit = CacheCleanup.currentLimitBytes() else {
+            updateFormattedSize()
+            return
+        }
         ioQueue.async { [weak self] in
             guard let self = self else { return }
-            let now = Date()
             let fm = FileManager.default
-            
+            var records: [(url: URL, date: Date, size: Int64)] = []
             for folder in [self.imagesDir, self.videosDir] {
-                guard let fileURLs = try? fm.contentsOfDirectory(
-                    at: folder,
-                    includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-                    options: .skipsHiddenFiles
-                ) else {
-                    continue
+                let files = (try? fm.contentsOfDirectory(at: folder,
+                                                         includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+                                                         options: .skipsHiddenFiles)) ?? []
+                for url in files {
+                    let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                    records.append((url, values?.contentModificationDate ?? .distantPast, Int64(values?.fileSize ?? 0)))
                 }
-                
-                var totalSize: Int64 = 0
-                var fileRecords: [(url: URL, date: Date, size: Int64)] = []
-                
-                for fileURL in fileURLs {
-                    let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
-                    let date = values?.contentModificationDate ?? now
-                    let size = Int64(values?.fileSize ?? 0)
-                    
-                    // 1. TTL Pruning
-                    if now.timeIntervalSince(date) > self.maxAgeSeconds {
-                        try? fm.removeItem(at: fileURL)
-                        continue
-                    }
-                    
-                    totalSize += size
-                    fileRecords.append((fileURL, date, size))
-                }
-                
-                // 2. LRU Pruning
-                let folderLimit: Int64 = (folder == self.imagesDir) ? 350 * 1024 * 1024 : 100 * 1024 * 1024
-                if totalSize > folderLimit {
-                    let targetSize = Int64(Double(folderLimit) * 0.70)
-                    let sorted = fileRecords.sorted { $0.date < $1.date }
-                    var currentTotal = totalSize
-                    for item in sorted {
-                        if currentTotal <= targetSize { break }
-                        try? fm.removeItem(at: item.url)
-                        currentTotal -= item.size
-                    }
+            }
+            var total = records.reduce(Int64(0)) { $0 + $1.size }
+            if total > limit {
+                let target = limit / 5 * 4
+                for item in records.sorted(by: { $0.date < $1.date }) where total > target {
+                    try? fm.removeItem(at: item.url)
+                    total -= item.size
                 }
             }
             self.updateFormattedSize()
@@ -416,5 +393,57 @@ final class MediaCacheManager: ObservableObject {
                 self.formattedCacheSize = formatted
             }
         }
+    }
+}
+
+// The automatic cleanup setting: a switch, on by default, and a size from 100 MB to 500 MB. The far end of the slider
+// follows the disk instead, letting the cache use 1% of the free space, so a roomy Mac keeps more and a full one less.
+@Observable
+final class CacheCleanup {
+    static let shared = CacheCleanup()
+
+    static let sizesMB = Array(stride(from: 100, through: 500, by: 50))
+    // The slider's last stop, past 500 MB
+    static let followsFreeSpace = sizesMB.count
+
+    private static let onKey = "Tweetintosh_AutoCleanCache"
+    private static let stopKey = "Tweetintosh_CacheLimitStop"
+
+    var isOn: Bool {
+        didSet {
+            UserDefaults.standard.set(isOn, forKey: Self.onKey)
+            MediaCacheManager.shared.pruneCache()
+        }
+    }
+
+    // An index into sizesMB, or followsFreeSpace. Cleared only when the slider is let go (see Settings), so dragging
+    // down and back up does not delete anything on the way.
+    var stop: Int {
+        didSet { UserDefaults.standard.set(stop, forKey: Self.stopKey) }
+    }
+
+    private init() {
+        let defaults = UserDefaults.standard
+        isOn = defaults.object(forKey: Self.onKey) as? Bool ?? true
+        let saved = defaults.object(forKey: Self.stopKey) as? Int ?? Self.sizesMB.firstIndex(of: 450)!
+        stop = min(max(saved, 0), Self.followsFreeSpace)
+    }
+
+    static func bytes(atStop stop: Int) -> Int64 {
+        // Decimal, as the Finder and ByteCountFormatter count, so the 200 MB stop reads "200 MB"
+        let megabyte: Int64 = 1_000_000
+        guard stop >= followsFreeSpace else { return Int64(sizesMB[max(stop, 0)]) * megabyte }
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let free = (try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage ?? 0
+        return max(free / 100, Int64(sizesMB[0]) * megabyte)
+    }
+
+    // Read on the cache's own queue as well, so it goes to UserDefaults rather than the observed properties
+    static func currentLimitBytes() -> Int64? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: onKey) as? Bool ?? true else { return nil }
+        let stop = defaults.object(forKey: stopKey) as? Int ?? sizesMB.firstIndex(of: 450)!
+        return bytes(atStop: stop)
     }
 }

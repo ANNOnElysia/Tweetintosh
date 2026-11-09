@@ -28,6 +28,20 @@ echo "-> Packaging binary..."
 cp "$BASE_DIR/.build/release/Tweetintosh" "$MACOS_DIR/Tweetintosh"
 strip "$MACOS_DIR/Tweetintosh"
 
+# SwiftPM records the deployment target (15.0) as the SDK the binary was built with, and macOS draws an app's system
+# controls in the style of that SDK: switches, sliders and pop-ups came out as Sequoia's, without Liquid Glass. Record
+# the SDK actually used, so the app gets the current system's controls.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)"
+MIN_VERSION="$(vtool -show-build "$MACOS_DIR/Tweetintosh" | awk '/minos/ { print $2; exit }')"
+if [ -n "$SDK_VERSION" ] && [ -n "$MIN_VERSION" ]; then
+    echo "-> Marking the binary as built with the macOS $SDK_VERSION SDK..."
+    vtool -set-build-version macos "$MIN_VERSION" "$SDK_VERSION" -replace \
+        -output "$MACOS_DIR/Tweetintosh.tmp" "$MACOS_DIR/Tweetintosh"
+    mv "$MACOS_DIR/Tweetintosh.tmp" "$MACOS_DIR/Tweetintosh"
+else
+    echo "warning: could not read the SDK version; the app will get the system controls of macOS $MIN_VERSION" >&2
+fi
+
 # 3. Copy resources into app bundle
 echo "-> Packaging resources & Info.plist..."
 cp "$SRC_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"

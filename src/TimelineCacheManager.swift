@@ -69,13 +69,13 @@ final class TimelineCacheManager {
     
     func clearCache(feed: HomeFeedType? = nil, listId: String? = nil) {
         let dir = maxDir
-        let urls: [URL]
-        if let feed = feed {
-            urls = [cacheURL(for: feed, listId: listId)]
-        } else {
-            urls = HomeFeedType.allCases.map { cacheURL(for: $0) } + [dir.appendingPathComponent("timeline_cache.json")]
-        }
+        let single = feed.map { cacheURL(for: $0, listId: listId) }
         queue.async {
+            // The full reset takes the list snapshots too, not only the home feeds
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            let urls = single.map { [$0] } ?? names
+                .filter { $0.hasPrefix("timeline_cache") && $0.hasSuffix(".json") }
+                .map { dir.appendingPathComponent($0) }
             for url in urls { try? FileManager.default.removeItem(at: url) }
         }
     }
