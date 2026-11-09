@@ -465,11 +465,11 @@ struct TweetDetailView: View {
             if !viewModel.focalTweet.displayBodyText.isEmpty {
                 Text(TweetText.attributed(viewModel.focalTweet))
                     .handlesTweetLinks()
-                    .font(theme.tweetFont(size: 17))
+                    .font(theme.tweetFont(size: theme.postSize(17)))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineSpacing(5)
                     .textSelection(.enabled)
-                    .peeksText(of: viewModel.focalTweet, fontSize: 17, lineSpacing: 5)
+                    .peeksText(of: viewModel.focalTweet, fontSize: theme.postSize(17), lineSpacing: 5)
             }
             
             // An X Article attached to the post: opens the reader
@@ -596,10 +596,10 @@ struct TweetDetailView: View {
                 if !tweet.displayBodyText.isEmpty {
                     Text(TweetText.attributed(tweet))
                         .handlesTweetLinks()
-                        .font(theme.appFont(size: 13.5))
+                        .font(theme.appFont(size: theme.postSize(13.5)))
                         .foregroundColor(ThemeManager.primaryText)
                         .lineSpacing(theme.lineSpacing() * 0.7)
-                        .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
+                        .peeksText(of: tweet, fontSize: theme.postSize(13.5), lineSpacing: theme.lineSpacing() * 0.7)
                     LongTextToggle(tweet: tweet, fontSize: 13.5)
                 }
                 
@@ -746,10 +746,10 @@ struct TweetDetailView: View {
                     if !tweet.displayBodyText.isEmpty {
                         Text(TweetText.attributed(tweet))
                             .handlesTweetLinks()
-                            .font(theme.appFont(size: 13.5))
+                            .font(theme.appFont(size: theme.postSize(13.5)))
                             .foregroundColor(ThemeManager.primaryText)
                             .lineSpacing(theme.lineSpacing() * 0.7)
-                            .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
+                            .peeksText(of: tweet, fontSize: theme.postSize(13.5), lineSpacing: theme.lineSpacing() * 0.7)
                         LongTextToggle(tweet: tweet, fontSize: 13.5)
                     }
                     

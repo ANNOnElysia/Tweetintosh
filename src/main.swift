@@ -125,6 +125,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var menuLanguageObserver: AnyCancellable?
     // Shows the Videos menu items only while the Videos tab is turned on in Settings
     private var videosMenuObserver: AnyCancellable?
+    // Keeps the Tweetintosh menu's accounts in step with the signed-in accounts
+    var accountMenuObserver: AnyCancellable?
     private var sidebarObserver: AnyCancellable?
     var loginController: LoginWindowController?
     private var welcomeController: WelcomeWindowController?
@@ -297,7 +299,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
     
-    private func switchAccount(to id: String) {
+    func switchAccount(to id: String) {
         guard id != AccountManager.shared.activeId else { return }
         AccountManager.shared.setActive(id)
         reloadForActiveAccount()
@@ -383,7 +385,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     // MARK: - Login Flow
-    private func startLoginFlow() {
+    func startLoginFlow() {
         loginController = LoginWindowController { [weak self] creds in
             guard let self = self else { return }
             self.loginController = nil
@@ -611,6 +613,7 @@ final class SettingsWindow: NSWindow {
         prefItem.keyEquivalentModifierMask = .command
         appMenu.addItem(prefItem)
         appMenu.addItem(NSMenuItem.separator())
+        addAccountCommands(to: appMenu, at: appMenu.items.count)
         appMenu.addItem(withTitle: loc.t("menu_hide_app"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = NSMenuItem(title: loc.t("menu_hide_others"), action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
@@ -654,6 +657,7 @@ final class SettingsWindow: NSWindow {
         toggleSidebarItem.target = self
         viewMenu.addItem(toggleSidebarItem)
         addPaneCommand(to: viewMenu)
+        addTextSizeCommands(to: viewMenu)
         
         viewMenu.addItem(NSMenuItem.separator())
         addFeedCommands(to: viewMenu, at: viewMenu.items.count)

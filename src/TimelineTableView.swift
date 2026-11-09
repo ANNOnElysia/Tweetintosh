@@ -83,6 +83,7 @@ final class TimelineRowHeights {
         var mediaColumnWidth: CGFloat?
         var fontType: AppFontType
         var language: AppLanguage
+        var textScale: CGFloat
     }
 
     private struct Entry {
@@ -92,7 +93,7 @@ final class TimelineRowHeights {
     }
 
     private var entries: [String: Entry] = [:]
-    private(set) var context = Context(rowWidth: 0, mediaColumnWidth: nil, fontType: .system, language: .english)
+    private(set) var context = Context(rowWidth: 0, mediaColumnWidth: nil, fontType: .system, language: .english, textScale: 1)
     private lazy var sizer = NSHostingController(
         rootView: TimelineRowContent(tweet: Self.placeholderTweet, mediaColumnWidth: nil, isMeasuring: true)
     )
@@ -156,12 +157,13 @@ enum TimelineRowEstimator {
 
     static func height(of tweet: Tweet, context: TimelineRowHeights.Context) -> CGFloat {
         let textWidth = max(120, context.rowWidth - textColumnInset)
-        let spacing = ThemeManager.shared.lineSpacing()
+        let theme = ThemeManager.shared
+        let spacing = theme.lineSpacing()
         var column: CGFloat = 24 // The header is as tall as the options button
 
         if tweet.replyContextText != nil { column += 6 + 16 }
         if !tweet.displayBodyText.isEmpty {
-            column += 6 + textHeight(tweet.displayBodyText, fontSize: 14.5, width: textWidth, lineSpacing: spacing)
+            column += 6 + textHeight(tweet.displayBodyText, fontSize: theme.postSize(14.5), width: textWidth, lineSpacing: spacing)
         }
         if !tweet.media.isEmpty {
             column += 6 + 2 + ImageGridView.contentHeight(mediaList: tweet.media, isQuoted: false, mediaColumnWidth: context.mediaColumnWidth)
@@ -173,8 +175,8 @@ enum TimelineRowEstimator {
             var card: CGFloat = 10 + 20 + 10
             if quoted.replyContextText != nil { card += 8 + 15 }
             if !quoted.displayBodyText.isEmpty {
-                let body = textHeight(quoted.displayBodyText, fontSize: 13, width: textWidth - 20, lineSpacing: spacing * 0.8)
-                card += 8 + min(body, 4 * (16 + spacing * 0.8))
+                let body = textHeight(quoted.displayBodyText, fontSize: theme.postSize(13), width: textWidth - 20, lineSpacing: spacing * 0.8)
+                card += 8 + min(body, 4 * (theme.postSize(16) + spacing * 0.8))
             }
             if !quoted.media.isEmpty {
                 card += 8 + ImageGridView.contentHeight(mediaList: quoted.media, isQuoted: true, mediaColumnWidth: context.mediaColumnWidth)
@@ -577,7 +579,10 @@ struct TimelineTableView: NSViewRepresentable {
 
         func update(from view: TimelineTableView) {
             // The first layout needs heights at once; after that, a change of width waits until it stops changing
-            if heights.context.rowWidth == 0 || tweets.isEmpty {
+            // The type changing (its size, font or language) at the same width lays the rows out again at once
+            let context = currentHeightContext()
+            if heights.context.rowWidth == 0 || tweets.isEmpty
+                || (context.rowWidth == heights.context.rowWidth && context != heights.context) {
                 applyHeightContext()
             } else {
                 followWidth()
@@ -766,7 +771,8 @@ struct TimelineTableView: NSViewRepresentable {
                 rowWidth: width,
                 mediaColumnWidth: width - Self.textColumnInset,
                 fontType: ThemeManager.shared.fontType,
-                language: LocalizationManager.shared.currentLanguage
+                language: LocalizationManager.shared.currentLanguage,
+                textScale: ThemeManager.shared.postTextScale
             )
         }
 

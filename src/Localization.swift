@@ -2445,6 +2445,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "我的主页",
             .traditionalChinese: "我的個人檔案"
         ],
+        "menu_add_account": [
+            .english: "Add Account…",
+            .japanese: "アカウントを追加…",
+            .korean: "계정 추가…",
+            .simplifiedChinese: "添加账户…",
+            .traditionalChinese: "新增帳戶…"
+        ],
+        "menu_text_bigger": [
+            .english: "Bigger",
+            .japanese: "拡大",
+            .korean: "크게",
+            .simplifiedChinese: "放大",
+            .traditionalChinese: "放大"
+        ],
+        "menu_text_smaller": [
+            .english: "Smaller",
+            .japanese: "縮小",
+            .korean: "작게",
+            .simplifiedChinese: "缩小",
+            .traditionalChinese: "縮小"
+        ],
+        "menu_text_actual_size": [
+            .english: "Actual Size",
+            .japanese: "実際のサイズ",
+            .korean: "실제 크기",
+            .simplifiedChinese: "实际大小",
+            .traditionalChinese: "實際大小"
+        ],
         "menu_hide_pane": [
             .english: "Hide Side Pane",
             .japanese: "サイドパネルを隠す",

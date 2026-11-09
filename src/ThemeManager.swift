@@ -233,6 +233,23 @@ final class ThemeManager: ObservableObject {
         }
     }
     
+    // How large post text is drawn, as a step along postTextScales: View → Bigger, Smaller and Actual Size
+    static let postTextScales: [CGFloat] = [0.85, 0.92, 1, 1.1, 1.2, 1.35, 1.5]
+    static let actualPostTextStep = 2
+
+    @Published var postTextStep: Int {
+        didSet {
+            UserDefaults.standard.set(postTextStep, forKey: "Tweetintosh_PostTextSize")
+        }
+    }
+
+    var postTextScale: CGFloat { Self.postTextScales[postTextStep] }
+
+    // A post's text size at the chosen scale, on the half point
+    func postSize(_ base: CGFloat) -> CGFloat {
+        (base * postTextScale * 2).rounded() / 2
+    }
+
     var refreshColor: AppThemeColor {
         get { themeColor }
         set { themeColor = newValue }
@@ -339,6 +356,8 @@ final class ThemeManager: ObservableObject {
         
         self.autoplayMedia = UserDefaults.standard.object(forKey: "Tweetintosh_AutoplayMedia") as? Bool ?? true
         self.showVideosTab = UserDefaults.standard.object(forKey: "Tweetintosh_ShowVideosTab") as? Bool ?? false
+        let savedStep = UserDefaults.standard.object(forKey: "Tweetintosh_PostTextSize") as? Int ?? Self.actualPostTextStep
+        self.postTextStep = Self.postTextScales.indices.contains(savedStep) ? savedStep : Self.actualPostTextStep
         
         applyAppearance()
         watchSystemAppearance()
