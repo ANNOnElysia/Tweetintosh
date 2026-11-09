@@ -182,7 +182,9 @@ private struct SidebarChromeMotion: AnimatableModifier {
 
     func body(content: Content) -> some View {
         let start = CGPoint(x: capsuleFrame.minX + 6 + toggleWidth / 2, y: capsuleFrame.midY)
-        let end = CGPoint(x: sidebarFrame.maxX - 19 - toggleWidth / 2, y: sidebarFrame.minY + 30)
+        // The selected tab's background sits 8 points in from the sidebar's edge (the row's horizontal inset); the
+        // toggle rests on that same edge instead of the header's wider padding, so the two line up.
+        let end = CGPoint(x: sidebarFrame.maxX - 8 - toggleWidth / 2, y: sidebarFrame.minY + 26)
         let bend = min(40, abs(end.x - start.x) * 0.2)
         // A spring can overshoot its target; the path's end point is a resting position, so hold it there.
         let t = min(max(progress, 0), 1)
@@ -797,7 +799,9 @@ private struct LiquidGlassSidebar: View {
                 Color.clear.frame(width: toggleWidth, height: 32)
             }
             .padding(.horizontal, 19)
-            .padding(.top, 14)
+            .padding(.top, 10)
+            // The header sits 4 points higher, nearer the 22-point corner, and the rows below follow it up; the
+            // compose button and the account row stay pinned to the bottom.
             .padding(.bottom, 6)
             
             SidebarSearchRow()
