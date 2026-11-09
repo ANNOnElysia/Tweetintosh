@@ -46,14 +46,8 @@ struct NotificationsGlanceView: View {
     @ObservedObject private var theme = ThemeManager.shared
     
     var body: some View {
-        ScrollColumn(topSpacer: 8) {
-            Text(loc.t("tab_notifications"))
-                .font(theme.appFont(size: 15, weight: .bold))
-                .foregroundColor(ThemeManager.primaryText)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
+        // Its title is in the pane's header, which stays put while the pages slide beneath it
+        ScrollColumn(topSpacer: PaneHeader.height) {
             ForEach(viewModel.displayedItems) { item in
                 VStack(spacing: 0) {
                     NotificationRowView(item: item)

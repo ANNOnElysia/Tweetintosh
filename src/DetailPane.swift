@@ -268,16 +268,7 @@ struct PaneToggleButton: View {
         case .bar:
             Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
         case .round:
-            if theme.useLiquidGlass, #available(macOS 26.0, *) {
-                Circle()
-                    .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
-                    .tweetGlass(.regular.interactive(), in: Circle())
-            } else {
-                Circle()
-                    .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.45))
-                    .overlay(Circle().stroke(theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.22),
-                                             lineWidth: 0.75))
-            }
+            PaneRoundBackground()
         }
     }
 }
@@ -309,30 +300,141 @@ private struct PaneSlideIn<Content: View>: View {
 
 // Every page stays mounted, with only the top one receiving input. Going back then needs no reload and keeps the scroll
 // position, and opening a post doesn't rebuild the notifications table on closing it, which was most of the cost.
-// It runs the full height of the window whatever the sidebar does: the top bar only ever floats over the timeline
-// column, never over the pane.
+//
+// The pane itself stays still while its pages move: opening a post slides what was showing out to the right and the post
+// in from the left, and going back reverses it, with the header's title changing to match. Under Reduce Motion the
+// pages change in place.
 private struct DetailPaneColumn: View {
     @ObservedObject private var pane = DetailPane.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack {
-            NotificationsGlanceView()
-                .overlay(alignment: .topTrailing) {
-                    PaneToggleButton(style: .round)
-                        .padding(.top, 10)
-                        .padding(.trailing, 16)
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let top = pane.stack.count - 1
+            ZStack {
+                NotificationsGlanceView()
+                    .offset(x: !reduceMotion && top >= 0 ? width : 0)
+                    .modifier(PaneLayer(isFront: top < 0))
+                ForEach(Array(pane.stack.enumerated()), id: \.element.id) { index, entry in
+                    TweetDetailView(tweet: entry.tweet, backIcon: index > 0 ? "chevron.left" : "xmark") {
+                        pane.goBack()
+                    }
+                    .environment(\.allowsVideoAutoplay, true)
+                    .environment(\.prefersVideoAutoplay, true)
+                    .offset(x: !reduceMotion && index < top ? width : 0)
+                    .modifier(PaneLayer(isFront: index == top))
+                    .transition(reduceMotion ? .opacity : .move(edge: .leading))
+                    .zIndex(Double(index + 1))
                 }
-                .modifier(PaneLayer(isFront: pane.stack.isEmpty))
-            ForEach(Array(pane.stack.enumerated()), id: \.element.id) { index, entry in
-                TweetDetailView(tweet: entry.tweet, backIcon: index > 0 ? "chevron.left" : "xmark") {
-                    pane.goBack()
-                }
-                .environment(\.allowsVideoAutoplay, true)
-                .environment(\.prefersVideoAutoplay, true)
-                .modifier(PaneLayer(isFront: index == pane.stack.count - 1))
             }
+            .frame(width: width, height: proxy.size.height)
+            .overlay(alignment: .top) { PaneHeader() }
+            .clipped()
+            .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.36, dampingFraction: 0.9),
+                       value: pane.stack.map(\.id))
         }
         .environment(\.isInDetailPane, true)
+    }
+}
+
+// The pane's header, over whichever page is in front: the title ("Notifications", or "Post" with a way back), and the
+// buttons for the post and for hiding the pane. It stays in place while the pages slide, so only its title and the
+// buttons that belong to a post change.
+struct PaneHeader: View {
+    static let height: CGFloat = 56
+    @ObservedObject private var pane = DetailPane.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+    @State private var copiedPostID: String?
+
+    var body: some View {
+        let post = pane.stack.last?.tweet
+        let title = loc.t(post == nil ? "tab_notifications" : "nav_post")
+        HStack(spacing: 10) {
+            if post != nil {
+                PaneRoundButton(systemName: pane.stack.count > 1 ? "chevron.left" : "xmark",
+                                help: "\(loc.t("nav_back")) (Esc / ←)") { pane.goBack() }
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            // Each title keeps to its own side, as its page does: "Post" comes and goes on the left, "Notifications" on
+            // the right, so the title moves with the pages in both directions. The two share one place while they swap.
+            ZStack(alignment: .leading) {
+                Text(title)
+                    .font(theme.appFont(size: 15, weight: .bold))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .id(title)
+                    .transition(.move(edge: post == nil ? .trailing : .leading).combined(with: .opacity))
+            }
+            .clipped()
+            Spacer(minLength: 8)
+            if let post {
+                PaneRoundButton(systemName: copiedPostID == post.id ? "checkmark" : "square.and.arrow.up",
+                                tint: copiedPostID == post.id ? Color(hex: "#00BA7C") : nil,
+                                help: loc.t("copy_link")) { copyLink(post) }
+                    .transition(.opacity)
+            }
+            PaneToggleButton(style: .round)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: Self.height)
+        .frame(maxWidth: .infinity)
+        // Pages scroll under the header, so it fades them out rather than cutting them off
+        .background(
+            LinearGradient(colors: [ThemeManager.background, ThemeManager.background.opacity(0.85), .clear],
+                           startPoint: .top, endPoint: .bottom)
+                .padding(.bottom, -12)
+                .allowsHitTesting(false)
+        )
+    }
+
+    private func copyLink(_ post: Tweet) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("https://x.com/\(post.author.screenName)/status/\(post.id)", forType: .string)
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        withAnimation { copiedPostID = post.id }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if copiedPostID == post.id { withAnimation { copiedPostID = nil } }
+        }
+    }
+}
+
+// A round button in the pane's header, matching the ones at the top of a full-page post
+struct PaneRoundButton: View {
+    let systemName: String
+    var tint: Color? = nil
+    let help: String
+    let action: () -> Void
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(tint ?? ThemeManager.primaryText)
+                .frame(width: 36, height: 36)
+                .background { PaneRoundBackground() }
+        }
+        .buttonStyle(.target)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
+struct PaneRoundBackground: View {
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        if theme.useLiquidGlass, #available(macOS 26.0, *) {
+            Circle()
+                .fill(theme.isLight ? Color.white.opacity(0.68) : Color.black.opacity(0.24))
+                .tweetGlass(.regular.interactive(), in: Circle())
+        } else {
+            Circle()
+                .fill(theme.isLight ? Color.white.opacity(0.85) : Color.black.opacity(0.45))
+                .overlay(Circle().stroke(theme.isLight ? Color(hex: "#DED9CB").opacity(0.85) : Color.white.opacity(0.22),
+                                         lineWidth: 0.75))
+        }
     }
 }
 
