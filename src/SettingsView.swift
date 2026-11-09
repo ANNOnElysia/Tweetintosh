@@ -245,72 +245,23 @@ struct GlassSegmentedFontPicker: View {
 }
 
 // MARK: - Glass Capsule Toggle Style (Apple Liquid Glass HIG Switch)
+// Every switch in Settings: the system switch, kept at the trailing edge of its row (on its own, macOS puts it right
+// after the label). It is the system control so it takes on Liquid Glass when pressed, as the HIG has sliders and
+// toggles do; a drawn imitation cannot match the system's glass.
 struct GlassCapsuleToggleStyle: ToggleStyle {
-    @ObservedObject var theme = ThemeManager.shared
-    
     func makeBody(configuration: Configuration) -> some View {
         HStack {
             configuration.label
-            Spacer()
-            ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-                // Background Track
-                if theme.useLiquidGlass {
-                    if #available(macOS 26.0, *) {
-                        let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
-                        let glassStyle: Glass = theme.useLiquidGlassTint
-                            ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.20 : 0.25))
-                            : .regular
-                        Capsule()
-                            .fill(configuration.isOn ? (theme.useLiquidGlassTint ? tintColor.opacity(0.70) : tintColor.opacity(0.48)) : (theme.isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.10)))
-                            .tweetGlass(glassStyle, in: Capsule())
-                            .frame(width: 44, height: 24)
-                            .overlay(
-                                Capsule()
-                                    .stroke(configuration.isOn ? tintColor.opacity(0.7) : (theme.isLight ? Color.black.opacity(0.15) : Color.white.opacity(0.22)), lineWidth: 0.8)
-                            )
-                    } else {
-                        fallbackTrack(isOn: configuration.isOn)
-                    }
-                } else {
-                    fallbackTrack(isOn: configuration.isOn)
-                }
-                
-                // Floating Glass Knob
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 20, height: 20)
-                    .shadow(color: Color.black.opacity(theme.isLight ? 0.20 : 0.35), radius: 3, x: 0, y: 1.5)
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.8), lineWidth: 0.5)
-                    )
-                    .padding(2)
-            }
-            .animation(.spring(response: 0.28, dampingFraction: 0.78), value: configuration.isOn)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                configuration.isOn.toggle()
-            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: configuration.$isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .accessibilityHidden(true)
         }
-    }
-    
-    private func fallbackTrack(isOn: Bool) -> some View {
-        Capsule()
-            .fill(
-                isOn
-                    ? (theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.85) : ThemeManager.accent.opacity(0.70))
-                    : (theme.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.12))
-            )
-            .frame(width: 44, height: 24)
-            .overlay(
-                Capsule()
-                    .stroke(
-                        isOn
-                            ? (theme.useLiquidGlassTint ? ThemeManager.accent.opacity(0.90) : ThemeManager.accent.opacity(0.80))
-                            : (theme.isLight ? Color.black.opacity(0.16) : Color.white.opacity(0.20)),
-                        lineWidth: 0.8
-                    )
-            )
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? "1" : "0")
+        .accessibilityAction { configuration.isOn.toggle() }
     }
 }
 
@@ -462,6 +413,7 @@ struct SettingsView: View {
     @ObservedObject var mediaCache = MediaCacheManager.shared
     
     @ObservedObject var accountManager = AccountManager.shared
+    private let cacheCleanup = CacheCleanup.shared
     
     var onSignOut: () -> Void
     var onSwitchAccount: (String) -> Void
@@ -632,8 +584,7 @@ struct SettingsView: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 } else {
                     Toggle(loc.t("use_liquid_glass"), isOn: $theme.useLiquidGlass.animation(.spring(response: 0.35, dampingFraction: 0.8)))
-                        .toggleStyle(.switch)
-                        .tint(ThemeManager.accent)
+                        .toggleStyle(GlassCapsuleToggleStyle())
                         .foregroundColor(ThemeManager.primaryText)
                 }
                 
@@ -681,8 +632,7 @@ struct SettingsView: View {
                         .foregroundColor(ThemeManager.primaryText)
                 } else {
                     Toggle(loc.t("show_promoted_posts"), isOn: $theme.showPromotedPosts.animation(.spring(response: 0.35, dampingFraction: 0.8)))
-                        .toggleStyle(.switch)
-                        .tint(ThemeManager.accent)
+                        .toggleStyle(GlassCapsuleToggleStyle())
                         .foregroundColor(ThemeManager.primaryText)
                 }
                 
@@ -698,8 +648,7 @@ struct SettingsView: View {
                         .foregroundColor(ThemeManager.primaryText)
                 } else {
                     Toggle(loc.t("autoplay_media"), isOn: $theme.autoplayMedia.animation(.spring(response: 0.35, dampingFraction: 0.8)))
-                        .toggleStyle(.switch)
-                        .tint(ThemeManager.accent)
+                        .toggleStyle(GlassCapsuleToggleStyle())
                         .foregroundColor(ThemeManager.primaryText)
                 }
                 
@@ -719,8 +668,7 @@ struct SettingsView: View {
                     Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
                         videoFeedLabel
                     }
-                    .toggleStyle(.switch)
-                    .tint(ThemeManager.accent)
+                    .toggleStyle(GlassCapsuleToggleStyle())
                     .foregroundColor(ThemeManager.primaryText)
                 }
                 
@@ -735,6 +683,8 @@ struct SettingsView: View {
             
             // 5. Data & Account Management
             VStack(alignment: .leading, spacing: 12) {
+                cacheCleanupRow
+                
                 HStack {
                     Button(action: onClearCache) {
                         HStack(spacing: 6) {
@@ -831,6 +781,69 @@ struct SettingsView: View {
         .background(ThemeManager.background)
     }
     
+    // Clearing the oldest images and videos once the cache passes a chosen size
+    @ViewBuilder
+    private var cacheCleanupRow: some View {
+        @Bindable var cleanup = cacheCleanup
+        VStack(alignment: .leading, spacing: 6) {
+            if theme.useLiquidGlass {
+                Toggle(loc.t("auto_clean_cache"), isOn: $cleanup.isOn.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                    .toggleStyle(GlassCapsuleToggleStyle())
+                    .foregroundColor(ThemeManager.primaryText)
+            } else {
+                Toggle(loc.t("auto_clean_cache"), isOn: $cleanup.isOn.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                    .toggleStyle(GlassCapsuleToggleStyle())
+                    .foregroundColor(ThemeManager.primaryText)
+            }
+            
+            if cleanup.isOn {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(loc.t("cache_limit"))
+                        .font(theme.appFont(size: 12, weight: .medium))
+                        .foregroundColor(ThemeManager.secondaryText)
+                    Spacer()
+                    Text(cacheLimitTitle(cleanup.stop))
+                        .font(theme.appFont(size: 12, weight: .medium))
+                        .foregroundColor(ThemeManager.primaryText)
+                        .monospacedDigit()
+                }
+                .padding(.top, 4)
+                
+                // The system slider of iOS and iPadOS 26: a smaller and a larger drive at the two ends, as Settings
+                // pairs a light and a heavy symbol around its own sliders
+                HStack(spacing: 10) {
+                    Image(systemName: "internaldrive")
+                        .font(.system(size: 14))
+                        .foregroundColor(ThemeManager.secondaryText)
+                        .accessibilityHidden(true)
+                    StopSlider(
+                        stop: $cleanup.stop,
+                        stops: CacheCleanup.followsFreeSpace + 1,
+                        onRelease: { MediaCacheManager.shared.pruneCache() }
+                    )
+                    .accessibilityLabel(loc.t("cache_limit"))
+                    .accessibilityValue(cacheLimitTitle(cleanup.stop))
+                    Image(systemName: "internaldrive.fill")
+                        .font(.system(size: 19))
+                        .foregroundColor(ThemeManager.secondaryText)
+                        .accessibilityHidden(true)
+                }
+            }
+            
+            Text(loc.t(cleanup.isOn && cleanup.stop == CacheCleanup.followsFreeSpace ? "cache_limit_auto_desc" : "auto_clean_cache_desc"))
+                .font(theme.appFont(size: 11))
+                .foregroundColor(ThemeManager.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 2)
+        }
+    }
+    
+    private func cacheLimitTitle(_ stop: Int) -> String {
+        let size = ByteCountFormatter.string(fromByteCount: CacheCleanup.bytes(atStop: stop), countStyle: .file)
+        guard stop == CacheCleanup.followsFreeSpace else { return size }
+        return loc.format("cache_limit_auto", ["size": size])
+    }
+    
     private var defaultClearCacheBackground: some View {
         Capsule()
             .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
@@ -876,5 +889,48 @@ struct SettingsView: View {
                         .stroke(ThemeManager.border, lineWidth: 0.5)
                 )
         }
+    }
+}
+
+// The system slider, which takes on Liquid Glass while dragged, as the HIG has sliders do. It moves freely and settles
+// on the nearest stop when let go, ticking the trackpad each time it passes one; the value shown follows it live.
+struct StopSlider: View {
+    @Binding var stop: Int
+    let stops: Int
+    // Called once the thumb is let go, or after a step from the keyboard
+    let onRelease: () -> Void
+
+    @State private var dragValue: Double?
+
+    var body: some View {
+        Slider(
+            value: Binding(
+                get: { dragValue ?? Double(stop) },
+                set: { value in
+                    let nearest = Int(value.rounded())
+                    // An arrow key moves it outside a drag: go straight to the next stop in that direction
+                    if NSApp.currentEvent?.type == .keyDown {
+                        let step = value > Double(stop) ? 1 : (value < Double(stop) ? -1 : 0)
+                        let next = min(max(stop + step, 0), stops - 1)
+                        dragValue = nil
+                        if next != stop { stop = next; onRelease() }
+                        return
+                    }
+                    dragValue = value
+                    if nearest != stop {
+                        stop = nearest
+                        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                    }
+                }
+            ),
+            in: 0...Double(max(stops - 1, 1)),
+            onEditingChanged: { editing in
+                guard !editing else { return }
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { dragValue = nil }
+                onRelease()
+            }
+        )
+        .labelsHidden()
+        .frame(minHeight: 36)
     }
 }
