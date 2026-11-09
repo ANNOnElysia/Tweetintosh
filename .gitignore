@@ -20,7 +20,5 @@ Tweetintosh.app/
 
 # Media recordings & raw capture assets
 *.mov
-site/*.mov
-site/Pasted*
 *.tmp
 
