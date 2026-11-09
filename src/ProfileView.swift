@@ -676,6 +676,7 @@ struct ProfileView: View {
                     .foregroundColor(ThemeManager.primaryText)
                     .frame(width: 36, height: 36)
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("\(loc.t("nav_back")) (Esc / ←)")
