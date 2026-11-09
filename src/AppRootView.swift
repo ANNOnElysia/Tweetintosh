@@ -155,6 +155,53 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     }
 }
 
+// MARK: - Sidebar Glass Transition
+
+// One timing for the sidebar, the top capsule and the page beside them, so the shapes and the layout move together.
+// Apple Music on iPad settles both in about a quarter of a second with a spring, not a long ease: the droplet has
+// travelled and the new row is highlighted before a 0.45 s curve would still be halfway there.
+// Shared with NavigationManager, whose keyboard shortcut and automatic expansion toggle the same state.
+enum SidebarMotion {
+    static let toggle = Animation.spring(response: 0.28, dampingFraction: 0.90)
+    // The selected tab's glass capsule on its own, which has less distance to cover than the sidebar.
+    static let selection = Animation.spring(response: 0.22, dampingFraction: 0.86)
+    static let content = Animation.spring(response: 0.24, dampingFraction: 0.88)
+}
+
+private struct SidebarChromeMotion: AnimatableModifier {
+    var progress: CGFloat
+    let capsuleFrame: CGRect
+    let sidebarFrame: CGRect
+    let toggleWidth: CGFloat
+    let isGlass: Bool
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let start = CGPoint(x: capsuleFrame.minX + 6 + toggleWidth / 2, y: capsuleFrame.midY)
+        let end = CGPoint(x: sidebarFrame.maxX - 19 - toggleWidth / 2, y: sidebarFrame.minY + 30)
+        let bend = min(40, abs(end.x - start.x) * 0.2)
+        // A spring can overshoot its target; the path's end point is a resting position, so hold it there.
+        let t = min(max(progress, 0), 1)
+        let u = 1 - t
+        let x = u * start.x + t * end.x
+        let y = u * u * start.y + 2 * u * t * (max(start.y, end.y) + bend) + t * t * end.y
+        let width = u * capsuleFrame.width + t * sidebarFrame.width
+        let height = u * capsuleFrame.height + t * sidebarFrame.height
+
+        // Keep the glass attached to the moving button rather than interpolating an unrelated screen position.
+        content
+            .frame(width: isGlass ? width : nil, height: isGlass ? height : nil)
+            .position(
+                x: x + (isGlass ? u * (capsuleFrame.midX - start.x) + t * (sidebarFrame.midX - end.x) : 0),
+                y: y + (isGlass ? u * (capsuleFrame.midY - start.y) + t * (sidebarFrame.midY - end.y) : 0)
+            )
+    }
+}
+
 // MARK: - AppRootView (Adaptive Shell)
 
 // The floating sidebar's column. The leading margin is wider than the window-edge margins so the system glass shadow
@@ -173,66 +220,131 @@ struct AppRootView: View {
     @ObservedObject private var paneLayout = DetailPane.shared.layout
     // The root background does not follow the window's appearance on its own: it reads the theme's resolved colour
     @ObservedObject private var theme = ThemeManager.shared
-    // The window's width, for placing the top bar over the timeline column
-    @State private var windowWidth: CGFloat = 0
+    @ObservedObject private var loc = LocalizationManager.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var capsuleSize: CGSize = .zero
+    @State private var toggleWidth: CGFloat = 0
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
+
+    private var capsuleVisible: Bool {
+        !nav.sidebarExpanded && !nav.hasOverlay && !nav.isVideosChromeHidden
+    }
+
+    // One persistent surface moves between the two layouts. Its controls stay outside the glass's captured content.
+    private var sidebarChromeGlass: some View {
+        Rectangle()
+            .fill(.clear)
+            .modifier(
+                AdaptiveGlassModifier(
+                    isLiquid: theme.useLiquidGlass,
+                    shape: .rect(cornerRadius: 22),
+                    isInteractive: false
+                )
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var sidebarToggleButton: some View {
+        Button { nav.sidebarExpanded.toggle() } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 13, weight: .semibold))
+                if nav.showShortcutBadges {
+                    Text("⌥`")
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, 3.5)
+                        .padding(.vertical, 1.5)
+                        .background(RoundedRectangle(cornerRadius: 3.5).fill(ThemeManager.accent.opacity(0.12)))
+                }
+            }
+            .foregroundColor(nav.sidebarExpanded ? ThemeManager.accent : ThemeManager.primaryText)
+            .frame(height: 32)
+            .padding(.horizontal, 8)
+            .background(Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08)))
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { toggleWidth = $0 }
+            .topBarTarget()
+        }
+        .buttonStyle(.target)
+        .topBarTargetSpace()
+        .help(loc.t("tooltip_toggle_sidebar"))
+        .accessibilityLabel(loc.t("menu_toggle_sidebar"))
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
             ThemeManager.background
                 .ignoresSafeArea()
             
-            // Content Layout: Floating Sidebar Droplet (when expanded) + Destination View
-            HStack(spacing: 0) {
-                if nav.sidebarExpanded {
-                    LiquidGlassSidebar(
-                        selection: $nav.currentTab,
-                        isExpanded: $nav.sidebarExpanded,
-                        onOpenSettings: onOpenSettings
-                    )
-                    .frame(width: SidebarLayout.width)
-                    .padding(.leading, SidebarLayout.leadingMargin)
-                    .padding(.top, 12) // The safe area already keeps the sidebar below the window controls.
-                    .padding(.bottom, SidebarLayout.bottomMargin)
-                    .padding(.trailing, SidebarLayout.trailingMargin)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.94)),
-                            removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.94))
+            GeometryReader { geometry in
+                let sidebarFrame = CGRect(
+                    x: SidebarLayout.leadingMargin, y: 12,
+                    width: SidebarLayout.width,
+                    height: max(0, geometry.size.height - 12 - SidebarLayout.bottomMargin)
+                )
+                let columnWidth = capsuleColumnWidth(in: geometry.size.width)
+                let capsuleFrame = CGRect(
+                    x: (columnWidth - capsuleSize.width) / 2, y: 14,
+                    width: capsuleSize.width, height: capsuleSize.height
+                )
+
+                ZStack(alignment: .topLeading) {
+                    destination
+                        .padding(.leading, nav.sidebarExpanded ? SidebarLayout.columnWidth : 0)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    sidebarChromeGlass
+                        .modifier(SidebarChromeMotion(
+                            progress: nav.sidebarExpanded ? 1 : 0,
+                            capsuleFrame: capsuleFrame, sidebarFrame: sidebarFrame,
+                            toggleWidth: toggleWidth, isGlass: true
+                        ))
+                        .opacity((nav.sidebarExpanded || capsuleVisible) && !capsuleFrame.isEmpty ? 1 : 0)
+                        .animation(reduceMotion ? nil : SidebarMotion.toggle, value: nav.sidebarExpanded)
+
+                    if nav.sidebarExpanded {
+                        LiquidGlassSidebar(
+                            selection: $nav.currentTab,
+                            toggleWidth: toggleWidth,
+                            onOpenSettings: onOpenSettings
                         )
-                    )
-                }
-                
-                destination
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            
-            // Top Floating Capsule Bar (Horizontal Droplet)
-            // Visible when sidebar is collapsed and not viewing tweet detail.
-            // Leftmost button clicks to wake sidebar and capsule disappears.
-            // Sidebar close button clicks to hide sidebar and capsule "卷土重来".
-            if !nav.sidebarExpanded && !nav.hasOverlay && !nav.isVideosChromeHidden {
-                LiquidGlassCapsule(
-                    selection: $nav.currentTab,
-                    onToggleSidebar: {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                            nav.sidebarExpanded = true
-                        }
+                        .frame(width: sidebarFrame.width, height: sidebarFrame.height)
+                        .position(x: sidebarFrame.midX, y: sidebarFrame.midY)
+                        .transition(.opacity)
+                        .zIndex(1)
                     }
-                )
-                .padding(.top, 14)
-                // With the post pane beside Home, the bar belongs to the timeline it switches, so it centres over that
-                // column rather than the window
-                .frame(width: capsuleColumnWidth)
-                .frame(maxWidth: .infinity, alignment: capsuleColumnWidth == nil ? .center : .leading)
-                .transition(
-                    .asymmetric(
-                        insertion: .scale(scale: 0.92).combined(with: .opacity).combined(with: .offset(y: -8)),
-                        removal: .scale(scale: 0.92).combined(with: .opacity).combined(with: .offset(y: -8))
+
+                    // Keep the hidden bar laid out so its intrinsic size is ready before the glass moves back to it.
+                    LiquidGlassCapsule(
+                        selection: $nav.currentTab,
+                        toggleWidth: toggleWidth
                     )
-                )
-                .zIndex(100)
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { capsuleSize = $0 }
+                    .padding(.top, 14)
+                    .frame(width: columnWidth)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(capsuleVisible ? 1 : 0)
+                    .allowsHitTesting(capsuleVisible)
+                    .accessibilityHidden(!capsuleVisible)
+                    .animation(reduceMotion ? nil : SidebarMotion.content, value: capsuleVisible)
+                    .zIndex(1)
+
+                    // The same button leads the transition; both content layouts reserve its resting position.
+                    sidebarToggleButton
+                        .modifier(SidebarChromeMotion(
+                            progress: nav.sidebarExpanded ? 1 : 0,
+                            capsuleFrame: capsuleFrame, sidebarFrame: sidebarFrame,
+                            toggleWidth: toggleWidth, isGlass: false
+                        ))
+                        .animation(reduceMotion ? nil : SidebarMotion.toggle, value: nav.sidebarExpanded)
+                        .opacity(nav.sidebarExpanded || capsuleVisible ? 1 : 0)
+                        .allowsHitTesting(nav.sidebarExpanded || capsuleVisible)
+                        .accessibilityHidden(!nav.sidebarExpanded && !capsuleVisible)
+                        .zIndex(2)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(reduceMotion ? nil : SidebarMotion.toggle, value: nav.sidebarExpanded)
             }
             
             // Suggestions under the search field (typeahead, or recent searches when it is empty)
@@ -277,6 +389,7 @@ struct AppRootView: View {
                 .environment(\.peekScope, .overlay(index))
                 // Beside the sidebar when it is open, whose rows stay usable and lead back out of the page
                 .padding(.leading, nav.sidebarExpanded ? SidebarLayout.columnWidth : 0)
+                .animation(reduceMotion ? nil : SidebarMotion.toggle, value: nav.sidebarExpanded)
                 .transition(
                     .asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -312,9 +425,7 @@ struct AppRootView: View {
                 .zIndex(9999)
         }
         .background(AppWindowOrigin.Anchor())
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .coordinateSpace(name: "AppWindow")
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
         .sheet(isPresented: $nav.isShowingCompose) {
             TweetComposerSheet(quotedTweet: nav.composeQuotedTweet)
         }
@@ -324,8 +435,8 @@ struct AppRootView: View {
     }
 
     // The sidebar is closed whenever the bar shows, so Home's columns span the whole window
-    private var capsuleColumnWidth: CGFloat? {
-        guard nav.currentTab == .home, paneLayout.isAvailable, windowWidth > 0 else { return nil }
+    private func capsuleColumnWidth(in windowWidth: CGFloat) -> CGFloat {
+        guard nav.currentTab == .home, paneLayout.isAvailable else { return windowWidth }
         return HomeColumns<EmptyView>.timelineWidth(in: windowWidth, paneAvailable: true)
     }
 
@@ -355,7 +466,7 @@ struct AppRootView: View {
 // MARK: - Top Floating Capsule (Horizontal Droplet)
 private struct LiquidGlassCapsule: View {
     @Binding var selection: AppTab
-    var onToggleSidebar: () -> Void
+    var toggleWidth: CGFloat
     @Bindable var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
@@ -364,38 +475,9 @@ private struct LiquidGlassCapsule: View {
     
     var body: some View {
         HStack(spacing: 0) {
-            // 1. Leftmost: Sidebar Toggle Button [|]
-            Button(action: onToggleSidebar) {
-                HStack(spacing: 3) {
-                    Image(systemName: "sidebar.left")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(theme.isLight ? ThemeManager.primaryText.opacity(0.85) : Color.white.opacity(0.88))
-                    
-                    if nav.showShortcutBadges {
-                        Text("⌥`")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.85))
-                            .padding(.horizontal, 3.5)
-                            .padding(.vertical, 1.5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3.5)
-                                    .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
-                            )
-                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                    }
-                }
-                .frame(height: 32)
-                .padding(.horizontal, nav.showShortcutBadges ? 8 : 8)
-                .background(
-                    Capsule()
-                        .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
-                )
-                .topBarTarget()
-            }
-            .buttonStyle(.target)
-            .topBarTargetSpace()
-            .padding(.leading, 6)
-            .help("Toggle Sidebar (⌥`)")
+            Color.clear
+                .frame(width: toggleWidth, height: 32)
+                .padding(.leading, 6)
             
             // Subtle vertical divider
             Rectangle()
@@ -452,7 +534,7 @@ private struct LiquidGlassCapsule: View {
                     .padding(.top, TopBarTarget.above + 4)
                     .padding(.bottom, TopBarTarget.below + 4)
                     .pressDragSelection { (tab: AppTab) in
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+                        withAnimation(SidebarMotion.selection) {
                             selection = tab
                             nav.isSearchActive = false
                         }
@@ -579,14 +661,7 @@ private struct LiquidGlassCapsule: View {
             .help(nav.isSearchActive ? "Close Search (Esc / ⌥S)" : "Search (⌥S)")
         }
         .padding(.vertical, 4)
-        // The glass is a backdrop rather than a container: content inside glass only takes taps within the glass's
-        // own outline, and the bar's controls reach well beyond it for a finger
-        .background {
-            Capsule()
-                .fill(.clear)
-                .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true, isInteractive: false))
-        }
-        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
+        .animation(SidebarMotion.content, value: nav.showShortcutBadges)
         .fixedSize()
     }
     
@@ -701,7 +776,7 @@ private struct LiquidGlassCapsule: View {
 // MARK: - Floating Vertical Sidebar Droplet (Dual-Mode: Floating Liquid Glass vs Frosted Glass)
 private struct LiquidGlassSidebar: View {
     @Binding var selection: AppTab
-    @Binding var isExpanded: Bool
+    var toggleWidth: CGFloat
     var onOpenSettings: () -> Void
     let nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
@@ -719,43 +794,7 @@ private struct LiquidGlassSidebar: View {
                 
                 Spacer()
                 
-                // Sidebar Close Button (dismisses sidebar and brings capsule back)
-                Button {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                        isExpanded = false
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "sidebar.left")
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundColor(ThemeManager.accent)
-                        
-                        if nav.showShortcutBadges {
-                            Text("⌥`")
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .foregroundColor(ThemeManager.accent.opacity(0.85))
-                                .padding(.horizontal, 3.5)
-                                .padding(.vertical, 1.5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 3.5)
-                                        .fill(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.15))
-                                )
-                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                        }
-                    }
-                    .frame(height: 28)
-                    .padding(.horizontal, nav.showShortcutBadges ? 6 : 6)
-                    .background(
-                        Capsule()
-                            .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
-                    )
-                    // Well beyond its small capsule, into the empty corner of the sidebar around it
-                    .padding(12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.target)
-                .padding(-12)
-                .help("Toggle Sidebar (⌥`)")
+                Color.clear.frame(width: toggleWidth, height: 32)
             }
             .padding(.horizontal, 19)
             .padding(.top, 14)
@@ -768,7 +807,7 @@ private struct LiquidGlassSidebar: View {
             ForEach(AppTab.available) { tab in
                 let isSelected = selection == tab
                 Button {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+                    withAnimation(SidebarMotion.selection) {
                         nav.closeAllPages()
                         selection = tab
                     }
@@ -903,14 +942,7 @@ private struct LiquidGlassSidebar: View {
             .padding(.bottom, 10)
         }
         .frame(maxHeight: .infinity)
-        .modifier(
-            AdaptiveGlassModifier(
-                isLiquid: theme.useLiquidGlass,
-                shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
-                isInteractive: false
-            )
-        )
-        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
+        .animation(SidebarMotion.content, value: nav.showShortcutBadges)
     }
     
     private func openOwnProfile() {
