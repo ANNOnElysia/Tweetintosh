@@ -883,6 +883,10 @@ final class TimelineViewModel {
     }
     
     private func prefetchMedia(for tweetsList: [Tweet]) {
-        MediaCacheManager.shared.prefetchTweetsMedia(tweetsList, maxTweets: 60)
+        let tweets = Array(tweetsList.prefix(60))
+        let cache = MediaCacheManager.shared
+        DispatchQueue.global(qos: .utility).async {
+            cache.prefetchTweetsMedia(tweets)
+        }
     }
 }

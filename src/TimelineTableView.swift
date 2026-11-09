@@ -10,8 +10,8 @@
 //  - State inside a row outlives the post it was made for, so row views key their state by post (see HoverReader,
 //    ImageLoader, AutoplayVideoView)
 //  - The SwiftUI environment and named coordinate spaces stop at each cell's hosting view
-//  - The table needs every row's height up front, so TimelineRowHeights answers at once from an estimate and replaces it
-//    with the real measurement a row at a time, between frames
+//  - The table needs every row's height up front, so TimelineRowHeights answers at once from an estimate and measures
+//    visible and nearby rows between frames
 //
 //  This is a spike: `defaults write com.anno.tweetintosh Tweetintosh_TimelineUsesTable -bool false` goes back to the List.
 //
@@ -218,8 +218,10 @@ final class TimelineNSTableView: NSTableView {
 // event of a gesture to scrollWheel and runs the rest itself, and turning responsive scrolling off to see them all adds about
 // 5 ms of main-thread work to every frame of a scroll. Each step it takes still comes through scroll(to:), momentum included.
 final class TimelineClipView: NSClipView {
-    // How much a fast swipe is multiplied; 1 turns the boost off
-    private static let maximumGain = CGFloat(UserDefaults.standard.object(forKey: "Tweetintosh_TimelineScrollBoost") as? Double ?? 2.5)
+    // Fast swipes used to be multiplied by up to 2.5, but AppKit's step sizes vary within one gesture, so the same
+    // finger movement can cover different distances from frame to frame and read as a stutter. The default is now
+    // 1:1; `Tweetintosh_TimelineScrollBoost` remains available as an opt-in for faster travel.
+    private static let maximumGain = CGFloat(UserDefaults.standard.object(forKey: "Tweetintosh_TimelineScrollBoost") as? Double ?? 1)
     // Points per step: at or below the first the gain is 1, and at or above the second it is the maximum
     private static let slowStep: CGFloat = 2
     private static let fastStep: CGFloat = 24
@@ -318,7 +320,7 @@ private class TimelineCellBase: NSView {
     // pinned to the top, and the cell's clipping reveals or hides it. Resizing the post on every frame of the glide
     // made it jump inside its row.
     var pinnedHeight: CGFloat? {
-        didSet { if let hosted = hostedView { hosted.frame = hostedFrame } }
+        didSet { updateHostedFrame() }
     }
 
     private var hostedFrame: NSRect {
@@ -326,13 +328,20 @@ private class TimelineCellBase: NSView {
         return NSRect(x: 0, y: isFlipped ? 0 : bounds.height - height, width: bounds.width, height: height)
     }
 
+    private func updateHostedFrame() {
+        // AppKit can ask for layout repeatedly while a table scrolls; writing an unchanged frame back makes the hosting
+        // view run its layout again for no visible change.
+        guard let hosted = hostedView, hosted.frame != hostedFrame else { return }
+        hosted.frame = hostedFrame
+    }
+
     override func resizeSubviews(withOldSize oldSize: NSSize) {
-        hostedView?.frame = hostedFrame
+        updateHostedFrame()
     }
 
     override func layout() {
         super.layout()
-        if let hosted = hostedView, hosted.frame != hostedFrame { hosted.frame = hostedFrame }
+        updateHostedFrame()
     }
 
     func install(_ hosted: NSView) {
@@ -380,10 +389,13 @@ private final class TimelineTweetCell: TimelineCellBase {
 private final class TimelineFooterCell: TimelineCellBase {
     static let identifier = NSUserInterfaceItemIdentifier("TimelineFooterCell")
     private var host: NSHostingView<LoadingIndicator>?
+    private var active: Bool?
 
     override var hostedView: NSView? { host }
 
     func show(active: Bool) {
+        guard self.active != active else { return }
+        self.active = active
         if let host = host {
             host.rootView = LoadingIndicator(active: active)
         } else {
@@ -444,6 +456,8 @@ struct TimelineTableView: NSViewRepresentable {
         private static let measureInterval: TimeInterval = 1.0 / 30.0
         // How far beyond the screen rows get measured while scrolling, so they are exact by the time they arrive
         private static let lookAheadRows = 4
+        // A small bound on rows kept ready ahead of the viewport; the window follows scroll direction and speed.
+        private static let prewarmLimit = 4
 
         let scrollView = TimelineNSScrollView()
         private let tableView = TimelineNSTableView()
@@ -454,6 +468,12 @@ struct TimelineTableView: NSViewRepresentable {
         private var ids: [String] = []
         // Parallel to tweets. The table reads these on every layout, so they stay plain values rather than cache lookups.
         private var rowHeights: [CGFloat] = []
+        private var prewarmPool: [String: TimelineTweetCell] = [:]
+        private var boundsObserver: NSObjectProtocol?
+        private var lastScrollY: CGFloat?
+        private var lastScrollTime: CFTimeInterval = 0
+        private var scrollDirection: CGFloat = 1
+        private var scrollVelocity: CGFloat = 0
         private var topSpacerHeight: CGFloat = 0
         private var isLoadingMore = false
         private var measureTimer: Timer?
@@ -464,7 +484,6 @@ struct TimelineTableView: NSViewRepresentable {
         private var glideTimer: Timer?
         private static let glideDuration: CFTimeInterval = 0.28
         private var lastCellShownAt: CFTimeInterval = 0
-        private var lastScrollY: CGFloat = 0
         private var articleObserver: AnyCancellable?
 
         override init() {
@@ -506,14 +525,52 @@ struct TimelineTableView: NSViewRepresentable {
         func tearDown() {
             measureTimer?.invalidate()
             measureTimer = nil
+            prewarmPool.removeAll()
+            if let boundsObserver {
+                NotificationCenter.default.removeObserver(boundsObserver)
+                self.boundsObserver = nil
+            }
         }
 
         // The same three registrations the List's top row makes through ScrollViewAccessor
         func attachToScrollCoordinators() {
             guard scrollView.window != nil else { return }
+            if boundsObserver == nil {
+                scrollView.contentView.postsBoundsChangedNotifications = true
+                boundsObserver = NotificationCenter.default.addObserver(
+                    forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
+                ) { [weak self] _ in self?.scrollDidMove() }
+                lastScrollY = scrollView.contentView.bounds.minY
+                lastScrollTime = CACurrentMediaTime()
+            }
             TimelineScrollCoordinator.shared.registerScrollView(scrollView)
             TrackpadPullCoordinator.shared.attachScrollView(scrollView, owner: "Timeline")
             ListLoadMoreWatcher.shared.attach(scrollView) { [weak self] in self?.parent?.onLoadMore() }
+        }
+
+        // Speed is read from the content itself, so the eventual prewarm follows the accelerated distance rather than
+        // just the trackpad's unaccelerated event distance.
+        private func scrollDidMove() {
+            let clip = scrollView.contentView.bounds
+            let y = clip.minY
+            let now = CACurrentMediaTime()
+            guard let previousY = lastScrollY else {
+                lastScrollY = y
+                lastScrollTime = now
+                return
+            }
+            let delta = y - previousY
+            let elapsed = now - lastScrollTime
+            lastScrollY = y
+            lastScrollTime = now
+            guard abs(delta) >= 0.5, elapsed > 0, elapsed < 0.12 else { return }
+            // A jump, anchor restore or window resize is not a wheel gesture.
+            guard abs(delta) < clip.height else {
+                scrollVelocity = 0
+                return
+            }
+            scrollDirection = delta > 0 ? 1 : -1
+            scrollVelocity = delta / max(elapsed, 0.008)
         }
 
         // MARK: Data Updates
@@ -542,6 +599,18 @@ struct TimelineTableView: NSViewRepresentable {
                 return
             }
 
+            // A page of older posts arrives at the bottom, leaving every row above it untouched. Inserting just the new
+            // rows keeps the existing heights and avoids diffing and laying out the whole feed again.
+            let oldCount = tweets.count
+            if oldCount > 0,
+               newIds.count > oldCount,
+               newIds.prefix(oldCount).elementsEqual(ids),
+               newTweets.prefix(oldCount).elementsEqual(tweets) {
+                appendTweets(newTweets, newIds: newIds, from: oldCount)
+                return
+            }
+
+            prewarmPool.removeAll()
             let anchor = captureAnchor()
             let difference = newIds.difference(from: ids)
             let changeCount = difference.insertions.count + difference.removals.count
@@ -568,6 +637,16 @@ struct TimelineTableView: NSViewRepresentable {
                 tableView.endUpdates()
             }
             restore(anchor)
+            scheduleMeasuring()
+        }
+
+        private func appendTweets(_ newTweets: [Tweet], newIds: [String], from oldCount: Int) {
+            tweets = newTweets
+            ids = newIds
+            rowHeights.append(contentsOf: newTweets[oldCount...].map { heights.height(for: $0) })
+            tableView.beginUpdates()
+            tableView.insertRows(at: IndexSet(integersIn: (oldCount + 1)..<(newIds.count + 1)), withAnimation: [])
+            tableView.endUpdates()
             scheduleMeasuring()
         }
 
@@ -695,9 +774,8 @@ struct TimelineTableView: NSViewRepresentable {
         private static let textColumnInset: CGFloat = 82
         private var widthSettleWork: DispatchWorkItem?
 
-        // Opening or closing the sidebar animates the width a frame at a time. On each frame the posts on screen take an
-        // estimated height for the width they now have, which is cheap and within a point or two, so they grow and shrink
-        // with the column instead of jumping when it stops. Once it has stopped, every row is measured properly.
+        // Opening or closing the sidebar changes visible estimates with the column. Once it stops, nearby rows are
+        // measured a row at a time so the final width does not trigger a burst of layout.
         private var followedWidth: CGFloat = 0
 
         private func followWidth() {
@@ -739,15 +817,13 @@ struct TimelineTableView: NSViewRepresentable {
             let newContext = currentHeightContext()
             guard newContext != heights.context else { return }
             heights.setContext(newContext)
+            prewarmPool.removeAll()
             if let column = tableView.tableColumns.first, column.width != newContext.rowWidth { column.width = newContext.rowWidth }
             guard !tweets.isEmpty else { return }
             let anchor = captureAnchor()
-            // What is on screen is measured for real now, so it lands right; the rest starts on estimates and is measured
-            // a row per tick as before
+            // Keep the width change to estimates; exact layout is spread over later ticks, starting on screen.
             let visible = Set(visibleTweetRows())
-            rowHeights = tweets.enumerated().map { index, tweet in
-                visible.contains(index + 1) ? heights.measure(tweet) : heights.height(for: tweet)
-            }
+            rowHeights = tweets.map { heights.height(for: $0) }
             for row in visible {
                 (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineTweetCell)?.show(content(for: tweets[row - 1]))
             }
@@ -809,8 +885,7 @@ struct TimelineTableView: NSViewRepresentable {
 
         // MARK: Measuring
 
-        // A page of new rows goes in on estimates in the frame it arrives, and is measured a row per tick from there, so
-        // the measuring never adds up to a stall of its own, whatever the size of the page.
+        // Keep the visible rows accurate without spending idle time measuring the entire feed.
         private func scheduleMeasuring() {
             guard measureTimer == nil, !tweets.isEmpty else { return }
             let timer = Timer(timeInterval: Self.measureInterval, repeats: true) { [weak self] _ in self?.measureTick() }
@@ -820,14 +895,14 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         private func measureTick() {
-            // A row built in this same frame has already used the frame's time
-            guard CACurrentMediaTime() - lastCellShownAt > 0.008 else { return }
+            // Width changes have their own deferred update, and a newly built cell already used this frame's time.
+            guard currentHeightContext() == heights.context,
+                  CACurrentMediaTime() - lastCellShownAt > 0.008 else { return }
             guard let index = nextRowToMeasure() else {
-                let isScrolling = TimelineLiveScrollState.shared.isLiveScrolling
-                if !isScrolling && tweets.allSatisfy({ heights.isMeasured($0) }) {
-                    measureTimer?.invalidate()
-                    measureTimer = nil
-                }
+                if TimelineLiveScrollState.shared.isLiveScrolling { return }
+                if prewarmNext() { return }
+                measureTimer?.invalidate()
+                measureTimer = nil
                 return
             }
             let height = heights.measure(tweets[index])
@@ -836,8 +911,62 @@ struct TimelineTableView: NSViewRepresentable {
             noteHeightsChanged(IndexSet(integer: index + 1))
         }
 
-        // On screen first, then ahead in the direction of travel. While scrolling, nothing further out: those can wait, and
-        // the time is better left to the scroll.
+        // Build the rows the accelerated viewport is about to reach, one per tick. The window follows the content's
+        // direction and speed, and is bounded so speculative work cannot grow with the feed.
+        private func prewarmNext() -> Bool {
+            guard !TimelineLiveScrollState.shared.isLiveScrolling, !tweets.isEmpty, !rowHeights.isEmpty else { return false }
+            let clip = scrollView.contentView.bounds
+            let visible = tableView.rows(in: clip)
+            let firstVisible = max(1, visible.location)
+            let lastVisible = min(tweets.count, visible.location + visible.length - 1)
+            guard firstVisible <= lastVisible else {
+                prewarmPool.removeAll()
+                return false
+            }
+
+            let direction = scrollDirection >= 0 ? 1 : -1
+            let anchor = direction > 0 ? lastVisible + 1 : firstVisible - 1
+            let viewport = max(1, clip.height)
+            let speed = TimelineLiveScrollState.shared.isLiveScrolling ? min(abs(scrollVelocity), 8000) : 0
+            let targetDistance = min(viewport * 2, max(viewport * 0.5, viewport * 0.5 + speed * 0.2))
+
+            var candidates: [Int] = []
+            var distance: CGFloat = 0
+            var row = anchor
+            while row >= 1, row <= tweets.count, candidates.count < Self.prewarmLimit, distance < targetDistance {
+                candidates.append(row)
+                distance += max(1, rowHeights[row - 1])
+                row += direction
+            }
+            guard !candidates.isEmpty else {
+                prewarmPool.removeAll()
+                return false
+            }
+
+            // Keep only rows still inside the current direction and window; a turn must not retain the old queue.
+            let ahead = Set(candidates.map { tweets[$0 - 1].id })
+            prewarmPool = prewarmPool.filter { ahead.contains($0.key) }
+            guard prewarmPool.count < Self.prewarmLimit else { return false }
+
+            for row in candidates {
+                let tweet = tweets[row - 1]
+                if prewarmPool[tweet.id] != nil { continue }
+                if tableView.view(atColumn: 0, row: row, makeIfNecessary: false) != nil { continue }
+                let cell = TimelineTweetCell()
+                cell.identifier = TimelineTweetCell.identifier
+                let width = max(1, clip.width)
+                cell.frame = NSRect(x: 0, y: 0, width: width, height: max(1, rowHeights[row - 1]))
+                cell.show(content(for: tweet))
+                cell.layoutSubtreeIfNeeded()
+                cell.hostedView?.layoutSubtreeIfNeeded()
+                prewarmPool[tweet.id] = cell
+                lastCellShownAt = CACurrentMediaTime()
+                return true
+            }
+            return false
+        }
+
+        // Visible rows first; prepare nearby rows only when scrolling has settled.
         private func nextRowToMeasure() -> Int? {
             guard !tweets.isEmpty else { return nil }
             let clip = scrollView.contentView.bounds
@@ -847,23 +976,12 @@ struct TimelineTableView: NSViewRepresentable {
             for index in stride(from: firstVisible, through: lastVisible, by: 1) where !heights.isMeasured(tweets[index]) {
                 return index
             }
-            let goingUp = clip.minY < lastScrollY
-            lastScrollY = clip.minY
-            let ahead = goingUp
-                ? Array(stride(from: firstVisible - 1, through: max(0, firstVisible - Self.lookAheadRows), by: -1))
-                : Array(stride(from: lastVisible + 1, through: min(tweets.count - 1, lastVisible + Self.lookAheadRows), by: 1))
-            for index in ahead where !heights.isMeasured(tweets[index]) {
-                return index
-            }
             guard !TimelineLiveScrollState.shared.isLiveScrolling else { return nil }
-            // Idle: outwards from the screen, so the nearest rows are ready first
-            var distance = 1
-            while firstVisible - distance >= 0 || lastVisible + distance < tweets.count {
+            for distance in 1...Self.lookAheadRows {
                 let below = lastVisible + distance
                 if below < tweets.count, !heights.isMeasured(tweets[below]) { return below }
                 let above = firstVisible - distance
                 if above >= 0, !heights.isMeasured(tweets[above]) { return above }
-                distance += 1
             }
             return nil
         }
@@ -902,13 +1020,21 @@ struct TimelineTableView: NSViewRepresentable {
                 cell.show(active: isLoadingMore)
                 return cell
             }
+            let tweet = tweets[row - 1]
+            if let cell = prewarmPool.removeValue(forKey: tweet.id) {
+                cell.show(content(for: tweet))
+                lastCellShownAt = CACurrentMediaTime()
+                scheduleMeasuring()
+                return cell
+            }
             let cell = tableView.makeView(withIdentifier: TimelineTweetCell.identifier, owner: nil) as? TimelineTweetCell ?? {
                 let cell = TimelineTweetCell()
                 cell.identifier = TimelineTweetCell.identifier
                 return cell
             }()
-            cell.show(content(for: tweets[row - 1]))
+            cell.show(content(for: tweet))
             lastCellShownAt = CACurrentMediaTime()
+            scheduleMeasuring()
             return cell
         }
     }

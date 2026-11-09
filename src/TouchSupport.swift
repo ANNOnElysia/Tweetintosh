@@ -42,9 +42,12 @@ final class ScrollInput {
 // little while it is down: a tap on a glass bar or beside a control starts moving the window instead, and the control
 // never sees it. So while a touch screen is connected the window moves only by its title bar.
 enum WindowDragging {
+    private static weak var window: NSWindow?
+    private static var isScrolling = false
     private static var observer: NSObjectProtocol?
 
     static func keepUpdated(_ window: NSWindow) {
+        self.window = window
         update(window)
         guard observer == nil else { return }
         observer = NotificationCenter.default.addObserver(
@@ -54,8 +57,17 @@ enum WindowDragging {
         }
     }
 
+    // While content is moving, AppKit walks the SwiftUI view tree on every scroll step to find regions that can start
+    // a window drag. That walk costs a noticeable part of a scrolling frame. Dragging stays available from the title
+    // bar, and normal background behaviour returns as soon as scrolling stops.
+    static func setScrolling(_ scrolling: Bool) {
+        guard scrolling != isScrolling else { return }
+        isScrolling = scrolling
+        if let window { update(window) }
+    }
+
     private static func update(_ window: NSWindow) {
-        window.isMovableByWindowBackground = !hasTouchScreen
+        window.isMovableByWindowBackground = !hasTouchScreen && !isScrolling
     }
 
     private static var hasTouchScreen: Bool {
