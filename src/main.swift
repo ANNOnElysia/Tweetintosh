@@ -82,12 +82,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var settingsWindow: NSWindow?
     private var tilingMonitor: Any?
     private var settingsTitleObserver: AnyCancellable?
+    private var menuLanguageObserver: AnyCancellable?
     private var sidebarObserver: AnyCancellable?
     var loginController: LoginWindowController?
     private var welcomeController: WelcomeWindowController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
+        menuLanguageObserver = LocalizationManager.shared.$currentLanguage
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.setupMainMenu()
+            }
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceDidChange), name: NSNotification.Name("Tweetintosh_AppearanceDidChange"), object: nil)
         if EULA.needsAcceptance {
             showWelcome()
@@ -536,61 +544,62 @@ final class SettingsWindow: NSWindow {
     
     // MARK: - Native Menu Bar
     private func setupMainMenu() {
+        let loc = LocalizationManager.shared
         let mainMenu = NSMenu()
         
         // 1. App Menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu(title: "Tweetintosh")
-        appMenu.addItem(withTitle: "About Tweetintosh", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: loc.t("menu_about"), action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        let prefItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        let prefItem = NSMenuItem(title: loc.t("settings") + "…", action: #selector(showSettings), keyEquivalent: ",")
         prefItem.keyEquivalentModifierMask = .command
         appMenu.addItem(prefItem)
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Hide Tweetintosh", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        let hideOthers = NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: loc.t("menu_hide_app"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthers = NSMenuItem(title: loc.t("menu_hide_others"), action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(hideOthers)
-        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: loc.t("menu_show_all"), action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit Tweetintosh", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: loc.t("menu_quit"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
         
         // 2. File Menu
         let fileMenuItem = NSMenuItem()
-        let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let fileMenu = NSMenu(title: loc.t("menu_file"))
+        fileMenu.addItem(withTitle: loc.t("menu_close_window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)
         
         // 3. Edit Menu
         let editMenuItem = NSMenuItem()
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Undo", action: #selector(UndoManager.undo), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "Redo", action: #selector(UndoManager.redo), keyEquivalent: "Z")
+        let editMenu = NSMenu(title: loc.t("menu_edit"))
+        editMenu.addItem(withTitle: loc.t("menu_undo"), action: #selector(UndoManager.undo), keyEquivalent: "z")
+        editMenu.addItem(withTitle: loc.t("menu_redo"), action: #selector(UndoManager.redo), keyEquivalent: "Z")
         editMenu.addItem(NSMenuItem.separator())
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: loc.t("menu_cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: loc.t("menu_copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: loc.t("menu_paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: loc.t("menu_select_all"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
         
         // 4. View Menu
         let viewMenuItem = NSMenuItem()
-        let viewMenu = NSMenu(title: "View")
-        let reloadItem = NSMenuItem(title: "Reload Timeline", action: #selector(reloadTimeline), keyEquivalent: "r")
+        let viewMenu = NSMenu(title: loc.t("menu_view"))
+        let reloadItem = NSMenuItem(title: loc.t("menu_reload_timeline"), action: #selector(reloadTimeline), keyEquivalent: "r")
         reloadItem.keyEquivalentModifierMask = .command
         viewMenu.addItem(reloadItem)
         
-        let toggleSidebarItem = NSMenuItem(title: "Toggle Sidebar", action: #selector(toggleSidebarAction), keyEquivalent: "`")
+        let toggleSidebarItem = NSMenuItem(title: loc.t("menu_toggle_sidebar"), action: #selector(toggleSidebarAction), keyEquivalent: "`")
         toggleSidebarItem.keyEquivalentModifierMask = .option
         toggleSidebarItem.target = self
         viewMenu.addItem(toggleSidebarItem)
         
         viewMenu.addItem(NSMenuItem.separator())
-        let toggleFullscreen = NSMenuItem(title: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        let toggleFullscreen = NSMenuItem(title: loc.t("menu_enter_full_screen"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         toggleFullscreen.keyEquivalentModifierMask = [.command, .control]
         viewMenu.addItem(toggleFullscreen)
         viewMenuItem.submenu = viewMenu
@@ -598,26 +607,26 @@ final class SettingsWindow: NSWindow {
         
         // 5. Navigate Menu (Option + 1/2/3/S)
         let navMenuItem = NSMenuItem()
-        let navMenu = NSMenu(title: "Navigate")
+        let navMenu = NSMenu(title: loc.t("menu_navigate"))
         
-        let homeItem = NSMenuItem(title: "Home", action: #selector(selectHome), keyEquivalent: "1")
+        let homeItem = NSMenuItem(title: loc.t("tab_home"), action: #selector(selectHome), keyEquivalent: "1")
         homeItem.keyEquivalentModifierMask = .option
         homeItem.target = self
         navMenu.addItem(homeItem)
         
-        let notifItem = NSMenuItem(title: "Notifications", action: #selector(selectNotifications), keyEquivalent: "2")
+        let notifItem = NSMenuItem(title: loc.t("tab_notifications"), action: #selector(selectNotifications), keyEquivalent: "2")
         notifItem.keyEquivalentModifierMask = .option
         notifItem.target = self
         navMenu.addItem(notifItem)
         
-        let msgItem = NSMenuItem(title: "Messages", action: #selector(selectMessages), keyEquivalent: "3")
+        let msgItem = NSMenuItem(title: loc.t("tab_messages"), action: #selector(selectMessages), keyEquivalent: "3")
         msgItem.keyEquivalentModifierMask = .option
         msgItem.target = self
         navMenu.addItem(msgItem)
         
         navMenu.addItem(NSMenuItem.separator())
         
-        let searchItem = NSMenuItem(title: "Search", action: #selector(toggleSearchAction), keyEquivalent: "s")
+        let searchItem = NSMenuItem(title: loc.t("tab_search"), action: #selector(toggleSearchAction), keyEquivalent: "s")
         searchItem.keyEquivalentModifierMask = .option
         searchItem.target = self
         navMenu.addItem(searchItem)
@@ -627,9 +636,9 @@ final class SettingsWindow: NSWindow {
         
         // 5. Window Menu
         let windowMenuItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        let windowMenu = NSMenu(title: loc.t("menu_window"))
+        windowMenu.addItem(withTitle: loc.t("menu_minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: loc.t("menu_zoom"), action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
         

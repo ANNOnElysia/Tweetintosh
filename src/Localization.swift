@@ -64,6 +64,160 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "Tweetintosh",
             .traditionalChinese: "Tweetintosh"
         ],
+        "menu_about": [
+            .english: "About Tweetintosh",
+            .japanese: "Tweetintoshについて",
+            .korean: "Tweetintosh에 관하여",
+            .simplifiedChinese: "关于 Tweetintosh",
+            .traditionalChinese: "關於 Tweetintosh"
+        ],
+        "menu_hide_app": [
+            .english: "Hide Tweetintosh",
+            .japanese: "Tweetintoshを非表示",
+            .korean: "Tweetintosh 가리기",
+            .simplifiedChinese: "隐藏 Tweetintosh",
+            .traditionalChinese: "隱藏 Tweetintosh"
+        ],
+        "menu_hide_others": [
+            .english: "Hide Others",
+            .japanese: "ほかを非表示",
+            .korean: "기타 가리기",
+            .simplifiedChinese: "隐藏其他",
+            .traditionalChinese: "隱藏其他"
+        ],
+        "menu_show_all": [
+            .english: "Show All",
+            .japanese: "すべてを表示",
+            .korean: "모두 보기",
+            .simplifiedChinese: "全部显示",
+            .traditionalChinese: "全部顯示"
+        ],
+        "menu_quit": [
+            .english: "Quit Tweetintosh",
+            .japanese: "Tweetintoshを終了",
+            .korean: "Tweetintosh 종료",
+            .simplifiedChinese: "退出 Tweetintosh",
+            .traditionalChinese: "結束 Tweetintosh"
+        ],
+        "menu_file": [
+            .english: "File",
+            .japanese: "ファイル",
+            .korean: "파일",
+            .simplifiedChinese: "文件",
+            .traditionalChinese: "檔案"
+        ],
+        "menu_close_window": [
+            .english: "Close Window",
+            .japanese: "ウインドウを閉じる",
+            .korean: "윈도우 닫기",
+            .simplifiedChinese: "关闭窗口",
+            .traditionalChinese: "關閉視窗"
+        ],
+        "menu_edit": [
+            .english: "Edit",
+            .japanese: "編集",
+            .korean: "편집",
+            .simplifiedChinese: "编辑",
+            .traditionalChinese: "編輯"
+        ],
+        "menu_undo": [
+            .english: "Undo",
+            .japanese: "取り消す",
+            .korean: "실행 취소",
+            .simplifiedChinese: "撤销",
+            .traditionalChinese: "復原"
+        ],
+        "menu_redo": [
+            .english: "Redo",
+            .japanese: "やり直す",
+            .korean: "실행 복귀",
+            .simplifiedChinese: "重做",
+            .traditionalChinese: "重做"
+        ],
+        "menu_cut": [
+            .english: "Cut",
+            .japanese: "カット",
+            .korean: "오려두기",
+            .simplifiedChinese: "剪切",
+            .traditionalChinese: "剪下"
+        ],
+        "menu_copy": [
+            .english: "Copy",
+            .japanese: "コピー",
+            .korean: "복사하기",
+            .simplifiedChinese: "拷贝",
+            .traditionalChinese: "拷貝"
+        ],
+        "menu_paste": [
+            .english: "Paste",
+            .japanese: "ペースト",
+            .korean: "붙여넣기",
+            .simplifiedChinese: "粘贴",
+            .traditionalChinese: "貼上"
+        ],
+        "menu_select_all": [
+            .english: "Select All",
+            .japanese: "すべてを選択",
+            .korean: "모두 선택",
+            .simplifiedChinese: "全选",
+            .traditionalChinese: "全選"
+        ],
+        "menu_view": [
+            .english: "View",
+            .japanese: "表示",
+            .korean: "보기",
+            .simplifiedChinese: "显示",
+            .traditionalChinese: "顯示方式"
+        ],
+        "menu_reload_timeline": [
+            .english: "Reload Timeline",
+            .japanese: "タイムラインを再読み込み",
+            .korean: "타임라인 새로 고침",
+            .simplifiedChinese: "重新载入时间线",
+            .traditionalChinese: "重新載入時間軸"
+        ],
+        "menu_toggle_sidebar": [
+            .english: "Toggle Sidebar",
+            .japanese: "サイドバーの表示を切り替える",
+            .korean: "사이드바 전환",
+            .simplifiedChinese: "切换边栏",
+            .traditionalChinese: "切換側邊欄"
+        ],
+        "menu_enter_full_screen": [
+            .english: "Enter Full Screen",
+            .japanese: "フルスクリーンにする",
+            .korean: "전체 화면 시작",
+            .simplifiedChinese: "进入全屏幕",
+            .traditionalChinese: "進入全螢幕"
+        ],
+        "menu_navigate": [
+            .english: "Navigate",
+            .japanese: "移動",
+            .korean: "이동",
+            .simplifiedChinese: "前往",
+            .traditionalChinese: "前往"
+        ],
+        "menu_window": [
+            .english: "Window",
+            .japanese: "ウインドウ",
+            .korean: "윈도우",
+            .simplifiedChinese: "窗口",
+            .traditionalChinese: "視窗"
+        ],
+        "menu_minimize": [
+            .english: "Minimize",
+            .japanese: "しまう",
+            .korean: "최소화",
+            .simplifiedChinese: "最小化",
+            .traditionalChinese: "縮到最小"
+        ],
+        "menu_zoom": [
+            .english: "Zoom",
+            .japanese: "拡大/縮小",
+            .korean: "확대/축소",
+            .simplifiedChinese: "缩放",
+            .traditionalChinese: "縮放"
+        ],
         "timeline": [
             .english: "Timeline",
             .japanese: "タイムライン",
