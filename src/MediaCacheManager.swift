@@ -238,9 +238,8 @@ final class MediaCacheManager: ObservableObject {
 
     // MARK: - Prefetching Engine (Background Concurrency Controlled)
     func prefetchImages(urls: [String]) {
-        for urlStr in urls {
-            // Existence check only: decoding cached files here would block the caller (often the main thread)
-            if hasCachedImage(for: urlStr) { continue }
+        var seen = Set<String>()
+        for urlStr in urls where seen.insert(urlStr).inserted {
             guard let url = URL(string: urlStr) else { continue }
 
             let op = BlockOperation { [weak self] in
@@ -266,11 +265,11 @@ final class MediaCacheManager: ObservableObject {
     
     func prefetchVideo(urlStr: String) {
         guard !urlStr.isEmpty else { return }
-        if cachedVideoURL(for: urlStr) != nil { return }
         guard let url = URL(string: urlStr) else { return }
-        let path = videoFilePath(for: urlStr)
-        
-        let op = BlockOperation {
+
+        let op = BlockOperation { [weak self] in
+            guard let self = self, self.cachedVideoURL(for: urlStr) == nil else { return }
+            let path = self.videoFilePath(for: urlStr)
             if FileManager.default.fileExists(atPath: path.path) { return }
             let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 45)
             let semaphore = DispatchSemaphore(value: 0)
