@@ -1107,13 +1107,6 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "自动清理缓存",
             .traditionalChinese: "自動清理快取"
         ],
-        "auto_clean_cache_desc": [
-            .english: "Clears the oldest images and videos once the cache passes this size.",
-            .japanese: "キャッシュがこのサイズを超えると、古い画像や動画から消去します。",
-            .korean: "캐시가 이 크기를 넘으면 가장 오래된 이미지와 동영상부터 지웁니다.",
-            .simplifiedChinese: "缓存超过这个大小时，自动清掉最早的图片和视频。",
-            .traditionalChinese: "快取超過這個大小時，自動清除最早的圖片和影片。"
-        ],
         "cache_limit": [
             .english: "Cache Size",
             .japanese: "キャッシュサイズ",
@@ -1127,13 +1120,6 @@ final class LocalizationManager: ObservableObject {
             .korean: "자동 ({size})",
             .simplifiedChinese: "自动（{size}）",
             .traditionalChinese: "自動（{size}）"
-        ],
-        "cache_limit_auto_desc": [
-            .english: "The cache grows or shrinks with your Mac's free space.",
-            .japanese: "Mac の空き容量に合わせてキャッシュの大きさが変わります。",
-            .korean: "Mac의 여유 공간에 맞춰 캐시 크기가 달라집니다.",
-            .simplifiedChinese: "缓存大小随 Mac 的剩余空间自动调整。",
-            .traditionalChinese: "快取大小隨 Mac 的剩餘空間自動調整。"
         ],
         "accounts": [
             .english: "Accounts",
@@ -2508,20 +2494,6 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "实验性",
             .traditionalChinese: "實驗性"
         ],
-        "show_videos_tab_desc": [
-            .english: "Adds a Videos tab for watching X's videos full screen.",
-            .japanese: "X の動画を全画面で見られる「動画」タブを追加します。",
-            .korean: "X의 동영상을 전체 화면으로 볼 수 있는 '동영상' 탭을 추가합니다.",
-            .simplifiedChinese: "添加“视频”标签页，全屏观看 X 上的视频。",
-            .traditionalChinese: "新增「影片」分頁，全螢幕觀看 X 上的影片。"
-        ],
-        "autoplay_media_desc": [
-            .english: "Plays videos and GIFs on the timeline and post pages without sound. Click one to open it with sound.",
-            .japanese: "タイムラインとポストページの動画とGIFを消音で再生します。クリックすると音声付きで開きます。",
-            .korean: "타임라인과 게시물 페이지의 동영상과 GIF를 소리 없이 재생합니다. 클릭하면 소리와 함께 열립니다.",
-            .simplifiedChinese: "在时间线和帖子页面上静音播放视频和 GIF。点击后可带声音打开。",
-            .traditionalChinese: "在時間軸和貼文頁面上靜音播放影片和 GIF。點擊後可帶聲音開啟。"
-        ],
         "messages_show_contacts": [
             .english: "Show Conversations",
             .japanese: "会話一覧を表示",
@@ -2549,13 +2521,6 @@ final class LocalizationManager: ObservableObject {
             .korean: "프로모션 게시물(광고) 표시",
             .simplifiedChinese: "显示推广推文（广告）",
             .traditionalChinese: "顯示推廣推文（廣告）"
-        ],
-        "show_promoted_posts_desc": [
-            .english: "Include promoted ads in timeline and replies with an Ad badge. Disabled by default.",
-            .japanese: "タイムラインと返信に広告バッジ付きでプロモーションを表示します（デフォルトは非表示）。",
-            .korean: "타임라인과 답글에 광고 배지가 부착된 프로모션 게시물을 표시합니다(기본값은 숨김).",
-            .simplifiedChinese: "在时间线与评论回复中展示推广内容并附带 Ad 角标，默认关闭。",
-            .traditionalChinese: "在時間線與評論回覆中展示推廣內容並附帶 Ad 角標，預設關閉。"
         ],
         "ad_badge": [
             .english: "Ad",

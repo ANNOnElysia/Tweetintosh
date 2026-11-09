@@ -561,12 +561,6 @@ struct SettingsView: View {
                         .foregroundColor(ThemeManager.primaryText)
                 }
                 
-                Text(loc.t("show_promoted_posts_desc"))
-                    .font(theme.appFont(size: 11))
-                    .foregroundColor(ThemeManager.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 2)
-                
                 if theme.useLiquidGlass {
                     Toggle(loc.t("autoplay_media"), isOn: $theme.autoplayMedia.animation(.spring(response: 0.35, dampingFraction: 0.8)))
                         .toggleStyle(GlassCapsuleToggleStyle())
@@ -576,12 +570,6 @@ struct SettingsView: View {
                         .toggleStyle(GlassCapsuleToggleStyle())
                         .foregroundColor(ThemeManager.primaryText)
                 }
-                
-                Text(loc.t("autoplay_media_desc"))
-                    .font(theme.appFont(size: 11))
-                    .foregroundColor(ThemeManager.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 2)
                 
                 if theme.useLiquidGlass {
                     Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
@@ -596,12 +584,6 @@ struct SettingsView: View {
                     .toggleStyle(GlassCapsuleToggleStyle())
                     .foregroundColor(ThemeManager.primaryText)
                 }
-                
-                Text(loc.t("show_videos_tab_desc"))
-                    .font(theme.appFont(size: 11))
-                    .foregroundColor(ThemeManager.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 2)
             }
             .padding(14)
             .background(cardBackground)
@@ -754,12 +736,6 @@ struct SettingsView: View {
                         .accessibilityHidden(true)
                 }
             }
-            
-            Text(loc.t(cleanup.isOn && cleanup.stop == CacheCleanup.followsFreeSpace ? "cache_limit_auto_desc" : "auto_clean_cache_desc"))
-                .font(theme.appFont(size: 11))
-                .foregroundColor(ThemeManager.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, 2)
         }
     }
     
