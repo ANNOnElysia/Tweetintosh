@@ -26,6 +26,18 @@ enum TimelineBackend {
 
 // MARK: - Row Content
 
+// True while a row is laid out only to learn its height. Pictures there are never seen, so their loading is skipped.
+private struct IsMeasuringRowKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var isMeasuringRow: Bool {
+        get { self[IsMeasuringRowKey.self] }
+        set { self[IsMeasuringRowKey.self] = newValue }
+    }
+}
+
 // What a cell hosts. The environment is set here because it doesn't cross into a cell's hosting view.
 struct TimelineRowContent: View {
     let tweet: Tweet
@@ -43,6 +55,7 @@ struct TimelineRowContent: View {
                 .environment(\.allowsVideoAutoplay, false)
                 .environment(\.mediaColumnWidth, mediaColumnWidth)
                 .environment(\.tableCellGeometry, TableCellGeometry.forMeasuring)
+                .environment(\.isMeasuringRow, true)
         } else {
             TweetRowView(tweet: tweet)
                 .modifier(PausesHitTestingWhileScrolling())

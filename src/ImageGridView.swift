@@ -199,6 +199,7 @@ struct CachedAsyncImage: View {
     let targetSize: CGSize?
     
     @StateObject private var loader: ImageLoader
+    @Environment(\.isMeasuringRow) private var isMeasuringRow
 
     // targetSize (points): pass the on-screen box to decode a downsampled bitmap instead of the full image
     init(urlString: String?, placeholderColor: Color = Color(white: 0.08), contentMode: ContentMode = .fill, targetSize: CGSize? = nil) {
@@ -210,25 +211,33 @@ struct CachedAsyncImage: View {
     }
     
     var body: some View {
-        ZStack {
-            if let image = loader.image(urlString: urlString, targetSize: targetSize) {
-                Image(decorative: image, scale: 1.0)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-            } else {
-                // Plain placeholder: a ProgressView here is an AppKit NSProgressIndicator per loading tile, and
-                // creating/animating one for every image scrolling into view caused visible scroll hitches.
-                Rectangle()
-                    .fill(placeholderColor)
+        if isMeasuringRow {
+            // A measured row only needs the picture's place, and the placeholder already gives it one. Loading here
+            // would touch the caches and the network for a view nobody sees, and hand this same image view a new
+            // address for every post measured, which SwiftUI reports as the load key updating multiple times a frame.
+            Rectangle()
+                .fill(placeholderColor)
+        } else {
+            ZStack {
+                if let image = loader.image(urlString: urlString, targetSize: targetSize) {
+                    Image(decorative: image, scale: 1.0)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                } else {
+                    // Plain placeholder: a ProgressView here is an AppKit NSProgressIndicator per loading tile, and
+                    // creating/animating one for every image scrolling into view caused visible scroll hitches.
+                    Rectangle()
+                        .fill(placeholderColor)
+                }
             }
-        }
-        .onAppear {
-            loader.load(urlString: urlString, targetSize: targetSize)
-        }
-        // The address can arrive after the view does (a profile opened from an @mention knows only the handle until
-        // X has answered), and a reused table cell is handed a different post, so a new address is loaded too
-        .onChange(of: LoadKey(url: urlString, targetSize: targetSize)) {
-            loader.load(urlString: urlString, targetSize: targetSize)
+            .onAppear {
+                loader.load(urlString: urlString, targetSize: targetSize)
+            }
+            // The address can arrive after the view does (a profile opened from an @mention knows only the handle until
+            // X has answered), and a reused table cell is handed a different post, so a new address is loaded too
+            .onChange(of: LoadKey(url: urlString, targetSize: targetSize)) {
+                loader.load(urlString: urlString, targetSize: targetSize)
+            }
         }
     }
 }
