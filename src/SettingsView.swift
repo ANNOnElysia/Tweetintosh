@@ -265,82 +265,6 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
     }
 }
 
-// MARK: - Glass Dropdown Menu Picker (Apple HIG Glass PopUp)
-struct GlassDropdownPicker<T: Hashable>: View {
-    @Binding var selection: T
-    var options: [(T, String)]
-    var iconProvider: ((T) -> AnyView)? = nil
-    @ObservedObject var theme = ThemeManager.shared
-    
-    var body: some View {
-        Menu {
-            ForEach(options, id: \.0) { item in
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        selection = item.0
-                    }
-                } label: {
-                    HStack {
-                        Text(item.1)
-                        if selection == item.0 {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                if let icon = iconProvider?(selection) {
-                    icon
-                }
-                Text(currentTitle)
-                    .font(theme.appFont(size: 13, weight: .medium))
-                    .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.50))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background {
-                if theme.useLiquidGlass {
-                    if #available(macOS 26.0, *) {
-                        Capsule()
-                            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
-                            .tweetGlass(.regular, in: Capsule())
-                            .overlay(
-                                Capsule()
-                                    .stroke(theme.isLight ? ThemeManager.border : Color.white.opacity(0.18), lineWidth: 0.8)
-                            )
-                    } else {
-                        defaultMenuBackground
-                    }
-                } else {
-                    defaultMenuBackground
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.target)
-    }
-    
-    private var currentTitle: String {
-        options.first(where: { $0.0 == selection })?.1 ?? ""
-    }
-    
-    private var defaultMenuBackground: some View {
-        Capsule()
-            .fill(theme.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.08))
-            .overlay(
-                Capsule()
-                    .stroke(theme.isLight ? ThemeManager.border : Color.white.opacity(0.14), lineWidth: 0.8)
-            )
-    }
-}
-
 // MARK: - Settings Close Button (Top-Right "小麻叉")
 struct SettingsCloseButtonStyle: ButtonStyle {
     @ObservedObject var theme = ThemeManager.shared
@@ -529,20 +453,15 @@ struct SettingsView: View {
                     .font(theme.appFont(size: 13, weight: .semibold))
                     .foregroundColor(ThemeManager.secondaryText)
                 
-                if theme.useLiquidGlass {
-                    GlassDropdownPicker(
-                        selection: $loc.currentLanguage,
-                        options: AppLanguage.allCases.map { ($0, $0.displayName) }
-                    )
-                } else {
-                    Picker("", selection: $loc.currentLanguage) {
-                        ForEach(AppLanguage.allCases) { lang in
-                            Text(lang.displayName).tag(lang)
-                        }
+                // The system pop-up button, which takes on the current macOS look (Liquid Glass included) by itself
+                Picker("", selection: $loc.currentLanguage) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
                     }
-                    .pickerStyle(PopUpButtonPickerStyle())
-                    .frame(maxWidth: .infinity)
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
             }
             .padding(14)
             .background(cardBackground)
@@ -593,27 +512,21 @@ struct SettingsView: View {
                         .font(theme.appFont(size: 12, weight: .medium))
                         .foregroundColor(ThemeManager.secondaryText)
                     
-                    if theme.useLiquidGlass {
-                        GlassDropdownPicker(
-                            selection: $theme.themeColor,
-                            options: AppThemeColor.allCases.map { ($0, loc.t($0.displayNameKey)) },
-                            iconProvider: { color in
-                                AnyView(
-                                    Circle()
-                                         .fill(color.accentColor)
-                                        .frame(width: 10, height: 10)
-                                )
+                    Picker("", selection: $theme.themeColor) {
+                        ForEach(AppThemeColor.allCases) { color in
+                            Label {
+                                Text(loc.t(color.displayNameKey))
+                            } icon: {
+                                Image(systemName: "circle.fill")
+                                    .symbolRenderingMode(.palette)
+                                    .foregroundStyle(color.accentColor)
                             }
-                        )
-                    } else {
-                        Picker("", selection: $theme.themeColor) {
-                            ForEach(AppThemeColor.allCases) { color in
-                                Text(loc.t(color.displayNameKey)).tag(color)
-                            }
+                            .tag(color)
                         }
-                        .pickerStyle(PopUpButtonPickerStyle())
-                        .frame(maxWidth: .infinity)
                     }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
                 }
                 .padding(.top, 2)
             }
