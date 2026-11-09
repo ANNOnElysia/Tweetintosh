@@ -39,6 +39,8 @@ enum PeekScope: Equatable {
     case timeline
     case notifications
     case messages
+    // The Videos tab's pages
+    case videos
     // The contact list slid over the chat, which it takes the presses from
     case contactListOverlay
     // A page in the detail pane with another on top of it
@@ -476,7 +478,7 @@ final class PeekCoordinator: ObservableObject {
         case .home: return .timeline
         case .notifications: return .notifications
         case .messages: return nav.isContactListPeeking ? .contactListOverlay : .messages
-        default: return .none
+        case .videos: return .videos
         }
     }
 }

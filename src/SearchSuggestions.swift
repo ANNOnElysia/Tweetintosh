@@ -213,7 +213,7 @@ struct SearchSuggestionsPanel: View {
             }
             .padding(8)
             .frame(maxWidth: 440)
-            .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: RoundedRectangle(cornerRadius: 20, style: .continuous)))
+            .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: RoundedRectangle(cornerRadius: 20, style: .continuous), isInteractive: false))
             .padding(.horizontal, 16)
         }
     }
@@ -268,7 +268,7 @@ struct SearchSuggestionsPanel: View {
                             .frame(width: 22, height: 22)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 case .user(let user):
                     CachedAsyncImage(urlString: user.avatarUrl, targetSize: CGSize(width: 28, height: 28))
                         .frame(width: 28, height: 28)
@@ -302,7 +302,7 @@ struct SearchSuggestionsPanel: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
     }
 
     private func icon(_ name: String) -> some View {

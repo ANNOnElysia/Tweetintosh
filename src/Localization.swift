@@ -246,6 +246,97 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "私信",
             .traditionalChinese: "私訊"
         ],
+        "tab_videos": [
+            .english: "Videos",
+            .japanese: "動画",
+            .korean: "동영상",
+            .simplifiedChinese: "视频",
+            .traditionalChinese: "影片"
+        ],
+        "open_in_videos": [
+            .english: "Open in Videos",
+            .japanese: "動画で開く",
+            .korean: "동영상에서 열기",
+            .simplifiedChinese: "在视频中打开",
+            .traditionalChinese: "在影片中開啟"
+        ],
+        "videos_no_seed": [
+            .english: "There are no videos in For You yet. Open one from a post's menu with “Open in Videos”.",
+            .japanese: "「おすすめ」にまだ動画がありません。投稿のメニューの「動画で開く」から始められます。",
+            .korean: "추천 피드에 아직 동영상이 없습니다. 게시물 메뉴의 ‘동영상에서 열기’로 시작할 수 있습니다.",
+            .simplifiedChinese: "“为你推荐”里还没有视频。可以在帖子菜单里选“在视频中打开”。",
+            .traditionalChinese: "「為你推薦」裡還沒有影片。可以在貼文選單裡選「在影片中開啟」。"
+        ],
+        "videos_load_failed": [
+            .english: "Videos couldn’t be loaded. Try again later.",
+            .japanese: "動画を読み込めませんでした。しばらくしてからもう一度お試しください。",
+            .korean: "동영상을 불러올 수 없습니다. 잠시 후 다시 시도하세요.",
+            .simplifiedChinese: "无法加载视频，请稍后再试。",
+            .traditionalChinese: "無法載入影片，請稍後再試。"
+        ],
+        "videos_show_sidebar": [
+            .english: "Show Sidebar",
+            .japanese: "サイドバーを表示",
+            .korean: "사이드바 보기",
+            .simplifiedChinese: "显示边栏",
+            .traditionalChinese: "顯示側邊欄"
+        ],
+        "videos_next": [
+            .english: "Next Video",
+            .japanese: "次の動画",
+            .korean: "다음 동영상",
+            .simplifiedChinese: "下一个视频",
+            .traditionalChinese: "下一部影片"
+        ],
+        "videos_previous": [
+            .english: "Previous Video",
+            .japanese: "前の動画",
+            .korean: "이전 동영상",
+            .simplifiedChinese: "上一个视频",
+            .traditionalChinese: "上一部影片"
+        ],
+        "videos_play": [
+            .english: "Play",
+            .japanese: "再生",
+            .korean: "재생",
+            .simplifiedChinese: "播放",
+            .traditionalChinese: "播放"
+        ],
+        "videos_pause": [
+            .english: "Pause",
+            .japanese: "一時停止",
+            .korean: "일시 정지",
+            .simplifiedChinese: "暂停",
+            .traditionalChinese: "暫停"
+        ],
+        "videos_mute": [
+            .english: "Mute",
+            .japanese: "消音",
+            .korean: "음소거",
+            .simplifiedChinese: "静音",
+            .traditionalChinese: "靜音"
+        ],
+        "videos_unmute": [
+            .english: "Unmute",
+            .japanese: "消音を解除",
+            .korean: "음소거 해제",
+            .simplifiedChinese: "取消静音",
+            .traditionalChinese: "取消靜音"
+        ],
+        "videos_open_post": [
+            .english: "Open Post",
+            .japanese: "ポストを開く",
+            .korean: "게시물 열기",
+            .simplifiedChinese: "打开帖子",
+            .traditionalChinese: "開啟貼文"
+        ],
+        "videos_open_profile": [
+            .english: "Open Profile",
+            .japanese: "プロフィールを開く",
+            .korean: "프로필 열기",
+            .simplifiedChinese: "打开个人主页",
+            .traditionalChinese: "開啟個人檔案"
+        ],
         "messages_search": [
             .english: "Search",
             .japanese: "検索",
@@ -646,11 +737,11 @@ final class LocalizationManager: ObservableObject {
             .traditionalChinese: "加密對話 (點擊解鎖)"
         ],
         "messages_verifying_passcode": [
-            .english: "Verifying passcode and decrypting messages...",
-            .japanese: "パスコードを検証してメッセージを復号中...",
-            .korean: "암호를 확인하고 메시지를 복호화하는 중...",
-            .simplifiedChinese: "正在验证密码并解密消息...",
-            .traditionalChinese: "正在驗證密碼並解密訊息..."
+            .english: "Verifying passcode and decrypting messages…",
+            .japanese: "パスコードを検証してメッセージを復号中…",
+            .korean: "암호를 확인하고 메시지를 복호화하는 중…",
+            .simplifiedChinese: "正在验证密码并解密消息…",
+            .traditionalChinese: "正在驗證密碼並解密訊息…"
         ],
         "messages_passcode_incorrect": [
             .english: "Incorrect passcode. Please try again.",
@@ -1268,6 +1359,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "回复",
             .traditionalChinese: "回覆"
         ],
+        "remove_link_preview": [
+            .english: "Remove Link Preview",
+            .japanese: "リンクのプレビューを削除",
+            .korean: "링크 미리보기 제거",
+            .simplifiedChinese: "移除链接预览",
+            .traditionalChinese: "移除連結預覽"
+        ],
         "cancel": [
             .english: "Cancel",
             .japanese: "キャンセル",
@@ -1330,6 +1428,76 @@ final class LocalizationManager: ObservableObject {
             .korean: "{handle} 님 뮤트",
             .simplifiedChinese: "静音 {handle}",
             .traditionalChinese: "將 {handle} 設為靜音"
+        ],
+        "show_more": [
+            .english: "Show more",
+            .japanese: "さらに表示",
+            .korean: "더 보기",
+            .simplifiedChinese: "显示更多",
+            .traditionalChinese: "顯示更多"
+        ],
+        "show_less": [
+            .english: "Show less",
+            .japanese: "表示を減らす",
+            .korean: "간단히 보기",
+            .simplifiedChinese: "显示更少",
+            .traditionalChinese: "顯示較少"
+        ],
+        "post_menu_delete": [
+            .english: "Delete Post…",
+            .japanese: "ポストを削除…",
+            .korean: "게시물 삭제…",
+            .simplifiedChinese: "删除帖子…",
+            .traditionalChinese: "刪除貼文…"
+        ],
+        "post_menu_copy_delete": [
+            .english: "Copy Text and Delete…",
+            .japanese: "テキストをコピーして削除…",
+            .korean: "텍스트 복사 후 삭제…",
+            .simplifiedChinese: "复制文本并删除…",
+            .traditionalChinese: "拷貝文字並刪除…"
+        ],
+        "delete_post_title": [
+            .english: "Delete this post?",
+            .japanese: "このポストを削除しますか？",
+            .korean: "이 게시물을 삭제할까요?",
+            .simplifiedChinese: "要删除这条帖子吗？",
+            .traditionalChinese: "要刪除這則貼文嗎？"
+        ],
+        "delete_post_message": [
+            .english: "It will be removed from your profile, from the timelines of people who follow you, and from search. This can't be undone.",
+            .japanese: "プロフィール、フォロワーのタイムライン、検索結果から削除されます。この操作は取り消せません。",
+            .korean: "내 프로필, 팔로워의 타임라인, 검색 결과에서 삭제됩니다. 이 작업은 취소할 수 없습니다.",
+            .simplifiedChinese: "它将从你的个人资料、关注你的人的时间线和搜索结果中移除。此操作无法撤销。",
+            .traditionalChinese: "它將從你的個人檔案、追蹤你的人的時間軸和搜尋結果中移除。此動作無法復原。"
+        ],
+        "copy_delete_post_message": [
+            .english: "Its text will be copied so you can post it again, then the post will be removed from your profile, timelines and search. This can't be undone.",
+            .japanese: "テキストをコピーしてから、ポストをプロフィール、タイムライン、検索結果から削除します。この操作は取り消せません。",
+            .korean: "텍스트를 복사한 뒤 게시물을 프로필, 타임라인, 검색 결과에서 삭제합니다. 이 작업은 취소할 수 없습니다.",
+            .simplifiedChinese: "将先复制它的文本，以便你重新发布，然后从你的个人资料、时间线和搜索结果中移除。此操作无法撤销。",
+            .traditionalChinese: "將先拷貝它的文字，方便你重新發佈，然後從你的個人檔案、時間軸和搜尋結果中移除。此動作無法復原。"
+        ],
+        "delete_action": [
+            .english: "Delete",
+            .japanese: "削除",
+            .korean: "삭제",
+            .simplifiedChinese: "删除",
+            .traditionalChinese: "刪除"
+        ],
+        "post_deleted": [
+            .english: "Post deleted",
+            .japanese: "ポストを削除しました",
+            .korean: "게시물을 삭제했습니다",
+            .simplifiedChinese: "帖子已删除",
+            .traditionalChinese: "貼文已刪除"
+        ],
+        "post_copied_deleted": [
+            .english: "Text copied, post deleted",
+            .japanese: "テキストをコピーし、ポストを削除しました",
+            .korean: "텍스트를 복사하고 게시물을 삭제했습니다",
+            .simplifiedChinese: "已复制文本并删除帖子",
+            .traditionalChinese: "已拷貝文字並刪除貼文"
         ],
         "post_menu_block": [
             .english: "Block {handle}",
@@ -2185,6 +2353,41 @@ final class LocalizationManager: ObservableObject {
             .korean: "동영상 및 GIF 자동 재생",
             .simplifiedChinese: "自动播放视频和 GIF",
             .traditionalChinese: "自動播放影片和 GIF"
+        ],
+        "show_videos_tab": [
+            .english: "Video Feed",
+            .japanese: "動画フィード",
+            .korean: "동영상 피드",
+            .simplifiedChinese: "视频流",
+            .traditionalChinese: "影片串流"
+        ],
+        "posting": [
+            .english: "Posting",
+            .japanese: "投稿中",
+            .korean: "게시 중",
+            .simplifiedChinese: "正在发布",
+            .traditionalChinese: "正在發佈"
+        ],
+        "loading": [
+            .english: "Loading",
+            .japanese: "読み込み中",
+            .korean: "로딩 중",
+            .simplifiedChinese: "加载中",
+            .traditionalChinese: "載入中"
+        ],
+        "experimental": [
+            .english: "Experimental",
+            .japanese: "試験運用",
+            .korean: "실험적",
+            .simplifiedChinese: "实验性",
+            .traditionalChinese: "實驗性"
+        ],
+        "show_videos_tab_desc": [
+            .english: "Adds a Videos tab for watching X's videos full screen.",
+            .japanese: "X の動画を全画面で見られる「動画」タブを追加します。",
+            .korean: "X의 동영상을 전체 화면으로 볼 수 있는 '동영상' 탭을 추가합니다.",
+            .simplifiedChinese: "添加“视频”标签页，全屏观看 X 上的视频。",
+            .traditionalChinese: "新增「影片」分頁，全螢幕觀看 X 上的影片。"
         ],
         "autoplay_media_desc": [
             .english: "Plays videos and GIFs on the timeline and post pages without sound. Click one to open it with sound.",

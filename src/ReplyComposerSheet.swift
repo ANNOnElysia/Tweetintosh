@@ -12,6 +12,8 @@ final class ReplyComposerState: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var attachments: [ComposerAttachment] = []
     @Published var uploadStatus: String? = nil
+    // How much of the attached media has uploaded, while posting with media
+    @Published var uploadProgress: Double? = nil
 }
 
 struct ReplyComposerSheet: View {
@@ -20,6 +22,8 @@ struct ReplyComposerSheet: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @StateObject private var state = ReplyComposerState()
+    @StateObject private var linkCard = LinkCardPreviewModel()
+    @FocusState private var editorFocused: Bool
     
     private let characterLimit = 280
     
@@ -32,20 +36,31 @@ struct ReplyComposerSheet: View {
         return (!trimmed.isEmpty || !state.attachments.isEmpty) && remainingCharacters >= 0 && !state.isSending
     }
     
+    // Attached media takes the place of the link's card, as on X
+    private var showsLinkCard: Bool { state.attachments.isEmpty }
+    private var linkCardShown: Bool { showsLinkCard && linkCard.preview != nil }
+    
     var body: some View {
         VStack(spacing: 0) {
             headerBar
                 .onAppear { WebKitWriteChannel.shared.warmUp() }
 
             
-            Divider()
-                .background(ThemeManager.divider)
+            ComposerSendingBar(isSending: state.isSending, progress: state.uploadProgress)
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     originalTweetSnippet
                     composerInputRow
-                    
+
+                    if let card = linkCard.preview, showsLinkCard {
+                        LinkCardPreviewView(card: card, isDisabled: state.isSending) { linkCard.dismiss() }
+                            .padding(.leading, 60)   // under the text, past the avatar
+                            .padding(.trailing, 16)
+                            .padding(.top, 4)
+                            .transition(.opacity)
+                    }
+
                     if !state.attachments.isEmpty {
                         ComposerAttachmentStrip(attachments: $state.attachments, isDisabled: state.isSending)
                             .padding(.top, 8)
@@ -70,7 +85,9 @@ struct ReplyComposerSheet: View {
             
             bottomControlsBar
         }
-        .frame(width: 520, height: 340 + (state.attachments.isEmpty ? 0 : 110))
+        .frame(width: 520, height: 340 + (state.attachments.isEmpty ? 0 : 110)
+               + (linkCardShown ? max(0, LinkCardPreviewView.height(for: linkCard.preview, width: 520 - 76) - 60) : 0))
+        .onChange(of: state.replyText) { linkCard.textChanged(state.replyText) }
         .background(ThemeManager.background)
         .onAppear { NavigationManager.shared.isReplyComposerOpen = true }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_CancelReply"))) { _ in
@@ -118,7 +135,7 @@ struct ReplyComposerSheet: View {
                     .font(theme.appFont(size: 13, weight: .medium))
                     .foregroundColor(ThemeManager.secondaryText)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .keyboardShortcut(.escape, modifiers: [])
             
             Spacer()
@@ -131,9 +148,6 @@ struct ReplyComposerSheet: View {
             
             Button(action: submitReply) {
                 HStack(spacing: 6) {
-                    if state.isSending {
-                        LoadingIndicator(compactHeight: 16, tint: ThemeManager.onAccent)
-                    }
                     Text(loc.t("post_reply"))
                         .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.onAccent)
@@ -143,7 +157,7 @@ struct ReplyComposerSheet: View {
                 .background(canSend ? ThemeManager.accent : ThemeManager.accent.opacity(0.4))
                 .clipShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(!canSend)
             .keyboardShortcut(.return, modifiers: [.command])
         }
@@ -218,9 +232,13 @@ struct ReplyComposerSheet: View {
             .textFieldStyle(.plain)
             .font(.system(size: 14))
             .foregroundColor(ThemeManager.primaryText)
-            .lineLimit(5...10)
+            // Room held by a frame, not a minimum line count, so a link's card can move up under the text
+            .lineLimit(1...10)
+            .focused($editorFocused)
             .returnStartsNewLine()
-            .frame(minHeight: 110, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: linkCardShown ? 40 : 110, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture { editorFocused = true }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -299,19 +317,22 @@ struct ReplyComposerSheet: View {
         
         state.isSending = true
         state.errorMessage = nil
+        state.uploadProgress = state.attachments.isEmpty ? nil : 0
         let attachments = state.attachments
         
         Task { @MainActor in
             let mediaIds: [String]
             do {
-                mediaIds = try await MediaAttachments.upload(attachments) { state.uploadStatus = $0 }
+                mediaIds = try await MediaAttachments.upload(attachments, status: { state.uploadStatus = $0 },
+                                                           progress: { state.uploadProgress = $0 })
             } catch {
                 state.isSending = false
                 state.errorMessage = error.localizedDescription
                 return
             }
             
-            TimelineViewModel.shared.postReply(to: tweet, text: textToSend, mediaIds: mediaIds) { result in
+            let cardUri = linkCard.cardIsDismissed(for: textToSend) ? "tombstone://card" : nil
+            TimelineViewModel.shared.postReply(to: tweet, text: textToSend, mediaIds: mediaIds, cardUri: cardUri) { result in
                 DispatchQueue.main.async {
                     self.state.isSending = false
                     switch result {

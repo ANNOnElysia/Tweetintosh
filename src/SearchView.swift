@@ -125,6 +125,13 @@ final class SearchViewModel: ObservableObject, TweetMutationTarget {
             if changed { tweets[tab] = list }
         }
     }
+
+    func removePost(id: String) {
+        for tab in Array(tweets.keys) {
+            guard let list = tweets[tab], list.contains(where: { $0.isCopy(ofPost: id) }) else { continue }
+            tweets[tab] = list.filter { !$0.isCopy(ofPost: id) }
+        }
+    }
 }
 
 // MARK: - Search Page
@@ -134,7 +141,7 @@ struct SearchView: View {
     @StateObject private var vm: SearchViewModel
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @Namespace private var tabNamespace
     @FocusState private var isFieldFocused: Bool
 
@@ -179,7 +186,7 @@ struct SearchView: View {
                     .frame(width: 36, height: 36)
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help("\(loc.t("nav_back")) (Esc / ←)")
 
             HStack(spacing: 8) {
@@ -205,7 +212,7 @@ struct SearchView: View {
                             .font(.system(size: 12))
                             .foregroundColor(ThemeManager.secondaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 }
             }
             .padding(.horizontal, 14)
@@ -250,7 +257,7 @@ struct SearchView: View {
                                     .matchedGeometryEffect(id: "search-tab", in: tabNamespace)
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .pressDragItem(tab)
             }
@@ -261,7 +268,7 @@ struct SearchView: View {
             }
         }
         .padding(4)
-        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true))
+        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true, isInteractive: false))
     }
 
     // MARK: Results

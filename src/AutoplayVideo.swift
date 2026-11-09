@@ -36,7 +36,12 @@ final class AutoplayCoordinator {
     private init() {
         let trigger: () -> Void = { [weak self] in self?.setNeedsEvaluate() }
         observers = [
-            NavigationManager.shared.objectWillChange.sink { _ in trigger() },
+            // What decides the page in front, plus what moves the pages around: not the search text or the shortcut
+            // badges, which change often and never affect playback
+            observeChanges(of: {
+                let nav = NavigationManager.shared
+                _ = (nav.currentTab, nav.overlayStack.count, nav.sidebarExpanded, nav.isSearchActive)
+            }, perform: trigger),
             LightboxManager.shared.objectWillChange.sink { _ in trigger() },
             VideoLightboxManager.shared.objectWillChange.sink { _ in trigger() },
             // Not only the timeline's scroll state: each kind of page tracks its own, and this has to cover them all
@@ -97,7 +102,12 @@ final class AutoplayCoordinator {
         let nav = NavigationManager.shared
         if LightboxManager.shared.isPresented || VideoLightboxManager.shared.isPresented { return .none }
         if nav.hasOverlay { return .overlay(nav.overlayStack.count - 1) }
-        return nav.currentTab == .home ? .timeline : .none
+        switch nav.currentTab {
+        case .home: return .timeline
+        // The Videos tab has the screen to itself, so the timeline's tiles stop while it is in front
+        case .videos: return .videos
+        default: return .none
+        }
     }
 
     private func evaluate() {
@@ -122,7 +132,9 @@ final class AutoplayCoordinator {
             .sorted { ($0.view.isPreferred ? 1 : 0, $0.fraction) > ($1.view.isPreferred ? 1 : 0, $1.fraction) }
         let chosen = ranked.prefix(Self.maxPlaying).map(\.view)
         for view in eligible where !chosen.contains(view) {
-            view.stop()
+            // A page beside the one being watched stays loaded and paused (it is held), so arriving on it only has
+            // to press play instead of starting a download
+            if view.preloads { view.start() } else { view.stop() }
         }
         chosen.forEach { $0.start() }
     }
@@ -141,6 +153,33 @@ final class AutoplayVideoView: NSView {
     var onPlayingChange: ((Bool) -> Void)?
     var scope: PeekScope = .none
     var isPreferred = false
+    // The Videos tab plays with sound, shows the whole frame, and can be paused; a timeline tile is silent, cropped
+    // like its thumbnail, and only ever started or stopped
+    var isMuted = true {
+        didSet {
+            player?.isMuted = isMuted
+            // Watching a video with sound is watching; a silent tile scrolling by is not
+            player?.preventsDisplaySleepDuringVideoPlayback = !isMuted
+        }
+    }
+    var showsWholeFrame = false {
+        didSet { playerLayer?.videoGravity = showsWholeFrame ? .resizeAspect : .resizeAspectFill }
+    }
+    // Loaded ahead while not being watched, paused on its first frame; only the Videos tab's neighbouring pages, so at
+    // most two wait like this
+    var preloads = false
+    // Seconds buffered ahead by a streamed Videos page: while it waits beside the one being watched, and while playing
+    private static let heldBuffer: TimeInterval = 2
+    private static let playingBuffer: TimeInterval = 6
+    var isHeld = false {
+        didSet {
+            guard isHeld != oldValue, let player = player, let item = player.currentItem else { return }
+            if scope == .videos, item.preferredForwardBufferDuration > 0 {
+                item.preferredForwardBufferDuration = isHeld ? Self.heldBuffer : Self.playingBuffer
+            }
+            if isHeld { player.pause() } else { player.play() }
+        }
+    }
 
     // Made the first time this tile plays: most tiles scroll past without ever playing, and an AVPlayer takes up to a
     // millisecond to create, on the main thread, in the same frame the row is being built
@@ -199,7 +238,8 @@ final class AutoplayVideoView: NSView {
             DispatchQueue.main.async {
                 guard let self = self, self.resolvingMediaId == media.id else { return }
                 self.resolvingMediaId = nil
-                if let url = url { self.play(url) }
+                guard let url = url else { return }
+                self.play(url)
             }
         }
     }
@@ -207,6 +247,12 @@ final class AutoplayVideoView: NSView {
     private func play(_ url: URL) {
         let (player, playerLayer) = preparedPlayer()
         let item = AVPlayerItem(url: url)
+        // Streamed in the Videos tab, a player would otherwise buffer as far ahead as it can and take the bandwidth
+        // the next videos are being downloaded with, so each arrival would find its video still downloading. A page
+        // waiting beside the one being watched needs only its opening seconds, enough to start the moment it arrives.
+        if scope == .videos && !url.isFileURL {
+            item.preferredForwardBufferDuration = isHeld ? Self.heldBuffer : Self.playingBuffer
+        }
         player.replaceCurrentItem(with: item)
         readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
             guard layer.isReadyForDisplay else { return }
@@ -219,10 +265,11 @@ final class AutoplayVideoView: NSView {
         loopObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in
-            self?.player?.seek(to: .zero)
-            self?.player?.play()
+            guard let self = self else { return }
+            self.player?.seek(to: .zero)
+            if !self.isHeld { self.player?.play() }
         }
-        player.play()
+        if !isHeld { player.play() }
     }
 
     func stop() {
@@ -242,12 +289,12 @@ final class AutoplayVideoView: NSView {
     private func preparedPlayer() -> (AVPlayer, AVPlayerLayer) {
         if let player = player, let playerLayer = playerLayer { return (player, playerLayer) }
         let player = AVPlayer()
-        player.isMuted = true
-        player.preventsDisplaySleepDuringVideoPlayback = false
+        player.isMuted = isMuted
+        player.preventsDisplaySleepDuringVideoPlayback = !isMuted
         let playerLayer = AVPlayerLayer()
         playerLayer.player = player
         // Same crop as the thumbnail underneath, which stays visible until the first frame is ready
-        playerLayer.videoGravity = .resizeAspectFill
+        playerLayer.videoGravity = showsWholeFrame ? .resizeAspect : .resizeAspectFill
         playerLayer.isHidden = true
         playerLayer.frame = bounds
         layer?.addSublayer(playerLayer)
@@ -259,23 +306,35 @@ final class AutoplayVideoView: NSView {
 
 // MARK: - SwiftUI
 
-private struct AutoplayVideoRepresentable: NSViewRepresentable {
+struct AutoplayVideoRepresentable: NSViewRepresentable {
     let media: TweetMedia
     let scope: PeekScope
     let isPreferred: Bool
+    var isMuted = true
+    var showsWholeFrame = false
+    var isHeld = false
+    var preloads = false
     let onPlayingChange: (Bool) -> Void
 
     func makeNSView(context: Context) -> AutoplayVideoView {
         let view = AutoplayVideoView()
-        view.media = media
-        view.scope = scope
-        view.isPreferred = isPreferred
-        view.onPlayingChange = onPlayingChange
+        configure(view)
         AutoplayCoordinator.shared.register(view)
         return view
     }
 
     func updateNSView(_ view: AutoplayVideoView, context: Context) {
+        // Which page is preferred moves with every swipe, and the coordinator only looks when asked
+        let preferenceChanged = view.isPreferred != isPreferred || view.preloads != preloads
+        configure(view)
+        if preferenceChanged { AutoplayCoordinator.shared.setNeedsEvaluate() }
+    }
+
+    private func configure(_ view: AutoplayVideoView) {
+        view.isMuted = isMuted
+        view.showsWholeFrame = showsWholeFrame
+        view.isHeld = isHeld
+        view.preloads = preloads
         view.media = media
         view.scope = scope
         view.isPreferred = isPreferred

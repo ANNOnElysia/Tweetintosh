@@ -218,6 +218,18 @@ final class ThemeManager: ObservableObject {
             UserDefaults.standard.set(autoplayMedia, forKey: "Tweetintosh_AutoplayMedia")
         }
     }
+
+    // The Videos tab, X's full-screen video feed. Off until the reader turns it on: it plays video continuously and
+    // downloads ahead, which not everyone wants from a timeline app.
+    @Published var showVideosTab: Bool {
+        didSet {
+            UserDefaults.standard.set(showVideosTab, forKey: "Tweetintosh_ShowVideosTab")
+            // Turned off while watching, the tab it was on is gone
+            if !showVideosTab && NavigationManager.shared.currentTab == .videos {
+                NavigationManager.shared.selectTab(.home)
+            }
+        }
+    }
     
     var refreshColor: AppThemeColor {
         get { themeColor }
@@ -324,6 +336,7 @@ final class ThemeManager: ObservableObject {
         }
         
         self.autoplayMedia = UserDefaults.standard.object(forKey: "Tweetintosh_AutoplayMedia") as? Bool ?? true
+        self.showVideosTab = UserDefaults.standard.object(forKey: "Tweetintosh_ShowVideosTab") as? Bool ?? false
         
         applyAppearance()
         watchSystemAppearance()

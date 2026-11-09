@@ -84,10 +84,18 @@ protocol TweetMutationTarget: AnyObject {
     func applyMutation(id: String, transform: (inout Tweet) -> Void)
     // This page's copy of a post, if it has one
     func copy(of id: String) -> Tweet?
+    // Takes a deleted post off this page
+    func removePost(id: String)
 }
 
 extension TweetMutationTarget {
     func copy(of id: String) -> Tweet? { nil }
+    func removePost(id: String) {}
+}
+
+extension Tweet {
+    /// Whether this is the post `id`, or a repost of it, which goes when the post is deleted
+    func isCopy(ofPost id: String) -> Bool { self.id == id || canonicalId == id }
 }
 
 final class TweetMutationHub {
@@ -109,6 +117,12 @@ final class TweetMutationHub {
     func apply(id: String, transform: (inout Tweet) -> Void) {
         for case let target as TweetMutationTarget in targets.allObjects {
             target.applyMutation(id: id, transform: transform)
+        }
+    }
+
+    func remove(id: String) {
+        for case let target as TweetMutationTarget in targets.allObjects {
+            target.removePost(id: id)
         }
     }
 }

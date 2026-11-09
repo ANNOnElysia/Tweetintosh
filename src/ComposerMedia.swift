@@ -25,7 +25,7 @@ struct ComposerAttachButton: View {
                 .foregroundColor(ThemeManager.accent)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(isDisabled)
 
             Text("⌥ + A")
@@ -81,7 +81,7 @@ struct ComposerAttachmentStrip: View {
                                 .background(Circle().fill(Color.black.opacity(0.55)))
                                 .padding(4)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.target)
                         .disabled(isDisabled)
                     }
                 }
@@ -123,14 +123,55 @@ extension MediaAttachments {
     }
 
     // X needs every file before the post that uses them is created
+    // `progress` is the share of all the files sent so far, from 0 to 1, for the composer's progress bar
     @MainActor
-    static func upload(_ attachments: [ComposerAttachment], status: (String?) -> Void) async throws -> [String] {
+    static func upload(_ attachments: [ComposerAttachment], status: (String?) -> Void,
+                       progress: @escaping @MainActor (Double) -> Void = { _ in }) async throws -> [String] {
         defer { status(nil) }
         var mediaIds: [String] = []
+        let count = Double(max(attachments.count, 1))
         for (index, attachment) in attachments.enumerated() {
             status(LocalizationManager.shared.format("media_uploading", ["current": String(index + 1), "total": String(attachments.count)]))
-            mediaIds.append(try await APIClient.shared.uploadMedia(attachment))
+            progress(Double(index) / count)
+            mediaIds.append(try await APIClient.shared.uploadMedia(attachment) { fraction in
+                DispatchQueue.main.async { progress((Double(index) + fraction) / count) }
+            })
         }
+        progress(1)
         return mediaIds
+    }
+}
+
+// MARK: - Sending Progress
+
+// Along the line under a composer's title bar while a post is on its way, always in that one place. It fills as the
+// attached files upload; with nothing to upload, how long X takes can't be known, so it shows the system's moving bar
+// instead. The Post button itself only dims meanwhile.
+struct ComposerSendingBar: View {
+    let isSending: Bool
+    // The share of the attached files uploaded, or nil when there are none
+    let progress: Double?
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Divider()
+                .background(ThemeManager.divider)
+            if isSending {
+                Group {
+                    if let progress {
+                        ProgressView(value: progress)
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .progressViewStyle(.linear)
+                .controlSize(.small)
+                .tint(ThemeManager.accent)
+                .transition(.opacity)
+                .accessibilityLabel(LocalizationManager.shared.t("posting"))
+            }
+        }
+        .frame(height: 1, alignment: .top)
+        .animation(.easeOut(duration: 0.2), value: isSending)
     }
 }

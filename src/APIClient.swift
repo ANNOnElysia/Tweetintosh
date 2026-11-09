@@ -510,6 +510,11 @@ final class APIClient {
             article: Self.parseArticlePreview(result["article"] as? [String: Any])
         )
         tweet.originalId = originalId
+        // A long post's whole text, which X leaves out of "legacy"
+        if let note = ((result["note_tweet"] as? [String: Any])?["note_tweet_results"] as? [String: Any])?["result"] as? [String: Any],
+           let noteText = note["text"] as? String, !noteText.isEmpty {
+            tweet.setLongText(noteText, links: Self.parseLinks(note["entity_set"] as? [String: Any]))
+        }
         return tweet
     }
     
@@ -1479,9 +1484,47 @@ final class APIClient {
         )
     }
     
+    /// Deletes one of your own posts. X's operation id is looked up again if the known ones are refused.
+    func deleteTweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        func attempt(_ qids: [String], discovered: Bool) {
+            guard let qid = qids.first else {
+                if discovered {
+                    completion(.failure(.serverError("No working query id for DeleteTweet")))
+                } else {
+                    GraphQLOperationIDs.shared.discover(using: self, creds: creds) {
+                        attempt(GraphQLOperationIDs.shared.ids(for: "DeleteTweet"), discovered: true)
+                    }
+                }
+                return
+            }
+            let body: [String: Any] = [
+                "variables": ["tweet_id": id, "dark_request": false],
+                "queryId": qid
+            ]
+            performGraphQLMutation(
+                endpoint: "https://x.com/i/api/graphql/\(qid)/DeleteTweet",
+                body: body,
+                successCheck: { $0["delete_tweet"] != nil }
+            ) { result in
+                switch result {
+                case .success:
+                    GraphQLOperationIDs.shared.markWorking(qid, for: "DeleteTweet")
+                    completion(result)
+                case .failure:
+                    attempt(Array(qids.dropFirst()), discovered: discovered)
+                }
+            }
+        }
+        attempt(GraphQLOperationIDs.shared.ids(for: "DeleteTweet"), discovered: false)
+    }
+    
     /// Reply to a tweet
-    func reply(to tweetId: String, text: String, mediaIds: [String] = [], completion: @escaping (Result<String, APIError>) -> Void) {
-        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, mediaIds: mediaIds, completion: completion)
+    func reply(to tweetId: String, text: String, mediaIds: [String] = [], cardUri: String? = nil, completion: @escaping (Result<String, APIError>) -> Void) {
+        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, mediaIds: mediaIds, cardUri: cardUri, completion: completion)
     }
     
     // MARK: - Mute & Block Actions
@@ -1657,6 +1700,7 @@ final class APIClient {
         replyToTweetId: String? = nil,
         attachmentUrl: String? = nil,
         mediaIds: [String] = [],
+        cardUri: String? = nil,
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
         let features: [String: Any] = [
@@ -1700,6 +1744,10 @@ final class APIClient {
         
         if let attach = attachmentUrl, !attach.isEmpty {
             variables["attachment_url"] = attach
+        }
+        
+        if let cardUri = cardUri {
+            variables["card_uri"] = cardUri
         }
         
         func attempt(qids: [String]) {

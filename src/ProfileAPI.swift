@@ -106,6 +106,8 @@ final class GraphQLOperationIDs {
         // Who an account follows, and who follows it: read from X's web client on first use, like the two above
         "Following": [],
         "Followers": [],
+        "DeleteTweet": ["VaenaVgh5q5ih7kvyVjgtg"],
+        "composerCardPreviewQuery": ["C1r84YfBL_DG4qOwIaQfjA"],
         "UserMedia": [
             "eF8kYZ4r9zFLqcYno3I17A", "oMVVrI5kt3kOpyHHTTKf5Q","BGmkmGDG0kZPM-aoQtNTTw", "dexO_2tohK86JDudXXG3Yw",
             "MOLbHrtk8Ovu7DUNOLcXiA", "Le6KlbilFmSu-5VltFND-Q"
@@ -121,8 +123,30 @@ final class GraphQLOperationIDs {
         // repaired automatically when X changes them
         "ListOwnerships": ["6spVXajXDiSz025ZUwzOfQ"],
         "ListAddMember": ["-Kf1YVC1rNKkPvPFk7YXZw"],
-        "ListRemoveMember": ["_2o1-wSMWGFSi5HUscn1Hw"]
+        "ListRemoveMember": ["_2o1-wSMWGFSi5HUscn1Hw"],
+        // The Videos tab's feed. It lives in an on-demand script too, but one discovery can reach: see onDemandBundles.
+        "ImmersiveMedia": ["i2LFCbu4bShqaSoQ0tMCKw"]
     ]
+
+    // On-demand scripts whose operations discovery should read. X's page names its on-demand chunks by number in an
+    // inline map ("22766:"bundle.ImmersiveMediaViewer"") with a second map from the same number to the file's hash, and
+    // the file is <name>.<hash>a.js; no script on the page spells that address out, so it has to be put together here.
+    private static let onDemandBundles = ["bundle.ImmersiveMediaViewer"]
+
+    private static func onDemandScriptURLs(in text: String) -> [URL] {
+        let range = NSRange(text.startIndex..., in: text)
+        return onDemandBundles.compactMap { name in
+            let escaped = NSRegularExpression.escapedPattern(for: name)
+            guard let idPattern = try? NSRegularExpression(pattern: "(\\d+):\"" + escaped + "\""),
+                  let idMatch = idPattern.firstMatch(in: text, range: range),
+                  let idRange = Range(idMatch.range(at: 1), in: text) else { return nil }
+            let chunkId = String(text[idRange])
+            guard let hashPattern = try? NSRegularExpression(pattern: "[{,]" + chunkId + ":\"([0-9a-f]{8,24})\""),
+                  let hashMatch = hashPattern.firstMatch(in: text, range: range),
+                  let hashRange = Range(hashMatch.range(at: 1), in: text) else { return nil }
+            return URL(string: "https://abs.twimg.com/responsive-web/client-web/\(name).\(text[hashRange])a.js")
+        }
+    }
 
     private let defaultsKey = "Tweetintosh_GraphQLOperationIDs"
     private let lock = NSLock()
@@ -180,6 +204,10 @@ final class GraphQLOperationIDs {
                 visited.insert(url.absoluteString)
                 guard let text = client.fetchText(url, creds: creds) else { continue }
                 let range = NSRange(text.startIndex..., in: text)
+                // First, so the 80-file limit can't leave them out
+                for next in Self.onDemandScriptURLs(in: text) where !visited.contains(next.absoluteString) {
+                    queue.insert(next, at: 0)
+                }
 
                 for (index, pattern) in opPatterns.enumerated() {
                     for match in pattern.matches(in: text, range: range) {

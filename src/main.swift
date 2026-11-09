@@ -123,11 +123,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var tilingMonitor: Any?
     private var settingsTitleObserver: AnyCancellable?
     private var menuLanguageObserver: AnyCancellable?
+    // Shows the Videos menu items only while the Videos tab is turned on in Settings
+    private var videosMenuObserver: AnyCancellable?
     private var sidebarObserver: AnyCancellable?
     var loginController: LoginWindowController?
     private var welcomeController: WelcomeWindowController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ScrollInput.shared.start()
         setupMainMenu()
         menuLanguageObserver = LocalizationManager.shared.$currentLanguage
             .removeDuplicates()
@@ -211,7 +214,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.backgroundColor = ThemeManager.windowBackgroundColor
-        window.isMovableByWindowBackground = true
+        WindowDragging.keepUpdated(window)
         applyMinimumSize(to: window)
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -225,15 +228,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applyMinimumSize(to: window)
         updateLayout(for: window)
         // Opening the sidebar in a narrow window widens the window to fit it, rather than squeezing the page beside it.
-        // The new value comes with the announcement, before NavigationManager has stored it.
-        sidebarObserver = NavigationManager.shared.$sidebarExpanded
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self, weak window] expanded in
-                guard let self = self, let window = window else { return }
-                self.applyMinimumSize(to: window, sidebarExpanded: expanded, animate: true)
-            }
+        var lastSidebarExpanded = NavigationManager.shared.sidebarExpanded
+        sidebarObserver = observeChanges(of: { _ = NavigationManager.shared.sidebarExpanded }) { [weak self, weak window] in
+            let expanded = NavigationManager.shared.sidebarExpanded
+            guard expanded != lastSidebarExpanded, let self = self, let window = window else { return }
+            lastSidebarExpanded = expanded
+            self.applyMinimumSize(to: window, sidebarExpanded: expanded, animate: true)
+        }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self, weak window] _ in
@@ -470,6 +471,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func selectMessages() {
         NavigationManager.shared.selectTab(.messages)
     }
+    @objc func selectVideos() {
+        NavigationManager.shared.selectTab(.videos)
+    }
+    @objc func videosTogglePlayback() {
+        VideosFeed.shared.togglePlayback()
+    }
+    @objc func videosNext() {
+        VideosFeed.shared.move(by: 1)
+    }
+    @objc func videosPrevious() {
+        VideosFeed.shared.move(by: -1)
+    }
+    @objc func videosToggleMute() {
+        VideosFeed.shared.isMuted.toggle()
+    }
     @objc func toggleSearchAction() {
         NavigationManager.shared.toggleSearch()
     }
@@ -664,6 +680,11 @@ final class SettingsWindow: NSWindow {
         msgItem.target = self
         navMenu.addItem(msgItem)
         
+        let videosItem = NSMenuItem(title: "Videos", action: #selector(selectVideos), keyEquivalent: "4")
+        videosItem.keyEquivalentModifierMask = .option
+        videosItem.target = self
+        navMenu.addItem(videosItem)
+        
         navMenu.addItem(NSMenuItem.separator())
         
         let searchItem = NSMenuItem(title: loc.t("tab_search"), action: #selector(toggleSearchAction), keyEquivalent: "s")
@@ -674,7 +695,40 @@ final class SettingsWindow: NSWindow {
         navMenuItem.submenu = navMenu
         mainMenu.addItem(navMenuItem)
         
-        // 5. Window Menu
+        // 6. Controls Menu: the Videos tab's playback. The keys are handled by NavigationManager's key monitor before
+        // the menu sees them; the items are here so the commands can be found, and are enabled only while the Videos tab
+        // has the keyboard, so Space and the arrows keep their usual jobs everywhere else.
+        let controlsMenuItem = NSMenuItem()
+        let controlsMenu = NSMenu(title: "Controls")
+        let playItem = NSMenuItem(title: "Play", action: #selector(videosTogglePlayback), keyEquivalent: " ")
+        playItem.keyEquivalentModifierMask = []
+        playItem.target = self
+        controlsMenu.addItem(playItem)
+        let nextItem = NSMenuItem(title: "Next Video", action: #selector(videosNext),
+                                  keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))
+        nextItem.keyEquivalentModifierMask = []
+        nextItem.target = self
+        controlsMenu.addItem(nextItem)
+        let previousItem = NSMenuItem(title: "Previous Video", action: #selector(videosPrevious),
+                                      keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
+        previousItem.keyEquivalentModifierMask = []
+        previousItem.target = self
+        controlsMenu.addItem(previousItem)
+        controlsMenu.addItem(NSMenuItem.separator())
+        let muteItem = NSMenuItem(title: "Mute", action: #selector(videosToggleMute), keyEquivalent: "")
+        muteItem.target = self
+        controlsMenu.addItem(muteItem)
+        controlsMenuItem.submenu = controlsMenu
+        mainMenu.addItem(controlsMenuItem)
+        // Without the Videos tab these commands have nothing to act on, so they leave the menu bar altogether. Hidden
+        // items' key equivalents stay live, so the actions check the setting too (selectTab, videosOwnKeyboard).
+        videosMenuObserver = ThemeManager.shared.$showVideosTab
+            .sink { [weak videosItem, weak controlsMenuItem] isShown in
+                videosItem?.isHidden = !isShown
+                controlsMenuItem?.isHidden = !isShown
+            }
+        
+        // 7. Window Menu
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: loc.t("menu_window"))
         windowMenu.addItem(withTitle: loc.t("menu_minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
@@ -723,5 +777,26 @@ final class SettingsWindow: NSWindow {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+}
+
+// MARK: - Menu Validation
+extension AppDelegate: NSMenuItemValidation {
+    // The Controls menu works only on the Videos tab, and its titles say what a press would do now
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let nav = NavigationManager.shared
+        let feed = VideosFeed.shared
+        switch menuItem.action {
+        case #selector(videosTogglePlayback):
+            menuItem.title = feed.isPlaying && nav.currentTab == .videos ? "Pause" : "Play"
+            return nav.videosOwnKeyboard
+        case #selector(videosNext), #selector(videosPrevious):
+            return nav.videosOwnKeyboard
+        case #selector(videosToggleMute):
+            menuItem.title = feed.isMuted ? "Unmute" : "Mute"
+            return nav.currentTab == .videos
+        default:
+            return true
+        }
     }
 }

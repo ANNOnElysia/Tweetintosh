@@ -33,6 +33,33 @@ struct VisualEffectBackground: NSViewRepresentable {
     }
 }
 
+// MARK: - Top Bar Targets
+
+// The top bar's controls are small and sit near the top edge, so a finger reaches for them from below and often lands
+// beside them. Each takes taps across the full height of the bar plus this much space above and below it; the space is
+// given back outside, so nothing moves.
+enum TopBarTarget {
+    static let above: CGFloat = 10
+    static let below: CGFloat = 16
+}
+
+private extension View {
+    // Inside a top bar button's label
+    func topBarTarget() -> some View {
+        padding(.top, TopBarTarget.above + 4)
+            .padding(.bottom, TopBarTarget.below + 4)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+    }
+
+    // Outside the same button
+    func topBarTargetSpace() -> some View {
+        padding(.top, -(TopBarTarget.above + 4))
+            .padding(.bottom, -(TopBarTarget.below + 4))
+            .padding(.horizontal, -4)
+    }
+}
+
 // MARK: - Adaptive Glass Modifier (Liquid Glass Mode vs Frosted Glass Off Mode)
 // Every Liquid Glass surface goes through here. It is Apple's glass as the HIG describes it, with no clarity control of
 // the app's own: how clear or tinted the glass looks, and Reduce Transparency, are the user's choices in System Settings,
@@ -59,6 +86,9 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     var shape: S
     // Clear variant, so content behind stays visible (top tab switcher)
     var isClear: Bool = false
+    // Interactive glass answers a press itself, which suits glass that is a control. A bar or panel holding other
+    // controls passes false: on a touch screen its own response to a finger took the touch from the tab or button on it.
+    var isInteractive: Bool = true
     @ObservedObject private var theme = ThemeManager.shared
 
     func body(content: Content) -> some View {
@@ -66,9 +96,10 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
             if #available(macOS 26.0, *) {
                 // Mode A: Native Liquid Glass (SwiftUI macOS 26+ native API)
                 let base: Glass = isClear ? .clear : .regular
-                let glassStyle: Glass = theme.useLiquidGlassTint
-                    ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16)).interactive()
-                    : base.interactive()
+                let tinted: Glass = theme.useLiquidGlassTint
+                    ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16))
+                    : base
+                let glassStyle: Glass = isInteractive ? tinted.interactive() : tinted
 
                 // Nothing painted behind or around it: a fill sits between the glass and what it refracts and turns it
                 // milky, and the system glass already draws its own edge and shadow
@@ -126,7 +157,10 @@ struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 
 // MARK: - AppRootView (Adaptive Shell)
 struct AppRootView: View {
-    @ObservedObject private var nav = NavigationManager.shared
+    @Bindable private var nav = NavigationManager.shared
+    @ObservedObject private var paneLayout = DetailPane.shared.layout
+    // The window's width, for placing the top bar over the timeline column
+    @State private var windowWidth: CGFloat = 0
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
 
@@ -164,7 +198,7 @@ struct AppRootView: View {
             // Visible when sidebar is collapsed and not viewing tweet detail.
             // Leftmost button clicks to wake sidebar and capsule disappears.
             // Sidebar close button clicks to hide sidebar and capsule "卷土重来".
-            if !nav.sidebarExpanded && !nav.hasOverlay {
+            if !nav.sidebarExpanded && !nav.hasOverlay && !nav.isVideosChromeHidden {
                 LiquidGlassCapsule(
                     selection: $nav.currentTab,
                     onToggleSidebar: {
@@ -174,6 +208,10 @@ struct AppRootView: View {
                     }
                 )
                 .padding(.top, 14)
+                // With the post pane beside Home, the bar belongs to the timeline it switches, so it centres over that
+                // column rather than the window
+                .frame(width: capsuleColumnWidth)
+                .frame(maxWidth: .infinity, alignment: capsuleColumnWidth == nil ? .center : .leading)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.92).combined(with: .opacity).combined(with: .offset(y: -8)),
@@ -260,6 +298,7 @@ struct AppRootView: View {
                 .zIndex(9999)
         }
         .background(AppWindowOrigin.Anchor())
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .coordinateSpace(name: "AppWindow")
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: nav.sidebarExpanded)
         .sheet(isPresented: $nav.isShowingCompose) {
@@ -268,6 +307,12 @@ struct AppRootView: View {
         .sheet(item: $nav.replyTargetTweet) { tweet in
             ReplyComposerSheet(tweet: tweet)
         }
+    }
+
+    // The sidebar is closed whenever the bar shows, so Home's columns span the whole window
+    private var capsuleColumnWidth: CGFloat? {
+        guard nav.currentTab == .home, paneLayout.isAvailable, windowWidth > 0 else { return nil }
+        return HomeColumns<EmptyView>.timelineWidth(in: windowWidth, paneAvailable: true)
     }
 
     @ViewBuilder private var destination: some View {
@@ -286,6 +331,9 @@ struct AppRootView: View {
             NavigationStack {
                 MessagesView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)
             }
+        case .videos:
+            VideosView()
+                .environment(\.peekScope, .videos)
         }
     }
 }
@@ -294,7 +342,7 @@ struct AppRootView: View {
 private struct LiquidGlassCapsule: View {
     @Binding var selection: AppTab
     var onToggleSidebar: () -> Void
-    @ObservedObject var nav = NavigationManager.shared
+    @Bindable var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @Namespace private var capsuleTabNamespace
@@ -328,9 +376,10 @@ private struct LiquidGlassCapsule: View {
                     Capsule()
                         .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                 )
-                .contentShape(Capsule())
+                .topBarTarget()
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
+            .topBarTargetSpace()
             .padding(.leading, 6)
             .help("Toggle Sidebar (⌥`)")
             
@@ -345,7 +394,7 @@ private struct LiquidGlassCapsule: View {
                 if !nav.isSearchActive {
                     // Center Tabs: Home, Notifications, Messages (Dynamic Width, No Truncation)
                     HStack(spacing: 3) {
-                        ForEach(AppTab.allCases) { tab in
+                        ForEach(AppTab.available) { tab in
                             let isSelected = selection == tab && !nav.isSearchActive
                             Group {
                                 HStack(spacing: 5) {
@@ -380,17 +429,22 @@ private struct LiquidGlassCapsule: View {
                                         activeTabBackground
                                     }
                                 }
-                                .contentShape(Capsule())
+                                .contentShape(Rectangle())
                             }
                             .pressDragItem(tab)
                         }
                     }
+                    // The whole height of the bar and the space around it picks the nearest tab
+                    .padding(.top, TopBarTarget.above + 4)
+                    .padding(.bottom, TopBarTarget.below + 4)
                     .pressDragSelection { (tab: AppTab) in
                         withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                             selection = tab
                             nav.isSearchActive = false
                         }
                     }
+                    .padding(.top, -(TopBarTarget.above + 4))
+                    .padding(.bottom, -(TopBarTarget.below + 4))
                     .transition(.opacity)
                 } else {
                     // Inline Liquid Glass Search Input Field
@@ -433,7 +487,7 @@ private struct LiquidGlassCapsule: View {
                                     .font(.system(size: 11))
                                     .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(.target)
                             .padding(.trailing, 8)
                         } else {
                             Text("esc")
@@ -503,14 +557,21 @@ private struct LiquidGlassCapsule: View {
                         Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     }
                 }
-                .contentShape(Capsule())
+                .topBarTarget()
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
+            .topBarTargetSpace()
             .padding(.trailing, 6)
             .help(nav.isSearchActive ? "Close Search (Esc / ⌥S)" : "Search (⌥S)")
         }
         .padding(.vertical, 4)
-        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true))
+        // The glass is a backdrop rather than a container: content inside glass only takes taps within the glass's
+        // own outline, and the bar's controls reach well beyond it for a finger
+        .background {
+            Capsule()
+                .fill(.clear)
+                .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true, isInteractive: false))
+        }
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
         .fixedSize()
     }
@@ -607,6 +668,9 @@ private struct LiquidGlassCapsule: View {
         case .messages:
             let t = loc.t("tab_messages")
             return t.isEmpty ? "Messages" : t
+        case .videos:
+            let t = loc.t("tab_videos")
+            return t.isEmpty ? "Videos" : t
         }
     }
     
@@ -615,6 +679,7 @@ private struct LiquidGlassCapsule: View {
         case .home: return "⌥1"
         case .notifications: return "⌥2"
         case .messages: return "⌥3"
+        case .videos: return "⌥4"
         }
     }
 }
@@ -624,7 +689,7 @@ private struct LiquidGlassSidebar: View {
     @Binding var selection: AppTab
     @Binding var isExpanded: Bool
     var onOpenSettings: () -> Void
-    @ObservedObject var nav = NavigationManager.shared
+    let nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject private var accounts = AccountManager.shared
@@ -670,9 +735,12 @@ private struct LiquidGlassSidebar: View {
                         Capsule()
                             .fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     )
-                    .contentShape(Capsule())
+                    // Well beyond its small capsule, into the empty corner of the sidebar around it
+                    .padding(12)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
+                .padding(-12)
                 .help("Toggle Sidebar (⌥`)")
             }
             .padding(.horizontal, 14)
@@ -683,7 +751,7 @@ private struct LiquidGlassSidebar: View {
                 .padding(.horizontal, 8)
             
             // Navigation Tabs
-            ForEach(AppTab.allCases) { tab in
+            ForEach(AppTab.available) { tab in
                 let isSelected = selection == tab
                 Button {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
@@ -725,7 +793,7 @@ private struct LiquidGlassSidebar: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .padding(.horizontal, 8)
             }
             
@@ -768,7 +836,7 @@ private struct LiquidGlassSidebar: View {
                         .fill(ThemeManager.accent)
                 )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .padding(.horizontal, 8)
             .padding(.bottom, 2)
             
@@ -788,7 +856,7 @@ private struct LiquidGlassSidebar: View {
                     .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .help(loc.t(accounts.active == nil ? "settings" : "view_profile"))
 
                 Button(action: onOpenSettings) {
@@ -813,7 +881,7 @@ private struct LiquidGlassSidebar: View {
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .help(loc.t("settings"))
                 .padding(.trailing, 4)
             }
@@ -824,7 +892,8 @@ private struct LiquidGlassSidebar: View {
         .modifier(
             AdaptiveGlassModifier(
                 isLiquid: theme.useLiquidGlass,
-                shape: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
+                isInteractive: false
             )
         )
         .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
@@ -850,6 +919,9 @@ private struct LiquidGlassSidebar: View {
         case .messages:
             let t = loc.t("tab_messages")
             return t.isEmpty ? "Messages" : t
+        case .videos:
+            let t = loc.t("tab_videos")
+            return t.isEmpty ? "Videos" : t
         }
     }
     
@@ -858,6 +930,7 @@ private struct LiquidGlassSidebar: View {
         case .home: return "⌥1"
         case .notifications: return "⌥2"
         case .messages: return "⌥3"
+        case .videos: return "⌥4"
         }
     }
     
@@ -897,7 +970,7 @@ private struct LiquidGlassSidebar: View {
 
 // A row until it is used, then the field itself, in place. Suggestions float beside the sidebar.
 private struct SidebarSearchRow: View {
-    @ObservedObject private var nav = NavigationManager.shared
+    @Bindable private var nav = NavigationManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
     @FocusState private var isFocused: Bool
@@ -927,7 +1000,7 @@ private struct SidebarSearchRow: View {
                     .padding(.vertical, 8)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
         }
         .onChange(of: nav.isSearchActive) { _, active in
@@ -968,7 +1041,7 @@ private struct SidebarSearchRow: View {
                         .font(.system(size: 11))
                         .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
         }
         .padding(.horizontal, 11)
@@ -988,9 +1061,9 @@ private enum SidebarFeedChoice: Hashable {
 // The middle of the sidebar follows the page: feeds for Home, filters for Notifications, nothing for Messages
 private struct SidebarContextSection: View {
     @Binding var selection: AppTab
-    @ObservedObject private var timelineVM = TimelineViewModel.shared
+    private let timelineVM = TimelineViewModel.shared
     @ObservedObject private var notifications = NotificationsViewModel.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
     
@@ -1009,7 +1082,7 @@ private struct SidebarContextSection: View {
             case .notifications:
                 section(title: loc.t("sidebar_filter")) { filterRows }
                     .transition(.opacity)
-            case .messages:
+            case .messages, .videos:
                 EmptyView()
             }
         }
@@ -1072,7 +1145,7 @@ private struct SidebarContextSection: View {
                     iconTile("arrow.up.forward")
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .contextMenu {
                 Button(loc.t("refresh_lists")) { timelineVM.fetchUserLists() }
             }

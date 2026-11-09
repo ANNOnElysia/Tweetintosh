@@ -7,59 +7,60 @@ import SwiftUI
 import os
 
 private let pollLogger = Logger(subsystem: "com.anno.tweetintosh", category: "preload")
-import Combine
-
-final class TimelineViewModel: ObservableObject {
+// Observed per property: it holds all four feeds and their pending posts, and a background poll of one feed shouldn't
+// redraw the timeline of another.
+@Observable
+final class TimelineViewModel {
     static let shared = TimelineViewModel()
     
-    @Published var selectedFeed: HomeFeedType = .forYou {
+    var selectedFeed: HomeFeedType = .forYou {
         didSet {
             updateActiveTweets()
         }
     }
     
-    @Published var tweets: [Tweet] = []
+    var tweets: [Tweet] = []
     
     // Official Twitter Lists for authenticated account
-    @Published var userLists: [TwitterList] = []
-    @Published var selectedListId: String = ""
-    @Published var isLoadingLists: Bool = false
+    var userLists: [TwitterList] = []
+    var selectedListId: String = ""
+    var isLoadingLists: Bool = false
     
     var selectedList: TwitterList? {
         userLists.first { $0.id == selectedListId } ?? userLists.first
     }
     
     // Independent storage for each feed
-    @Published var forYouTweets: [Tweet] = []
-    @Published var followingTweets: [Tweet] = []
-    @Published var bookmarkTweets: [Tweet] = []
-    @Published var listTweets: [String: [Tweet]] = [:]
+    var forYouTweets: [Tweet] = []
+    var followingTweets: [Tweet] = []
+    var bookmarkTweets: [Tweet] = []
+    var listTweets: [String: [Tweet]] = [:]
     
     // Pending new tweets buffer (holds background/auto-fetched tweets so user reading is never disrupted or pushed down)
-    @Published var forYouPendingTweets: [Tweet] = []
-    @Published var followingPendingTweets: [Tweet] = []
-    @Published var listPendingTweets: [String: [Tweet]] = [:]
+    var forYouPendingTweets: [Tweet] = []
+    var followingPendingTweets: [Tweet] = []
+    var listPendingTweets: [String: [Tweet]] = [:]
     
-    @Published var isLoadingInitial = true
-    @Published var isRefreshing = false
-    @Published var isLoadingMore = false
-    @Published var isAuthenticated = false
-    @Published var errorMessage: String?
+    var isLoadingInitial = true
+    var isRefreshing = false
+    var isLoadingMore = false
+    var isAuthenticated = false
+    var errorMessage: String?
     
-    private var forYouTopCursor: String?
-    private var forYouBottomCursor: String?
+    @ObservationIgnored private var forYouTopCursor: String?
+    @ObservationIgnored private var forYouBottomCursor: String?
     
-    private var followingTopCursor: String?
-    private var followingBottomCursor: String?
+    @ObservationIgnored private var followingTopCursor: String?
+    @ObservationIgnored private var followingBottomCursor: String?
 
-    private var bookmarksTopCursor: String?
-    private var bookmarksBottomCursor: String?
+    @ObservationIgnored private var bookmarksTopCursor: String?
+    @ObservationIgnored private var bookmarksBottomCursor: String?
     
-    private var listTopCursors: [String: String] = [:]
-    private var listBottomCursors: [String: String] = [:]
+    @ObservationIgnored private var listTopCursors: [String: String] = [:]
+    @ObservationIgnored private var listBottomCursors: [String: String] = [:]
     
     // Track seen tweet IDs for the algorithmic "For You" feed
-    private var seenTweetIds: [String] = []
+    @ObservationIgnored private var seenTweetIds: [String] = []
     
     var topCursor: String? {
         get {
@@ -133,8 +134,8 @@ final class TimelineViewModel: ObservableObject {
     // chronological feeds (Following, lists) and every 2 minutes on For You. New posts are queued behind the
     // floating "N new posts" pill, never inserted under the reader. Polling pauses while the app is in the
     // background or off the Home tab, and catches up as soon as it comes back.
-    private var pollTimer: Timer?
-    private var lastFetchAt = Date()
+    @ObservationIgnored private var pollTimer: Timer?
+    @ObservationIgnored private var lastFetchAt = Date()
     
     private func pollInterval(for feed: HomeFeedType) -> TimeInterval {
         feed == .forYou ? 120 : 30
@@ -646,6 +647,14 @@ final class TimelineViewModel: ObservableObject {
     
     // MARK: - Tweet Mutation & Cross-Feed Synchronization
     
+    /// Shows a long post's whole text, or its shortened text again, in every copy of it on screen. Lists animate the row
+    /// to its new height; the Home table animates it itself.
+    func setTextExpanded(_ expanded: Bool, for tweet: Tweet) {
+        withAnimation(.easeInOut(duration: 0.28)) {
+            mutateTweet(id: tweet.canonicalId) { $0.setTextExpanded(expanded) }
+        }
+    }
+    
     // `id` is a post's canonicalId, so a repost row and the post itself change together
     func mutateTweet(id: String, transform: (inout Tweet) -> Void) {
         // 1. Mutate in For You
@@ -675,6 +684,21 @@ final class TimelineViewModel: ObservableObject {
         TweetMutationHub.shared.apply(id: id, transform: transform)
     }
     
+    /// Takes a deleted post, and reposts of it, off every feed and every open page
+    func removePost(id: String) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            let matches: (Tweet) -> Bool = { $0.isCopy(ofPost: id) }
+            forYouTweets.removeAll(where: matches)
+            followingTweets.removeAll(where: matches)
+            bookmarkTweets.removeAll(where: matches)
+            for (listId, list) in listTweets {
+                listTweets[listId] = list.filter { !matches($0) }
+            }
+            tweets.removeAll(where: matches)
+        }
+        TweetMutationHub.shared.remove(id: id)
+    }
+    
     /// Removes all tweets from a blocked or muted author across all timeline feeds
     func removeTweets(byAuthorId authorId: String, screenName: String? = nil) {
         withAnimation(.easeInOut(duration: 0.25)) {
@@ -695,7 +719,7 @@ final class TimelineViewModel: ObservableObject {
     // MARK: - Bookmarks Feed
 
     // Where posts taken out of Bookmarks were, so a refused un-bookmark can put them back in their place
-    private var removedBookmarks: [String: (tweet: Tweet, index: Int)] = [:]
+    @ObservationIgnored private var removedBookmarks: [String: (tweet: Tweet, index: Int)] = [:]
 
     // Called as soon as a post is bookmarked or un-bookmarked, from any screen, and again with the opposite value if X
     // refuses. Un-bookmarking takes the post out of Bookmarks at once, as X's own page does; bookmarking puts it at the
@@ -797,7 +821,7 @@ final class TimelineViewModel: ObservableObject {
         }
     }
     
-    func postReply(to tweet: Tweet, text: String, mediaIds: [String] = [], completion: @escaping (Result<String, APIError>) -> Void) {
+    func postReply(to tweet: Tweet, text: String, mediaIds: [String] = [], cardUri: String? = nil, completion: @escaping (Result<String, APIError>) -> Void) {
         let tweetId = tweet.id
         let postId = tweet.canonicalId
         
@@ -805,7 +829,7 @@ final class TimelineViewModel: ObservableObject {
             t.replyCount += 1
         }
         
-        APIClient.shared.reply(to: tweetId, text: text, mediaIds: mediaIds) { [weak self] result in
+        APIClient.shared.reply(to: tweetId, text: text, mediaIds: mediaIds, cardUri: cardUri) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
@@ -827,6 +851,7 @@ final class TimelineViewModel: ObservableObject {
         text: String,
         quoting tweet: Tweet? = nil,
         mediaIds: [String] = [],
+        cardUri: String? = nil,
         completion: @escaping (Result<String, APIError>) -> Void
     ) {
         let attachmentUrl = tweet.map { "https://x.com/\($0.author.screenName)/status/\($0.id)" }
@@ -837,7 +862,7 @@ final class TimelineViewModel: ObservableObject {
             }
         }
         
-        APIClient.shared.createTweet(text: text, attachmentUrl: attachmentUrl, mediaIds: mediaIds) { [weak self] result in
+        APIClient.shared.createTweet(text: text, attachmentUrl: attachmentUrl, mediaIds: mediaIds, cardUri: cardUri) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {

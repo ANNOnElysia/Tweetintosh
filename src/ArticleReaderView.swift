@@ -68,7 +68,7 @@ struct ArticleCardView: View {
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ThemeManager.border, lineWidth: 0.7))
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
     }
 }
 
@@ -228,7 +228,7 @@ struct ArticleReaderView: View {
                     .frame(width: 36, height: 36)
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help("\(loc.t("nav_back")) (Esc / ←)")
 
             HStack(spacing: 6) {
@@ -427,7 +427,7 @@ struct ArticleReaderView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ThemeManager.border, lineWidth: 0.7))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .padding(.vertical, 8)
         }
     }

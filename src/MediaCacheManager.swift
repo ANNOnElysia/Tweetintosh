@@ -222,6 +222,23 @@ final class MediaCacheManager: ObservableObject {
         return nil
     }
     
+    // MARK: - Video Cache Writing
+    // For callers that schedule their own downloads (the Videos tab fetches one video at a time, in order). Call from
+    // the download's completion handler: the temporary file is deleted as soon as that handler returns.
+    @discardableResult
+    func storeDownloadedVideo(at tempURL: URL, for urlStr: String) -> Bool {
+        let path = videoFilePath(for: urlStr)
+        try? FileManager.default.removeItem(at: path)
+        return (try? FileManager.default.moveItem(at: tempURL, to: path)) != nil
+    }
+
+    func removeCachedVideo(for urlStr: String) {
+        let path = videoFilePath(for: urlStr)
+        ioQueue.async {
+            try? FileManager.default.removeItem(at: path)
+        }
+    }
+
     // MARK: - Prefetching Engine (Background Concurrency Controlled)
     func prefetchImages(urls: [String]) {
         for urlStr in urls {

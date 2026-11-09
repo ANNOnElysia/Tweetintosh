@@ -294,23 +294,73 @@ struct SVGRefreshIndicatorView: NSViewRepresentable {
 struct LoadingIndicator: View {
     // False keeps the space but draws and animates nothing, for list footers that are only sometimes loading
     var active: Bool = true
+    // Inline, beside a word or inside a button: a ring this tall. Without it, the ring sits centred in a full-width
+    // 40-point band, for list footers and pages still loading.
     var compactHeight: CGFloat? = nil
     var tint: Color? = nil
 
-    @ObservedObject private var theme = ThemeManager.shared
+    var body: some View {
+        if let height = compactHeight {
+            SpinnerRing(active: active, tint: tint)
+                .frame(width: height, height: height)
+        } else {
+            SpinnerRing(active: active, tint: tint)
+                .frame(width: 22, height: 22)
+                .frame(height: 40).frame(maxWidth: .infinity)
+        }
+    }
+}
+
+// The app's busy indicator everywhere but pull to refresh (which keeps its drawn "loading" word): one arc with rounded
+// ends that spins while it stretches and shrinks, in the accent colour. Driven by the clock rather than by state, so a
+// ring in a reused timeline cell picks up mid-spin instead of restarting or freezing.
+struct SpinnerRing: View {
+    var active: Bool = true
+    var tint: Color? = nil
+
+    // One stretch-and-shrink of the arc
+    private static let cycle: Double = 1.4
+    // The arc's shortest and longest, as fractions of the circle
+    private static let shortest: Double = 0.06
+    private static let longest: Double = 0.72
+    // Turns per second the whole ring spins on top of that
+    private static let spin: Double = 0.55
 
     var body: some View {
-        let line = SVGRefreshIndicatorView(
-            pullProgress: active ? 1 : 0,
-            isRefreshing: active,
-            colorScheme: theme.themeColor,
-            tint: tint.map { NSColor($0) }
-        )
-        if let height = compactHeight {
-            // Wide enough for the word (its width is about 1.41 times this height) with nothing left for the line
-            line.frame(width: height * 1.5, height: height)
-        } else {
-            line.frame(height: 40).frame(maxWidth: .infinity)
+        TimelineView(.animation(paused: !active)) { context in
+            GeometryReader { geometry in
+                let side = min(geometry.size.width, geometry.size.height)
+                let line = max(2, side / 8)
+                let arc = Self.arc(at: context.date.timeIntervalSinceReferenceDate)
+                Circle()
+                    .trim(from: arc.start, to: arc.end)
+                    .stroke(tint ?? ThemeManager.accent, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                    .rotationEffect(.degrees(arc.rotation - 90))
+                    .frame(width: side - line, height: side - line)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
+        .opacity(active ? 1 : 0)
+        .accessibilityElement()
+        .accessibilityLabel(LocalizationManager.shared.t("loading"))
+        .accessibilityHidden(!active)
+    }
+
+    // The head runs ahead in the first half of each cycle and the tail catches up in the second, while the ring turns;
+    // each cycle starts where the last one's tail stopped, so the motion never jumps.
+    private static func arc(at time: Double) -> (start: Double, end: Double, rotation: Double) {
+        let cycles = time / cycle
+        let index = cycles.rounded(.down)
+        let phase = cycles - index
+        let travel = longest - shortest
+        let head = shortest + travel * ease(min(1, phase * 2))
+        let tail = travel * ease(max(0, phase * 2 - 1))
+        let carried = (index * travel).truncatingRemainder(dividingBy: 1) * 360
+        let rotation = (carried + time * spin * 360).truncatingRemainder(dividingBy: 360)
+        return (tail, head, rotation)
+    }
+
+    private static func ease(_ x: Double) -> Double {
+        x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
     }
 }

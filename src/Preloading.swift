@@ -189,6 +189,19 @@ final class TweetDetailPrefetcher: TweetMutationTarget {
         }
     }
 
+    // A deleted post's warmed page goes, and so does the post wherever it sits in another
+    func removePost(id: String) {
+        for (key, var entry) in entries {
+            if entry.detail.focalTweet?.isCopy(ofPost: id) == true {
+                entries.removeValue(forKey: key)
+                continue
+            }
+            entry.detail.ancestors.removeAll { $0.isCopy(ofPost: id) }
+            entry.detail.replies.removeAll { $0.isCopy(ofPost: id) }
+            entries[key] = entry
+        }
+    }
+
     typealias Detail = (focalTweet: Tweet?, ancestors: [Tweet], replies: [Tweet], bottomCursor: String?)
     struct Entry {
         var detail: Detail

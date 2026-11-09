@@ -10,7 +10,13 @@ enum AppTab: Int, CaseIterable, Identifiable {
     case home = 0
     case notifications = 1
     case messages = 2
+    case videos = 3
     
+    // The tabs on offer: Videos only once it is turned on in Settings
+    static var available: [AppTab] {
+        allCases.filter { $0 != .videos || ThemeManager.shared.showVideosTab }
+    }
+
     var id: Int { rawValue }
     
     var title: String {
@@ -18,6 +24,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
         case .home: return "Home"
         case .notifications: return "Notifications"
         case .messages: return "Messages"
+        case .videos: return "Videos"
         }
     }
     
@@ -26,6 +33,7 @@ enum AppTab: Int, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .notifications: return "bell.fill"
         case .messages: return "bubble.left.and.bubble.right.fill"
+        case .videos: return "play.rectangle.on.rectangle.fill"
         }
     }
 }
@@ -46,22 +54,76 @@ struct OverlayEntry: Identifiable {
     let page: OverlayPage
 }
 
-final class NavigationManager: ObservableObject {
+// Observed per property, so a view only refreshes for what it reads: the search field changes on every keystroke and the
+// shortcut badges on holding Command, and neither should redraw every page that happens to read the current tab.
+@Observable
+final class NavigationManager {
     static let shared = NavigationManager()
     
-    @Published var currentTab: AppTab = .home
-    @Published var sidebarExpanded: Bool = false {
+    var currentTab: AppTab = .home {
+        didSet {
+            guard currentTab != oldValue else { return }
+            if currentTab == .videos { enterVideos() } else if oldValue == .videos { leaveVideos() }
+        }
+    }
+
+    // MARK: Videos
+
+    // The Videos tab fills the window: the sidebar and the top bar step aside while it is in front, and come back
+    // with Esc or the sidebar button, as a video app's controls do. Leaving the tab puts the sidebar back as it was.
+    private(set) var isVideosChromeHidden = false
+    @ObservationIgnored private var sidebarWasExpandedBeforeVideos = false
+
+    private func enterVideos() {
+        sidebarWasExpandedBeforeVideos = sidebarExpanded
+        sidebarExpanded = false
+        isVideosChromeHidden = true
+        VideosFeed.shared.prepare()
+    }
+
+    private func leaveVideos() {
+        isVideosChromeHidden = false
+        if sidebarWasExpandedBeforeVideos { sidebarExpanded = true }
+    }
+
+    func revealVideosChrome() {
+        guard isVideosChromeHidden else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) { isVideosChromeHidden = false }
+    }
+
+    // Moving on to the next video is a return to watching, so the controls step aside again
+    func hideVideosChrome() {
+        guard currentTab == .videos, !isVideosChromeHidden, !sidebarExpanded, !isSearchActive else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) { isVideosChromeHidden = true }
+    }
+
+    // Opens the Videos tab on a feed that starts with this post
+    func openInVideos(_ post: Tweet) {
+        guard post.feedVideo != nil, ThemeManager.shared.showVideosTab else { return }
+        // Already on the tab, there is no entry to keep it through
+        VideosFeed.shared.start(from: post, keepingOnEntry: currentTab != .videos)
+        overlayStack = []
+        selectTab(.videos)
+    }
+
+    // Whether the keyboard's ↑ ↓ and Space belong to the Videos tab right now
+    var videosOwnKeyboard: Bool {
+        currentTab == .videos && ThemeManager.shared.showVideosTab && !hasOverlay && !isShowingCompose && replyTargetTweet == nil && !isReplyComposerOpen
+            && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented
+            && NSApp.mainWindow?.attachedSheet == nil && !isTextInputActive()
+    }
+    var sidebarExpanded: Bool = false {
         didSet {
             if !isContactListFolded { isContactListPeeking = false }
             // The sidebar and the top bar each have their own search field, and only one was focused
             if sidebarExpanded != oldValue { isSearchActive = false }
         }
     }
-    @Published var isSearchActive: Bool = false
-    @Published var searchQuery: String = ""
+    var isSearchActive: Bool = false
+    var searchQuery: String = ""
     // Full-pane pages pushed over the tabs (tweet detail, profiles), newest last. Each entry keeps its own
     // identity so a page's state survives while others are pushed on top of it.
-    @Published private(set) var overlayStack: [OverlayEntry] = []
+    private(set) var overlayStack: [OverlayEntry] = []
 
     var selectedTweetDetail: Tweet? {
         if case .tweet(let tweet) = overlayStack.last?.page { return tweet }
@@ -69,8 +131,8 @@ final class NavigationManager: ObservableObject {
     }
 
     var hasOverlay: Bool { !overlayStack.isEmpty }
-    @Published var isShowingCompose: Bool = false
-    @Published var composeQuotedTweet: Tweet? = nil
+    var isShowingCompose: Bool = false
+    var composeQuotedTweet: Tweet? = nil
     
     // Back to a clean Home page, as after launching: used when the active account changes
     func resetForAccountChange() {
@@ -93,9 +155,9 @@ final class NavigationManager: ObservableObject {
     }
     
     // Single app-level reply sheet, so timeline rows don't each carry their own .sheet
-    @Published var replyTargetTweet: Tweet? = nil
+    var replyTargetTweet: Tweet? = nil
     // Set by the sheet itself, because a post page opens its own reply sheet without going through replyTargetTweet
-    var isReplyComposerOpen = false
+    @ObservationIgnored var isReplyComposerOpen = false
 
     func openReply(to tweet: Tweet) {
         guard EngagementGuard.allows(tweet) else { return }
@@ -177,9 +239,9 @@ final class NavigationManager: ObservableObject {
     // MARK: Layout by window width
     
     // The contact list on the Messages page gives way in a narrow window, and can be slid over the chat for a moment
-    @Published private var isTooNarrowForContactList = false
-    @Published var isContactListPeeking = false
-    @Published private var isWideWindow: Bool?
+    private var isTooNarrowForContactList = false
+    var isContactListPeeking = false
+    private var isWideWindow: Bool?
     
     // The sidebar and the contact list only sit side by side past half the screen, so opening the sidebar by hand in a
     // narrower window folds the list for as long as it is open
@@ -230,14 +292,14 @@ final class NavigationManager: ObservableObject {
     }
     
     // Shortcut badges visibility (revealed when holding Command for > 1.5s without any keystroke)
-    @Published var showShortcutBadges: Bool = false
-    private var cmdHoldTimer: Timer?
+    var showShortcutBadges: Bool = false
+    @ObservationIgnored private var cmdHoldTimer: Timer?
     // When Return was last pressed with the keyboard free, for the double-press that opens the composer
-    private var lastReturnPress: CFTimeInterval = 0
+    @ObservationIgnored private var lastReturnPress: CFTimeInterval = 0
     private static let doubleReturnInterval: CFTimeInterval = 0.4
-    private var isCmdDown: Bool = false
+    @ObservationIgnored private var isCmdDown: Bool = false
     
-    private var eventMonitor: Any?
+    @ObservationIgnored private var eventMonitor: Any?
     
     private init() {
         setupKeyboardMonitoring()
@@ -251,6 +313,8 @@ final class NavigationManager: ObservableObject {
     }
     
     func selectTab(_ tab: AppTab) {
+        // ⌥4 and the menu do nothing while the Videos tab is turned off
+        guard AppTab.available.contains(tab) else { return }
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
                 self.currentTab = tab
@@ -275,14 +339,14 @@ final class NavigationManager: ObservableObject {
     }
     
     func nextTab() {
-        let all = AppTab.allCases
+        let all = AppTab.available
         if let idx = all.firstIndex(of: currentTab), idx < all.count - 1 {
             selectTab(all[idx + 1])
         }
     }
     
     func prevTab() {
-        let all = AppTab.allCases
+        let all = AppTab.available
         if let idx = all.firstIndex(of: currentTab), idx > 0 {
             selectTab(all[idx - 1])
         }
@@ -360,6 +424,12 @@ final class NavigationManager: ObservableObject {
                     // still being composed
                     if let panel = event.window as? NSSavePanel, panel.isVisible { return event }
                     if (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true { return event }
+                    // Settings is a window of its own, so Esc there closes it and nothing else: without this check the
+                    // reply box, search or a page open in the main window behind it would take the key instead.
+                    if let settings = event.window as? AppDelegate.SettingsWindow {
+                        settings.cancelOperation(nil)
+                        return nil
+                    }
                     // Handled here because a text field takes Esc before the Cancel button's shortcut can: an empty one
                     // opens the system's word completion list. It also comes first, or Esc would close a post page
                     // underneath the reply box.
@@ -387,8 +457,27 @@ final class NavigationManager: ObservableObject {
                         }
                         return nil
                     }
+                    if self.currentTab == .videos && self.isVideosChromeHidden {
+                        self.revealVideosChrome()
+                        return nil
+                    }
                     if self.currentTab == .home && DetailPane.shared.isOpen {
                         DetailPane.shared.goBack()
+                        return nil
+                    }
+                    // Nothing left to close: Esc steps back to Home, so pressing it repeatedly always ends there. Only
+                    // in the main window, and not while something that keeps its own Esc is up over it.
+                    if self.currentTab != .home && event.window === NSApp.mainWindow
+                        && event.window?.attachedSheet == nil
+                        && !LightboxManager.shared.isPresented && !VideoLightboxManager.shared.isPresented
+                        && PeekCoordinator.shared.target == nil && !DMViewModel.shared.showPasscodeSheet {
+                        // A field being typed in lets go of the cursor first, so a stray Esc doesn't throw away a
+                        // half-written message
+                        if self.isTextInputActive() {
+                            event.window?.makeFirstResponder(nil)
+                            return nil
+                        }
+                        self.selectTab(.home)
                         return nil
                     }
                 }
@@ -403,6 +492,20 @@ final class NavigationManager: ObservableObject {
                     }
                 }
                 
+                // Up / Down Arrow and Space without modifiers on the Videos tab -> previous / next video, play / pause.
+                // A held arrow moves one video, not a run of them.
+                if !hasCmd && !hasOption && !hasCtrl && (keyCode == 126 || keyCode == 125 || keyCode == 49)
+                    && event.window === NSApp.mainWindow && self.videosOwnKeyboard {
+                    if !event.isARepeat {
+                        if keyCode == 49 {
+                            VideosFeed.shared.togglePlayback()
+                        } else {
+                            VideosFeed.shared.move(by: keyCode == 125 ? 1 : -1)
+                        }
+                    }
+                    return nil
+                }
+
                 // Up / Down Arrow (keyCodes 126 / 125) without modifiers -> Scroll Home Timeline
                 if !hasCmd && !hasOption && !hasCtrl && (keyCode == 126 || keyCode == 125) {
                     if self.currentTab == .home && !self.hasOverlay && !self.isShowingCompose
@@ -495,7 +598,7 @@ final class NavigationManager: ObservableObject {
                     return nil
                 }
                 
-                // Option + 1, 2, 3 (or Cmd + 1, 2, 3) -> Primary Tab Switching
+                // Option + 1, 2, 3, 4 (or Cmd + 1, 2, 3, 4) -> Primary Tab Switching
                 if (hasOption || hasCmd) && !hasCtrl {
                     switch keyCode {
                     case 18: // Key 1 -> Home
@@ -506,6 +609,9 @@ final class NavigationManager: ObservableObject {
                         return nil
                     case 20: // Key 3 -> Messages
                         self.selectTab(.messages)
+                        return nil
+                    case 21: // Key 4 -> Videos
+                        self.selectTab(.videos)
                         return nil
                     default:
                         break
@@ -571,7 +677,7 @@ final class NavigationManager: ObservableObject {
         }
     }
     
-    private func isTextInputActive() -> Bool {
+    func isTextInputActive() -> Bool {
         guard let responder = NSApp.keyWindow?.firstResponder ?? NSApp.mainWindow?.firstResponder else { return false }
         if let textView = responder as? NSTextView, textView.isEditable {
             return true

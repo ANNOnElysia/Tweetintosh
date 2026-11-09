@@ -465,7 +465,7 @@ struct ImageLightboxOverlay: View {
                                     .foregroundColor(Color(white: 0.80))
                                     .padding(20)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(.target)
                         }
                         .opacity(manager.isZoomExpanded ? headerOpacity : 0.0)
                         
@@ -563,7 +563,7 @@ struct ImageLightboxOverlay: View {
                 .background(Circle().fill(Color.black.opacity(0.65)))
                 .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     // MARK: - Gesture Mechanics

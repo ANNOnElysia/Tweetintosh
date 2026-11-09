@@ -68,9 +68,9 @@ struct GlassSegmentedAppearancePicker: View {
                     }
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var selectedBackground: some View {
@@ -147,9 +147,9 @@ struct GlassSegmentedTonePicker: View {
                     }
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var selectedBackground: some View {
@@ -227,9 +227,9 @@ struct GlassSegmentedFontPicker: View {
                     }
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var selectedBackground: some View {
@@ -287,7 +287,7 @@ struct GlassCapsuleToggleStyle: ToggleStyle {
                     .padding(2)
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.78), value: configuration.isOn)
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
             .onTapGesture {
                 configuration.isOn.toggle()
             }
@@ -371,9 +371,9 @@ struct GlassDropdownPicker<T: Hashable>: View {
                     defaultMenuBackground
                 }
             }
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.target)
     }
     
     private var currentTitle: String {
@@ -415,6 +415,8 @@ struct SettingsCloseButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .padding(5)
+            .contentShape(Rectangle())
     }
     
     private func defaultCircleBackground(isPressed: Bool) -> some View {
@@ -447,6 +449,8 @@ struct SettingsCloseButton: View {
         .buttonStyle(SettingsCloseButtonStyle())
         .keyboardShortcut(.escape, modifiers: [])
         .help("Esc")
+        // The style grows the button to the 36-point target around its circle; this takes the growth back
+        .padding(-5)
     }
 }
 
@@ -509,7 +513,7 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .help(isActive ? "" : loc.t("switch_account"))
             }
             
@@ -522,14 +526,28 @@ struct SettingsView: View {
                 }
                 .foregroundColor(ThemeManager.accent)
                 .padding(.vertical, 4)
-                .contentShape(Capsule())
+                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
         }
         .padding(14)
         .background(cardBackground)
     }
     
+    // The Video Feed switch's name, marked as an experiment: the feed rests on an X endpoint the web client only
+    // calls from its video viewer, and its behaviour is still being tuned
+    private var videoFeedLabel: some View {
+        HStack(spacing: 6) {
+            Text(loc.t("show_videos_tab"))
+            Text(loc.t("experimental"))
+                .font(theme.appFont(size: 10, weight: .semibold))
+                .foregroundColor(ThemeManager.accent)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.18)))
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header Bar: Title on left, Close ("小麻叉") on right
@@ -689,6 +707,27 @@ struct SettingsView: View {
                     .foregroundColor(ThemeManager.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 2)
+                
+                if theme.useLiquidGlass {
+                    Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
+                        videoFeedLabel
+                    }
+                    .toggleStyle(GlassCapsuleToggleStyle())
+                    .foregroundColor(ThemeManager.primaryText)
+                } else {
+                    Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
+                        videoFeedLabel
+                    }
+                    .toggleStyle(.switch)
+                    .tint(ThemeManager.accent)
+                    .foregroundColor(ThemeManager.primaryText)
+                }
+                
+                Text(loc.t("show_videos_tab_desc"))
+                    .font(theme.appFont(size: 11))
+                    .foregroundColor(ThemeManager.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 2)
             }
             .padding(14)
             .background(cardBackground)
@@ -723,9 +762,9 @@ struct SettingsView: View {
                                 defaultClearCacheBackground
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(.target)
                     
                     Spacer()
                     
@@ -756,9 +795,9 @@ struct SettingsView: View {
                                 defaultSignOutBackground
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(.target)
                 }
             }
             .padding(14)

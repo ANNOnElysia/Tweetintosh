@@ -21,6 +21,7 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
     @Published private(set) var tweets: [ProfileTab: [ProfileTimelineItem]] = [:]
     @Published private(set) var loadingTabs: Set<ProfileTab> = []
     @Published private(set) var failedTabs: Set<ProfileTab> = []
+    @Published private(set) var isRefreshing = false
     @Published private(set) var isFollowing = false
     @Published private(set) var isFollowBusy = false
     @Published private(set) var isMuting = false
@@ -64,6 +65,13 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
                 changed = true
             }
             if changed { tweets[tab] = list }
+        }
+    }
+    
+    func removePost(id: String) {
+        for tab in Array(tweets.keys) {
+            guard let list = tweets[tab], list.contains(where: { $0.tweet.isCopy(ofPost: id) }) else { continue }
+            tweets[tab] = list.filter { !$0.tweet.isCopy(ofPost: id) }
         }
     }
     
@@ -132,6 +140,63 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
                 self.profile = profile
                 self.user = profile.user
             }
+        }
+    }
+
+    // Pull-down or Command+R: the profile and the tab in view are asked for again, past the preload cache, so new posts
+    // and changed counts show. The tab starts over from its newest page; other tabs reload when they are next opened.
+    func refresh(minimumDuration: TimeInterval = 0.8) {
+        guard !isRefreshing, !userId.isEmpty else { return }
+        isRefreshing = true
+        let started = Date()
+        let tab = selectedTab
+        let group = DispatchGroup()
+        var freshProfile: UserProfile?
+        var freshPage: (items: [ProfileTimelineItem], bottomCursor: String?)?
+
+        ProfilePreloader.shared.forget(user.screenName)
+        group.enter()
+        APIClient.shared.fetchUserProfile(screenName: user.screenName) { result in
+            if case .success(let profile) = result { freshProfile = profile }
+            group.leave()
+        }
+        group.enter()
+        APIClient.shared.fetchUserTimeline(tab, userId: userId, cursor: nil) { result in
+            if case .success(let page) = result { freshPage = (page.items, page.bottomCursor) }
+            group.leave()
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            let finish = {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    if let profile = freshProfile {
+                        self.profile = profile
+                        self.user = profile.user
+                        self.isFollowing = profile.isFollowing
+                        self.isMuting = profile.isMuting
+                        self.isBlocking = profile.isBlocking
+                    }
+                    // A failed fetch leaves the posts already on screen rather than emptying the page
+                    if let page = freshPage {
+                        for other in ProfileTab.allCases where other != tab {
+                            self.tweets[other] = nil
+                            self.cursors[other] = nil
+                            self.exhausted.remove(other)
+                        }
+                        self.tweets[tab] = page.items
+                        self.cursors[tab] = page.bottomCursor
+                        self.failedTabs.remove(tab)
+                        if page.items.isEmpty || page.bottomCursor == nil {
+                            self.exhausted.insert(tab)
+                        } else {
+                            self.exhausted.remove(tab)
+                        }
+                    }
+                    self.isRefreshing = false
+                }
+            }
+            let wait = max(0, minimumDuration - Date().timeIntervalSince(started))
+            if wait > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: finish) } else { finish() }
         }
     }
 
@@ -304,6 +369,28 @@ private final class ProfileChromeState: ObservableObject {
     // Page width, for sizing the media grid's square cells explicitly (a List measures a row's height before
     // aspect-ratio sizing applies, so self-sizing squares would overlap)
     @Published var contentWidth: CGFloat = 0
+    // Not published: the page must not redraw on every pull, only the spinner does
+    let pull = DetailPullController()
+}
+
+// The spinner that follows a pull over the stretching banner, and stays while the profile refreshes
+private struct ProfilePullIndicator: View {
+    @ObservedObject var pull: DetailPullController
+    @ObservedObject var vm: ProfileViewModel
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        if vm.isRefreshing || pull.pullDistance > 2 {
+            let distance = vm.isRefreshing ? 40.0 : pull.pullDistance
+            let progress = vm.isRefreshing ? 1.0 : min(1.0, max(0.0, distance / TrackpadPullCoordinator.refreshThreshold))
+            SVGRefreshIndicatorView(pullProgress: progress, isRefreshing: vm.isRefreshing, colorScheme: theme.themeColor)
+                .frame(height: 40)
+                .frame(maxWidth: .infinity)
+                .offset(y: 62 + (distance - 40.0) / 2.0)
+                .opacity(vm.isRefreshing ? 1.0 : min(1.0, max(0.0, Double(distance - 2.0) / 8.0)))
+                .allowsHitTesting(false)
+        }
+    }
 }
 
 // MARK: - Profile Page
@@ -314,7 +401,7 @@ struct ProfileView: View {
     @StateObject private var chrome = ProfileChromeState()
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
-    @ObservedObject private var nav = NavigationManager.shared
+    private let nav = NavigationManager.shared
     @Namespace private var tabNamespace
 
     private let bannerHeight: CGFloat = 250
@@ -331,7 +418,7 @@ struct ProfileView: View {
             ThemeManager.background
                 .ignoresSafeArea()
 
-            ScrollContainer(onNearBottom: { vm.loadTab(vm.selectedTab, more: true) }) {
+            ScrollContainer(onScrollView: { chrome.pull.attach($0) }, onNearBottom: { vm.loadTab(vm.selectedTab, more: true) }) {
                 header
                     .reportsListScrollView()
                 details
@@ -341,11 +428,24 @@ struct ProfileView: View {
             .coordinateSpace(name: "profileScroll")
             .ignoresSafeArea(edges: .top)
 
+            ProfilePullIndicator(pull: chrome.pull, vm: vm)
+
             topBar
         }
         .onAppear {
             if !ProfileViewModel.live.contains(where: { $0 === vm }) { ProfileViewModel.live.append(vm) }
             vm.load()
+            chrome.pull.onTrigger = { [weak vm] in vm?.refresh() }
+        }
+        .onChange(of: vm.isRefreshing) {
+            chrome.pull.isBusy = vm.isRefreshing
+        }
+        // Command+R refreshes the page in front, as it does the timeline and a post
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_RefreshTimeline"))) { _ in
+            if case .profile(let shown)? = nav.overlayStack.last?.page,
+               shown.screenName.caseInsensitiveCompare(vm.user.screenName) == .orderedSame {
+                vm.refresh()
+            }
         }
         .onDisappear {
             ProfileViewModel.live.removeAll { $0 === vm }
@@ -483,7 +583,7 @@ struct ProfileView: View {
         } label: {
             statPillLabel(count, label)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         // The account's id arrives with the profile when the page was opened from just a handle
         .disabled(vm.userId.isEmpty)
         .help(label)
@@ -527,7 +627,7 @@ struct ProfileView: View {
                     Link(destination: url) {
                         metaItem("link", Text(website).foregroundColor(ThemeManager.accent))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.target)
                 }
                 if let joined = vm.profile?.joinedAt {
                     metaItem("calendar", Text(loc.format("profile_joined", ["date": Self.joinedFormatter().string(from: joined)])))
@@ -585,7 +685,7 @@ struct ProfileView: View {
                                     .matchedGeometryEffect(id: "profile-tab", in: tabNamespace)
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .pressDragItem(tab)
             }
@@ -596,7 +696,7 @@ struct ProfileView: View {
             }
         }
         .padding(4)
-        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true))
+        .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule(), isClear: true, isInteractive: false))
         .frame(maxWidth: .infinity)
         .padding(.bottom, 10)
         .overlay(alignment: .bottom) {
@@ -678,7 +778,7 @@ struct ProfileView: View {
                     .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help("\(loc.t("nav_back")) (Esc / ←)")
 
             // Collapsed identity: avatar, name, and follower count once the banner scrolls away
@@ -749,11 +849,11 @@ struct ProfileView: View {
                 .font(.system(size: 14, weight: .bold))
                 .foregroundColor(ThemeManager.primaryText)
                 .frame(width: 36, height: 36)
-                .contentShape(Circle())
+                .contentShape(Rectangle())
         }
         // The borderless style flattens its label into a dimmed, left-aligned image; this one draws the view as it is
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .menuIndicator(.hidden)
         .fixedSize()
         .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))
@@ -776,7 +876,7 @@ struct ProfileView: View {
                 .frame(height: 36)
                 .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
         .disabled(vm.profile == nil)
         .help(loc.t("edit_profile"))
         .sheet(isPresented: $vm.isEditing) {
@@ -801,7 +901,7 @@ struct ProfileView: View {
                 .frame(height: 36)
                 .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Capsule()))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .help(loc.format("profile_blocked_follow", ["name": vm.user.formattedHandle]))
         } else {
             Button(action: vm.toggleFollow) {
@@ -818,7 +918,7 @@ struct ProfileView: View {
                     .modifier(FollowGlass(enabled: vm.isFollowing, isLiquid: theme.useLiquidGlass))
                     .opacity(vm.isFollowBusy ? 0.6 : 1)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(vm.profile == nil && vm.user.id.isEmpty)
             .help(vm.isFollowing ? loc.t("profile_unfollow") : loc.t("profile_follow"))
         }
@@ -995,7 +1095,7 @@ struct FoldableText<Content: View>: View {
                         .foregroundColor(ThemeManager.accent)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
             }
         }
     }

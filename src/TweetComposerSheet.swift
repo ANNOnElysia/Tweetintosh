@@ -13,6 +13,8 @@ final class TweetComposerState: ObservableObject {
     @Published var attachments: [ComposerAttachment] = []
     // What the upload is up to ("Uploading 2 of 3…"), shown while posting
     @Published var uploadStatus: String? = nil
+    // How much of the attached media has uploaded, while posting with media
+    @Published var uploadProgress: Double? = nil
 }
 
 struct TweetComposerSheet: View {
@@ -21,6 +23,8 @@ struct TweetComposerSheet: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @StateObject private var state = TweetComposerState()
+    @StateObject private var linkCard = LinkCardPreviewModel()
+    @FocusState private var editorFocused: Bool
     
     private let characterLimit = 280
     
@@ -33,17 +37,28 @@ struct TweetComposerSheet: View {
         return (!trimmed.isEmpty || !state.attachments.isEmpty) && remainingCharacters >= 0 && !state.isSending
     }
     
+    // X gives a post one card: attached media or a quoted post takes the place of the link's card
+    private var showsLinkCard: Bool { quotedTweet == nil && state.attachments.isEmpty }
+    private var linkCardShown: Bool { showsLinkCard && linkCard.preview != nil }
+    
     var body: some View {
         VStack(spacing: 0) {
             headerBar
             
-            Divider()
-                .background(ThemeManager.divider)
+            ComposerSendingBar(isSending: state.isSending, progress: state.uploadProgress)
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     composerInputRow
-                    
+
+                    if let card = linkCard.preview, showsLinkCard {
+                        LinkCardPreviewView(card: card, isDisabled: state.isSending) { linkCard.dismiss() }
+                            .padding(.leading, 64)
+                            .padding(.trailing, 16)
+                            .padding(.top, 4)
+                            .transition(.opacity)
+                    }
+
                     if !state.attachments.isEmpty {
                         ComposerAttachmentStrip(attachments: $state.attachments, isDisabled: state.isSending)
                     }
@@ -74,7 +89,9 @@ struct TweetComposerSheet: View {
             
             bottomControlsBar
         }
-        .frame(width: 540, height: (quotedTweet != nil ? 430 : 320) + (state.attachments.isEmpty ? 0 : 110))
+        .frame(width: 540, height: (quotedTweet != nil ? 430 : 320) + (state.attachments.isEmpty ? 0 : 110)
+               + (linkCardShown ? max(0, LinkCardPreviewView.height(for: linkCard.preview, width: 540 - 80) - 110) : 0))
+        .onChange(of: state.text) { linkCard.textChanged(state.text) }
         .background(ThemeManager.background)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Tweetintosh_AttachMedia"))) { _ in
             chooseMedia()
@@ -108,7 +125,7 @@ struct TweetComposerSheet: View {
                     .font(theme.appFont(size: 13, weight: .medium))
                     .foregroundColor(ThemeManager.secondaryText)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .keyboardShortcut(.escape, modifiers: [])
             
             Spacer()
@@ -121,9 +138,6 @@ struct TweetComposerSheet: View {
             
             Button(action: submitPost) {
                 HStack(spacing: 6) {
-                    if state.isSending {
-                        LoadingIndicator(compactHeight: 16, tint: ThemeManager.onAccent)
-                    }
                     Text(loc.t("post_action"))
                         .font(theme.appFont(size: 13, weight: .semibold))
                         .foregroundColor(ThemeManager.onAccent)
@@ -133,7 +147,7 @@ struct TweetComposerSheet: View {
                 .background(canSend ? ThemeManager.accent : ThemeManager.accent.opacity(0.4))
                 .clipShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(!canSend)
             .keyboardShortcut(.return, modifiers: [.command])
         }
@@ -155,9 +169,15 @@ struct TweetComposerSheet: View {
             .textFieldStyle(.plain)
             .font(theme.appFont(size: 14.5))
             .foregroundColor(ThemeManager.primaryText)
-            .lineLimit(quotedTweet != nil ? 4...8 : 7...14)
+            // The writing room is a frame rather than a minimum line count, which a text field never gives back, so
+            // a link's card can move up under the text as it does on X. A click anywhere in that room still lands in
+            // the text.
+            .lineLimit(1...14)
+            .focused($editorFocused)
             .returnStartsNewLine()
-            .frame(minHeight: quotedTweet != nil ? 90 : 160, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: quotedTweet != nil ? 90 : (linkCardShown ? 40 : 160), alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture { editorFocused = true }
         }
         .padding(.horizontal, 16)
     }
@@ -249,13 +269,15 @@ struct TweetComposerSheet: View {
         
         state.isSending = true
         state.errorMessage = nil
+        state.uploadProgress = state.attachments.isEmpty ? nil : 0
         let attachments = state.attachments
         
         Task { @MainActor in
             // Upload the media first; the post is created once X has every file
             var mediaIds: [String] = []
             do {
-                mediaIds = try await MediaAttachments.upload(attachments) { state.uploadStatus = $0 }
+                mediaIds = try await MediaAttachments.upload(attachments, status: { state.uploadStatus = $0 },
+                                                           progress: { state.uploadProgress = $0 })
             } catch {
                 state.isSending = false
                 state.uploadStatus = nil
@@ -264,7 +286,8 @@ struct TweetComposerSheet: View {
             }
             state.uploadStatus = nil
             
-            TimelineViewModel.shared.postTweet(text: textToSend, quoting: quotedTweet, mediaIds: mediaIds) { result in
+            let cardUri = linkCard.cardIsDismissed(for: textToSend) ? "tombstone://card" : nil
+            TimelineViewModel.shared.postTweet(text: textToSend, quoting: quotedTweet, mediaIds: mediaIds, cardUri: cardUri) { result in
                 DispatchQueue.main.async {
                     self.state.isSending = false
                     switch result {

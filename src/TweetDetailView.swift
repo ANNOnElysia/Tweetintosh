@@ -6,7 +6,7 @@
 import SwiftUI
 import AppKit
 
-// Pull-down to refresh for the post page, owned by the page itself (the timeline's coordinator is a single shared
+// Pull-down to refresh for the post page and profiles, owned by each page itself (the timeline's coordinator is a single shared
 // object tied to the page underneath). Works like the timeline's: a pull past the threshold that starts to spring
 // back refreshes.
 final class DetailPullController: ObservableObject {
@@ -19,7 +19,7 @@ final class DetailPullController: ObservableObject {
     private var peak: CGFloat = 0
     private var triggered = false
     private var hapticSent = false
-    private let threshold = TrackpadPullCoordinator.refreshThreshold
+    private var threshold: CGFloat { TrackpadPullCoordinator.refreshThreshold }
 
     func attach(_ sv: NSScrollView) {
         guard scrollView !== sv else { return }
@@ -46,7 +46,7 @@ final class DetailPullController: ObservableObject {
                 hapticSent = true
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
-            if !triggered && peak >= threshold && overscroll <= peak - 6 {
+            if !triggered && peak >= threshold && overscroll <= peak - TrackpadPullCoordinator.releaseSlack {
                 triggered = true
                 pullDistance = 0
                 onTrigger?()
@@ -291,7 +291,7 @@ struct TweetDetailView: View {
                     .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.35), radius: 10, x: 0, y: 3)
                     .scaleEffect(state.isHoveredBack ? 1.05 : 1.0)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .onHover { h in
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     state.isHoveredBack = h
@@ -332,7 +332,7 @@ struct TweetDetailView: View {
                     .shadow(color: Color.black.opacity(theme.isLight ? 0.08 : 0.35), radius: 10, x: 0, y: 3)
                     .scaleEffect(state.isHoveredShare ? 1.05 : 1.0)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .onHover { h in
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     state.isHoveredShare = h
@@ -365,7 +365,7 @@ struct TweetDetailView: View {
                         .fill(state.isHoveredBack ? (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12)) : Color.clear)
                 )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .onHover { h in state.isHoveredBack = h }
             .help("\(loc.t("nav_back")) (Esc / ←)")
             
@@ -388,7 +388,7 @@ struct TweetDetailView: View {
                             .fill(state.isHoveredShare ? (theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12)) : Color.clear)
                     )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.target)
             .onHover { h in state.isHoveredShare = h }
             .help(loc.t("copy_link"))
         }
@@ -495,8 +495,8 @@ struct TweetDetailView: View {
                 .background(ThemeManager.divider)
             
             // Interactive Social Action Bar
-            TweetActionBar(tweet: viewModel.focalTweet, actions: tweetActions(share: { _ in copyTweetLink() }), isProminent: true)
-                .padding(.vertical, 4)
+            TweetActionBar(tweet: viewModel.focalTweet, actions: tweetActions(share: { _ in copyTweetLink() }), isProminent: true,
+                           reachAbove: 4, reachBelow: 4)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -598,6 +598,7 @@ struct TweetDetailView: View {
                         .foregroundColor(ThemeManager.primaryText)
                         .lineSpacing(theme.lineSpacing() * 0.7)
                         .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
+                    LongTextToggle(tweet: tweet, fontSize: 13.5)
                 }
                 
                 if !tweet.media.isEmpty {
@@ -681,7 +682,7 @@ struct TweetDetailView: View {
                         .padding(.leading, 10)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.target)
                 Spacer()
             }
             Rectangle()
@@ -747,6 +748,7 @@ struct TweetDetailView: View {
                             .foregroundColor(ThemeManager.primaryText)
                             .lineSpacing(theme.lineSpacing() * 0.7)
                             .peeksText(of: tweet, fontSize: 13.5, lineSpacing: theme.lineSpacing() * 0.7)
+                        LongTextToggle(tweet: tweet, fontSize: 13.5)
                     }
                     
                     // Media
@@ -761,8 +763,7 @@ struct TweetDetailView: View {
                             .padding(.top, 4)
                     }
                     
-                    TweetActionBar(tweet: tweet, actions: tweetActions())
-                    .padding(.top, 4)
+                    TweetActionBar(tweet: tweet, actions: tweetActions(), reachAbove: 4)
                     // A click in the gaps between the buttons shouldn't count as a click on the reply: a near miss
                     // on the like button would leave the page
                     .contentShape(Rectangle())
@@ -878,7 +879,7 @@ struct TweetDetailView: View {
                         }
                     }
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .transition(.scale.combined(with: .opacity))
             }
         }
@@ -946,7 +947,7 @@ struct TweetDetailView: View {
                             )
                     }
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.target)
                 .transition(.scale.combined(with: .opacity))
             }
         }

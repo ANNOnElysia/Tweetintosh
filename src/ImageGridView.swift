@@ -562,7 +562,7 @@ private struct MediaTile: View {
                 Color.clear
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.target)
             .disabled(!isInteractive)
         )
         .mediaContextMenu(media: media, tweet: tweet)
