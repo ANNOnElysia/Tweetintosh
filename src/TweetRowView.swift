@@ -265,6 +265,7 @@ struct TweetActionBar: View {
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @StateObject private var like = LikeAnimationState()
+    @StateObject private var repostPress = RepostPressState()
     
     private var iconSize: CGFloat { isProminent ? 16 : 13 }
     private var textSize: CGFloat { isProminent ? 13 : 12 }
@@ -287,7 +288,10 @@ struct TweetActionBar: View {
                 
                 // A plain Button that pops up an NSMenu on click: SwiftUI's Menu is backed by an NSPopUpButton,
                 // and creating one per row as rows scroll into view was a major source of scroll hitches.
-                cell(help: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), action: showRepostMenu) { hovered in
+                cell(help: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), press: repostPress, action: {
+                    guard !repostPress.consumeClick() else { return }
+                    showRepostMenu()
+                }) { hovered in
                     label(icon: "arrow.2.squarepath", count: tweet.retweetCount, isActive: tweet.isRetweeted,
                           color: tweet.isRetweeted || hovered ? Self.repostColor : ThemeManager.secondaryText)
                 }
@@ -341,7 +345,7 @@ struct TweetActionBar: View {
     // above and below it, and to the right either the rest of its column (`fills`) or `trailing` points. Only the
     // target grows; padding outside the button gives the space back, so the icons stay where they were.
     private func cell<Label: View>(help: String, lead: CGFloat = reach, trailing: CGFloat = 0, fills: Bool = true,
-                                   action: @escaping () -> Void,
+                                   press: RepostPressState? = nil, action: @escaping () -> Void,
                                    @ViewBuilder label: @escaping (Bool) -> Label) -> some View {
         HoverReader(key: tweet.id) { hovered in
             Button(action: action) {
@@ -354,6 +358,11 @@ struct TweetActionBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.target)
+            .background {
+                if let press {
+                    RepostPressureRegion(state: press, tweetID: tweet.id, action: { actions.repost(tweet) })
+                }
+            }
         }
         .help(help)
         .padding(.leading, -lead)
