@@ -132,6 +132,33 @@ final class DMViewModel: ObservableObject {
     }
     
     /// The server's conversations, plus cached ones it did not list this time.
+    // X Chat and the older DM inbox name the same one-to-one chat differently ("a:b" and "a-b"). When X Chat fails to
+    // load, the older inbox answers alone, and the X Chat copy already listed stayed beside it: the same person twice.
+    // Each person keeps one chat, the X Chat one where there is one, as fetchInbox prefers.
+    private static func oneChatPerPerson(_ conversations: [DMConversation]) -> [DMConversation] {
+        var kept: [DMConversation] = []
+        var indexByPerson: [String: Int] = [:]
+        for conversation in conversations {
+            guard conversation.type == .oneToOne, let person = conversation.otherParticipant?.id, !person.isEmpty else {
+                kept.append(conversation)
+                continue
+            }
+            guard let index = indexByPerson[person] else {
+                indexByPerson[person] = kept.count
+                kept.append(conversation)
+                continue
+            }
+            let listed = kept[index]
+            let preferNew = conversation.id.contains(":") && !listed.id.contains(":")
+            var chosen = preferNew ? conversation : listed
+            let other = preferNew ? listed : conversation
+            if chosen.lastMessage == nil { chosen.lastMessage = other.lastMessage }
+            chosen.sortTimestamp = max(chosen.sortTimestamp, other.sortTimestamp)
+            kept[index] = chosen
+        }
+        return kept
+    }
+
     private func mergedConversations(_ fetched: [DMConversation]) -> [DMConversation] {
         var result = fetched
         for i in result.indices where result[i].lastMessage == nil {
@@ -139,7 +166,7 @@ final class DMViewModel: ObservableObject {
         }
         let fetchedIds = Set(fetched.map(\.id))
         result.append(contentsOf: conversations.filter { !fetchedIds.contains($0.id) })
-        return result.sorted {
+        return Self.oneChatPerPerson(result).sorted {
             if $0.isPinned != $1.isPinned { return $0.isPinned }
             return $0.sortTimestamp > $1.sortTimestamp
         }

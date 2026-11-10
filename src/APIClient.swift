@@ -57,6 +57,22 @@ final class APIClient {
     }
     
     /// Writes what X actually answered, so a refusal nobody has seen before can be looked at afterwards.
+    // A request X turned away. A CSRF refusal (353) means X no longer takes the saved token: the hidden x.com page
+    // gets a new one for the session, and the next request goes through.
+    static func noteFailure(response: URLResponse?, data: Data?) {
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        var codes: [Int] = []
+        if let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let errors = json["errors"] as? [[String: Any]] {
+            codes = errors.compactMap { $0["code"] as? Int }
+        }
+        Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
+            .error("\(response?.url?.path ?? "-", privacy: .public) failed: status=\(status, privacy: .public) codes=\(codes.map(String.init).joined(separator: ","), privacy: .public)")
+        if codes.contains(353) {
+            WebKitWriteChannel.shared.renewCsrf()
+        }
+    }
+
     static func logRefusal(_ refusal: (code: Int?, message: String?), endpoint: String) {
         Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
             .error("\(endpoint) refused: code=\(refusal.code.map(String.init) ?? "-", privacy: .public) message=\(refusal.message ?? "-", privacy: .public)")
@@ -74,6 +90,12 @@ final class APIClient {
     
     private init() {
         let config = URLSessionConfiguration.default
+        // Every request carries the login's cookies itself (AuthCredentials.cookieHeaderString), with the matching
+        // x-csrf-token. A cookie store would keep its own ct0 from X's responses and send that instead, and X refuses a
+        // request whose ct0 cookie and header differ.
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        config.httpCookieAcceptPolicy = .never
         config.timeoutIntervalForRequest = 20.0
         config.timeoutIntervalForResource = 30.0
         self.session = URLSession(configuration: config)
@@ -168,6 +190,7 @@ final class APIClient {
                 }
                 guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
                       let data = data else {
+                    APIClient.noteFailure(response: response, data: data)
                     completion(.failure(.invalidResponse))
                     return
                 }
@@ -638,6 +661,7 @@ final class APIClient {
             
             guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
                   let data = data else {
+                APIClient.noteFailure(response: response, data: data)
                 completion(.failure(.invalidResponse))
                 return
             }
@@ -722,6 +746,7 @@ final class APIClient {
             
             guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
                   let data = data else {
+                APIClient.noteFailure(response: response, data: data)
                 completion(.failure(.invalidResponse))
                 return
             }

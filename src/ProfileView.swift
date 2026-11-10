@@ -851,9 +851,11 @@ struct ProfileView: View {
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
         }
-        // The borderless style flattens its label into a dimmed, left-aligned image; this one draws the view as it is
+        // The borderless style flattens its label into a dimmed, left-aligned image; this one draws the view as it is.
+        // A menu passes over the app's own .target style and falls back to the system's bordered box, drawn around
+        // the round glass; the plain style draws nothing of its own. The label is already the 36-point target.
         .menuStyle(.button)
-        .buttonStyle(.target)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: Circle()))

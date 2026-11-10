@@ -152,6 +152,13 @@ final class AccountManager: ObservableObject {
         }
     }
 
+    // X issues an account's session a new ct0 from time to time; requests must send the one it issued last
+    func updateCsrf(_ ct0: String, forLogin authToken: String) {
+        guard let index = accounts.firstIndex(where: { $0.authToken == authToken }), accounts[index].ct0 != ct0 else { return }
+        accounts[index].ct0 = ct0
+        save()
+    }
+
     func setActive(_ id: String) {
         guard accounts.contains(where: { $0.id == id }) else { return }
         activeId = id
