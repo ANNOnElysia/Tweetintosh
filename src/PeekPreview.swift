@@ -473,7 +473,7 @@ final class PeekCoordinator: ObservableObject {
         return PeekRegistry.shared.target(atWindowPoint: event.locationInWindow, scope: scope)
     }
 
-    private func activeScope() -> PeekScope {
+    func activeScope() -> PeekScope {
         let nav = NavigationManager.shared
         if LightboxManager.shared.isPresented || VideoLightboxManager.shared.isPresented
             || nav.isShowingCompose || nav.replyTargetTweet != nil || DMMessageMenuManager.shared.active != nil
