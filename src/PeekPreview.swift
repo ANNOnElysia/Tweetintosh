@@ -6,8 +6,9 @@
 //
 //  A Force Touch trackpad reports NSEvent.pressure events: stage 1 is a normal click, stage 2 the deep press.
 //  Views opt in with `.peekable(...)`, which places an empty marker view behind them. On stage 2 the coordinator
-//  looks up the marker under the pointer and shows a card; releasing the press closes it. Three-finger-tap Look Up
-//  (`quickLook(with:)`) opens the same card, which then stays until a click outside, Esc or a scroll.
+//  looks up the marker under the pointer and shows a card; releasing the press closes media and profile cards.
+//  Three-finger-tap Look Up (`quickLook(with:)`) keeps those cards until a click outside, Esc or a scroll.
+//  Link cards always stay interactive and open until Esc, so the page can be read after releasing the press.
 //
 
 import SwiftUI
@@ -323,7 +324,7 @@ final class PeekCoordinator: ObservableObject {
     @Published private(set) var target: PeekTarget?
     // Stage-2 pressure (0...1) while the press is held; the card swells slightly with it
     @Published private(set) var pressure: CGFloat = 0
-    // Opened by three-finger tap (or a press we couldn't track): stays open until dismissed
+    // Link cards and previews opened by three-finger tap accept interaction after the press is released.
     @Published private(set) var isSticky = false
 
     var cardFrame: CGRect = .zero
@@ -386,7 +387,11 @@ final class PeekCoordinator: ObservableObject {
     }
 
     private func present(_ newTarget: PeekTarget, sticky: Bool) {
-        isSticky = sticky
+        if case .link = newTarget {
+            isSticky = true
+        } else {
+            isSticky = sticky
+        }
         pressure = 0
         target = newTarget
     }
@@ -420,6 +425,7 @@ final class PeekCoordinator: ObservableObject {
 
         case .leftMouseDown:
             if target != nil && isSticky && !cardContains(event) {
+                if case .link = target { return nil }
                 dismiss()
                 return nil
             }
@@ -438,6 +444,7 @@ final class PeekCoordinator: ObservableObject {
 
         case .scrollWheel:
             if target != nil && isSticky && !cardContains(event) {
+                if case .link = target { return nil }
                 dismiss()
             }
             return event
@@ -510,7 +517,7 @@ struct PeekOverlay: View {
         }
         .animation(.spring(response: 0.28, dampingFraction: 0.82), value: peek.target)
         .animation(.easeOut(duration: 0.08), value: peek.pressure)
-        // Only a sticky (three-finger tap) peek takes clicks, so its web page can be scrolled and used
+        // Sticky peeks accept interaction, including link cards opened by Force Click.
         .allowsHitTesting(peek.target != nil && peek.isSticky)
     }
 }

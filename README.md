@@ -16,7 +16,7 @@ Tweetintosh focuses on utility, keyboard navigation, and desktop ergonomics that
 
 ### User Experience
 
-- **Force Touch Peek Previews**: Deep press on a trackpad (or three-finger tap) to preview images, videos, external links, and user profiles in place without losing your scroll position.
+- **Force Touch Peek Previews**: Deep press on a trackpad (or three-finger tap) to preview images, videos, external links, and user profiles in place without losing your scroll position. External link previews stay open for browsing until you press Esc.
 - **Native Article Reader**: Reads long-form X Articles in a distraction-free native reader view (formatted text, headings, code blocks, and media) instead of redirecting to browser tabs.
 - **Dual-Pane Navigation**: Takes advantage of wide displays by pairing your timeline alongside selected posts, threads, and quote tweets.
 - **Adaptive Sidebar**: The toggle follows an eased curve between the top bar and sidebar, carrying their shared glass surface with it. Respects the system Reduce Motion setting.
@@ -39,7 +39,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 
 ### 体验改进
 
-- **触控板 Force Touch 快速预览**：在推文、图片、视频、用户头像或外链上用力重按（或三指轻点），即可就地浮现预览卡片，松开即走，不打断浏览节奏。
+- **触控板 Force Touch 快速预览**：在推文、图片、视频、用户头像或外链上用力重按（或三指轻点），即可就地浮现预览卡片，不打断浏览节奏。外链预览松开后仍可浏览，按 Esc 关闭。
 - **长文原生阅读模式**：在应用内直接排版阅读 X 的长文章（Articles），原生渲染标题、引用、代码块与图文，无需跳转浏览器。
 - **桌面双栏浏览**：在大屏幕上左侧保留时间线上下文，右侧展开阅读当前讨论串与引用，减少来回前进后退。
 - **自适应侧栏**：切换按钮沿缓入缓出的弧线在顶栏与侧栏之间移动，带动玻璃框变形，并遵循系统“减少动态效果”设置。
