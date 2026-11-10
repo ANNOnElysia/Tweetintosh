@@ -111,6 +111,29 @@ final class LightboxManager: ObservableObject {
     private var magnifyMonitor: Any?
     private var accumulatedScrollX: CGFloat = 0
     private var lastScrollTime = Date()
+    // A two-finger swipe on the trackpad works as dragging the image: up or down follows the fingers and closes it,
+    // sideways turns the page. The first movement of the gesture decides which.
+    private enum SwipeAxis { case undecided, vertical, horizontal }
+    private var swipeAxis: SwipeAxis = .undecided
+    private var swipeVelocity: CGFloat = 0
+    private var lastSwipeTimestamp: TimeInterval = 0
+
+    /// How far, or how fast, the image has to travel for a drag or swipe to close the preview
+    static let dismissDistance: CGFloat = 65
+    static let dismissVelocity: CGFloat = 400
+
+    /// Lets go of a vertical drag or swipe: past the distance or speed it closes the preview, short of it the image
+    /// springs back
+    func endVerticalDrag(translation: CGFloat, velocity: CGFloat) {
+        if abs(translation) > Self.dismissDistance || abs(velocity) > Self.dismissVelocity {
+            dismiss()
+        } else {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                dragOffset = .zero
+            }
+        }
+        isDraggingVertically = false
+    }
     
     func present(mediaList: [TweetMedia], initialIndex: Int, sourceRect: CGRect = .zero, tweet: Tweet? = nil) {
         guard !PeekCoordinator.shared.suppressesActivation else { return }
@@ -159,6 +182,7 @@ final class LightboxManager: ObservableObject {
         self.isDraggingVertically = false
         self.isDraggingHorizontally = false
         self.accumulatedScrollX = 0
+        self.swipeAxis = .undecided
     }
     
     func dismiss() {
@@ -286,6 +310,48 @@ final class LightboxManager: ObservableObject {
                 return nil // Prevent background scroll
             }
             
+            // The momentum after the fingers lift belongs to the gesture that has already been handled
+            if event.momentumPhase != [] { return nil }
+
+            // A trackpad gesture (one with phases); a mouse wheel has none and only turns pages, as before
+            if event.phase != [] {
+                if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
+                    self.swipeAxis = .undecided
+                    self.swipeVelocity = 0
+                    self.lastSwipeTimestamp = event.timestamp
+                }
+                // Where the fingers went, whichever way scrolling is set to run
+                let fingerY = event.isDirectionInvertedFromDevice ? event.scrollingDeltaY : -event.scrollingDeltaY
+                if self.swipeAxis == .undecided {
+                    let dx = abs(event.scrollingDeltaX), dy = abs(fingerY)
+                    if dy > 1.5 && dy > dx * 1.2 {
+                        self.swipeAxis = .vertical
+                        self.isDraggingVertically = true
+                    } else if dx > 1.5 && dx > dy {
+                        self.swipeAxis = .horizontal
+                    }
+                }
+                if self.swipeAxis == .vertical {
+                    self.dragOffset = CGSize(width: 0, height: self.dragOffset.height + fingerY)
+                    // Time since the fingers last moved
+                    let gap = event.timestamp - self.lastSwipeTimestamp
+                    if fingerY != 0 {
+                        self.swipeVelocity = fingerY / CGFloat(max(gap, 0.004))
+                        self.lastSwipeTimestamp = event.timestamp
+                    }
+                    if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+                        self.swipeAxis = .undecided
+                        // Holding still before lifting the fingers leaves no speed behind
+                        let paused = fingerY == 0 && gap > 0.08
+                        self.endVerticalDrag(translation: self.dragOffset.height, velocity: paused ? 0 : self.swipeVelocity)
+                    }
+                    return nil
+                }
+                if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+                    self.swipeAxis = .undecided
+                }
+            }
+
             // In standard zoom, handle horizontal swipe between images
             if self.mediaList.count > 1 {
                 let deltaX = event.scrollingDeltaX
@@ -632,13 +698,7 @@ struct ImageLightboxOverlay: View {
         }
         
         if manager.isDraggingVertically {
-            if abs(value.translation.height) > 65 || abs(value.velocity.height) > 400 {
-                manager.dismiss()
-            } else {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                    manager.dragOffset = .zero
-                }
-            }
+            manager.endVerticalDrag(translation: value.translation.height, velocity: value.velocity.height)
         } else if manager.isDraggingHorizontally {
             let dx = value.translation.width
             let vx = value.velocity.width
