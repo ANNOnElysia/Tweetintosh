@@ -10,6 +10,7 @@
 //  of inactivity to maintain a near-zero memory footprint during timeline browsing.
 //
 
+import CryptoKit
 import Foundation
 import WebKit
 import os
@@ -32,6 +33,9 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     
     /// Idle timer to release WebContent memory when no writes occur
     private var idleWorkItem: DispatchWorkItem?
+    /// When the page last asked X for a new CSRF token, so a token X keeps refusing doesn't start a loop
+    private var lastRenewal: Date?
+    private var isRenewing = false
     
     private override init() { super.init() }
     
@@ -82,10 +86,48 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         }
     }
     
+    /// X refused the saved CSRF token (code 353). The page drops its ct0 and loads x.com again, X issues a new one
+    /// for the account's session, and the account keeps it.
+    func renewCsrf() {
+        DispatchQueue.main.async {
+            guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid, !self.isRenewing else { return }
+            if let last = self.lastRenewal, Date().timeIntervalSince(last) < 60 { return }
+            self.lastRenewal = Date()
+            self.isRenewing = true
+            writeLog.notice("asking X for a new CSRF token")
+            self.reset()
+            let store = Self.dataStore(for: creds).httpCookieStore
+            store.getAllCookies { cookies in
+                let group = DispatchGroup()
+                for cookie in cookies where cookie.name == "ct0" {
+                    group.enter()
+                    store.delete(cookie) { group.leave() }
+                }
+                group.notify(queue: .main) {
+                    self.identity = creds.authToken
+                    self.startLoading(with: creds, includingCsrf: false)
+                    self.scheduleIdleTeardown(after: 90)
+                }
+            }
+        }
+    }
+
     // MARK: - The hidden page
+
+    /// Each account's page keeps its cookies in a store of its own. In the shared default store, signing in to
+    /// another account (the sign-in window uses that store) replaced the session under the page, and writes went out
+    /// as the other account.
+    private static func dataStore(for creds: AuthCredentials) -> WKWebsiteDataStore {
+        let key = creds.userId.flatMap { $0.isEmpty ? nil : $0 } ?? creds.authToken
+        let digest = Array(Insecure.MD5.hash(data: Data("tweetintosh-write-\(key)".utf8)))
+        let uuid = UUID(uuid: (digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+                               digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]))
+        return WKWebsiteDataStore(forIdentifier: uuid)
+    }
     
     private func prepare(for creds: AuthCredentials) {
-        let newIdentity = "\(creds.authToken)|\(creds.ct0)"
+        // The login alone: X rotates ct0 on its own, and a new one is no reason to load the page again
+        let newIdentity = creds.authToken
         if newIdentity == identity { return }   // already loaded, or loading for these credentials
         
         // A different account (or a fresh sign-in) needs its own cookies, so the page starts over
@@ -94,12 +136,12 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         startLoading(with: creds)
     }
     
-    private func startLoading(with creds: AuthCredentials) {
+    private func startLoading(with creds: AuthCredentials, includingCsrf: Bool = true) {
         cancelIdleTeardown()
         
         let config = WKWebViewConfiguration()
-        // Use default persistent store to retain full browser session cookies, device tokens, and local cache
-        config.websiteDataStore = WKWebsiteDataStore.default()
+        // A persistent store of the account's own, keeping its session cookies, device tokens and cache
+        config.websiteDataStore = Self.dataStore(for: creds)
         
         let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
         view.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
@@ -120,7 +162,8 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         
         let store = config.websiteDataStore.httpCookieStore
         let expire = Date().addingTimeInterval(60 * 60 * 24 * 30)
-        var cookieList = [("auth_token", creds.authToken), ("ct0", creds.ct0)]
+        // Without ct0, X issues a new one for the session when the page loads
+        var cookieList = includingCsrf ? [("auth_token", creds.authToken), ("ct0", creds.ct0)] : [("auth_token", creds.authToken)]
         if let userId = creds.userId, !userId.isEmpty {
             cookieList.append(("twid", "\"u=\(userId)\""))
         }
@@ -196,12 +239,35 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard !isLoaded, webView === self.webView else { return }
         isLoaded = true
-        let queued = waitingForLoad
-        waitingForLoad = []
         writeLog.debug("write channel ready")
-        queued.forEach { $0.ready() }
+        keepCsrf(from: webView) { [weak self] in
+            guard let self else { return }
+            let queued = self.waitingForLoad
+            self.waitingForLoad = []
+            queued.forEach { $0.ready() }
+        }
     }
     
+    /// The page's ct0 is the one X issued for this session; the account keeps it, so the app's other requests send it
+    private func keepCsrf(from webView: WKWebView, then done: @escaping () -> Void) {
+        let renewing = isRenewing
+        isRenewing = false
+        guard let creds = CredentialsManager.shared.loadCredentials() else { done(); return }
+        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+            let ct0 = cookies.first { $0.name == "ct0" && $0.domain.hasSuffix("x.com") && !$0.value.isEmpty }?.value
+            DispatchQueue.main.async {
+                if let ct0, ct0 != creds.ct0 {
+                    AccountManager.shared.updateCsrf(ct0, forLogin: creds.authToken)
+                    writeLog.notice("keeping the CSRF token X issued\(renewing ? " after a refusal" : "", privacy: .public)")
+                    if renewing {
+                        NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_RefreshTimeline"), object: nil)
+                    }
+                }
+                done()
+            }
+        }
+    }
+
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         guard webView === self.webView else { return }
         writeLog.error("write channel page failed: \(error.localizedDescription, privacy: .public)")
@@ -239,10 +305,15 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                 console.error("Failed to generate transaction id:", e);
             }
 
+            // X checks that this header matches the ct0 cookie the request carries. The page's cookie is the one sent,
+            // and X can replace it at any time (loading the page above can do it), so it is read now rather than
+            // taken from the saved login.
+            const cookieCsrf = (document.cookie.match(/(?:^|;\\s*)ct0=([^;]+)/) || [])[1];
+            const sentCsrf = cookieCsrf || csrf;
             const headers = {
                 "content-type": asForm ? "application/x-www-form-urlencoded" : "application/json",
                 "authorization": bearer,
-                "x-csrf-token": csrf,
+                "x-csrf-token": sentCsrf,
                 "x-twitter-active-user": "yes",
                 "x-twitter-auth-type": "OAuth2Session",
                 "x-twitter-client-language": language
@@ -262,7 +333,9 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
             // Check if an interactive challenge or captcha is demanding user action
             const hasCaptcha = !!document.querySelector('iframe[src*="arkose"], div#arkose, iframe[title*="challenge"]');
 
-            return { status: response.status, text: text, hasCaptcha: hasCaptcha };
+            // The cookie may have been replaced again by this response
+            const latestCsrf = (document.cookie.match(/(?:^|;\\s*)ct0=([^;]+)/) || [])[1] || sentCsrf;
+            return { status: response.status, text: text, hasCaptcha: hasCaptcha, csrf: latestCsrf };
         }
 
         return await executeRequest();
@@ -305,6 +378,11 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                     return
                 }
                 
+                // X may have issued a new token while sending; the app's other requests send it too
+                if let latest = answer["csrf"] as? String, !latest.isEmpty, latest != creds.ct0 {
+                    AccountManager.shared.updateCsrf(latest, forLogin: creds.authToken)
+                }
+
                 if (answer["hasCaptcha"] as? Bool) == true {
                     self.presentCaptchaWindow()
                 } else {
@@ -382,7 +460,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                     include_juicebox_tokens: true
                 }));
                 
-                const csrf = (document.cookie.match(/ct0=([^;]+)/) || [])[1] || creds_csrf;
+                const csrf = (document.cookie.match(/(?:^|;\\s*)ct0=([^;]+)/) || [])[1] || creds_csrf;
                 const headers = {
                     "authorization": bearer,
                     "x-csrf-token": csrf,
