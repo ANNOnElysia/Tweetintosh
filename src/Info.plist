@@ -19,7 +19,19 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>15.0</string>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/ANNOnElysia/Tweetintosh/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>SpUBffqOqNmdoUhjvxNjRC4VttSA5OU95DcqrxQO5YI=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>TweetintoshUpdateChannel</key>
+    <string>preview</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSRequiresAquaSystemAppearance</key>

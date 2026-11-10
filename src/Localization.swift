@@ -2452,6 +2452,41 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "我的主页",
             .traditionalChinese: "我的個人檔案"
         ],
+        "menu_check_updates": [
+            .english: "Check for Updates…",
+            .japanese: "アップデートを確認…",
+            .korean: "업데이트 확인…",
+            .simplifiedChinese: "检查更新…",
+            .traditionalChinese: "檢查更新項目…"
+        ],
+        "settings_updates": [
+            .english: "Updates",
+            .japanese: "アップデート",
+            .korean: "업데이트",
+            .simplifiedChinese: "更新",
+            .traditionalChinese: "更新"
+        ],
+        "auto_check_updates": [
+            .english: "Check for Updates Automatically",
+            .japanese: "アップデートを自動的に確認",
+            .korean: "자동으로 업데이트 확인",
+            .simplifiedChinese: "自动检查更新",
+            .traditionalChinese: "自動檢查更新項目"
+        ],
+        "auto_install_updates": [
+            .english: "Install Updates Automatically",
+            .japanese: "アップデートを自動的にインストール",
+            .korean: "자동으로 업데이트 설치",
+            .simplifiedChinese: "自动安装更新",
+            .traditionalChinese: "自動安裝更新項目"
+        ],
+        "auto_install_updates_desc": [
+            .english: "New versions are ready the next time you open Tweetintosh, without interrupting what you're doing.",
+            .japanese: "次に Tweetintosh を開いたときに新しいバージョンになります。作業は中断されません。",
+            .korean: "작업을 방해하지 않고, 다음에 Tweetintosh를 열 때 새 버전이 준비됩니다.",
+            .simplifiedChinese: "下次打开 Tweetintosh 时即为新版本，不会打断你正在做的事。",
+            .traditionalChinese: "下次開啟 Tweetintosh 時即為新版本，不會打斷你正在做的事。"
+        ],
         "menu_add_account": [
             .english: "Add Account…",
             .japanese: "アカウントを追加…",

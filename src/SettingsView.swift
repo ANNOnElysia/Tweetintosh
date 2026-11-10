@@ -354,6 +354,7 @@ struct SettingsView: View {
     
     @ObservedObject var accountManager = AccountManager.shared
     private let cacheCleanup = CacheCleanup.shared
+    private let updates = UpdateManager.shared
     
     var onSignOut: () -> Void
     var onSwitchAccount: (String) -> Void
@@ -362,6 +363,38 @@ struct SettingsView: View {
     var onClose: () -> Void = {}
     
     // Accounts: tap one to switch to it, or add another
+    private var updatesSection: some View {
+        @Bindable var updates = updates
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(loc.t("settings_updates"))
+                .font(theme.appFont(size: 13, weight: .semibold))
+                .foregroundColor(ThemeManager.secondaryText)
+
+            Toggle(loc.t("auto_check_updates"), isOn: $updates.checksAutomatically.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                .toggleStyle(GlassCapsuleToggleStyle())
+                .foregroundColor(ThemeManager.primaryText)
+
+            // Installing on its own needs the checks that find the update
+            Toggle(loc.t("auto_install_updates"), isOn: $updates.installsAutomatically)
+                .toggleStyle(GlassCapsuleToggleStyle())
+                .foregroundColor(ThemeManager.primaryText)
+                .disabled(!updates.checksAutomatically)
+                .opacity(updates.checksAutomatically ? 1 : 0.5)
+
+            Text(loc.t("auto_install_updates_desc"))
+                .font(theme.appFont(size: 12))
+                .foregroundColor(ThemeManager.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(loc.t("menu_check_updates")) {
+                updates.checkForUpdates()
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground)
+    }
+
     private var accountsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(loc.t("accounts"))
@@ -575,6 +608,11 @@ struct SettingsView: View {
             .padding(14)
             .background(cardBackground)
             
+            // Updates, in a build that can verify them
+            if updates.isAvailable {
+                updatesSection
+            }
+
             // 5. Data & Account Management
             VStack(alignment: .leading, spacing: 12) {
                 cacheCleanupRow

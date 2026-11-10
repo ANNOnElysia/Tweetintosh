@@ -94,6 +94,14 @@ extension AppDelegate {
         menu.addItem(command(loc.t("menu_text_actual_size"), #selector(menuTextActualSize), "0"))
     }
 
+    // Tweetintosh: Check for Updates…, under About as in other Mac apps
+    func addUpdateCommand(to menu: NSMenu) {
+        let item = command(LocalizationManager.shared.t("menu_check_updates"), #selector(menuCheckForUpdates), "")
+        // A build without a signing key can't verify an update, so it doesn't offer to look for one
+        item.isHidden = !UpdateManager.shared.isAvailable
+        menu.addItem(item)
+    }
+
     // View: hide or show the pane beside Home, after the sidebar's own command
     func addPaneCommand(to menu: NSMenu) {
         let item = NSMenuItem(title: LocalizationManager.shared.t("menu_hide_pane"),
@@ -180,6 +188,10 @@ extension AppDelegate {
     }
 
     // MARK: Actions
+
+    @objc func menuCheckForUpdates() {
+        UpdateManager.shared.checkForUpdates()
+    }
 
     @objc func menuSwitchAccount(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
@@ -291,6 +303,9 @@ extension AppDelegate {
         let loc = LocalizationManager.shared
         let nav = NavigationManager.shared
         switch item.action {
+        case #selector(menuCheckForUpdates):
+            // Dimmed while a check is already under way
+            return UpdateManager.shared.canCheckForUpdates
         case #selector(menuSwitchAccount(_:)):
             item.state = (item.representedObject as? String) == AccountManager.shared.activeId ? .on : .off
             return loginController == nil

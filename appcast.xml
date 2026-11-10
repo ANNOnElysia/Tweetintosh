@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tweetintosh's update feed, read by installed copies from the main branch. tools/release.sh adds each release;
+     see RELEASING.md. -->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>Tweetintosh</title>
+        <link>https://github.com/ANNOnElysia/Tweetintosh/releases</link>
+        <description>Updates for Tweetintosh</description>
+        <language>en</language>
+        <!-- Releases, newest first -->
+    </channel>
+</rss>
