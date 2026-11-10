@@ -535,7 +535,9 @@ private struct LiquidGlassCapsule: View {
                     // The whole height of the bar and the space around it picks the nearest tab
                     .padding(.top, TopBarTarget.above + 4)
                     .padding(.bottom, TopBarTarget.below + 4)
-                    .pressDragSelection { (tab: AppTab) in
+                    .pressDragSelection(onPress: { (tab: AppTab) in
+                        nav.refreshSelectedTab(tab)
+                    }) { (tab: AppTab) in
                         withAnimation(SidebarMotion.selection) {
                             selection = tab
                             nav.isSearchActive = false
@@ -811,6 +813,7 @@ private struct LiquidGlassSidebar: View {
             ForEach(AppTab.available) { tab in
                 let isSelected = selection == tab
                 Button {
+                    nav.refreshSelectedTab(tab)
                     withAnimation(SidebarMotion.selection) {
                         nav.closeAllPages()
                         selection = tab

@@ -46,6 +46,7 @@ final class TimelineViewModel {
     var isLoadingMore = false
     var isAuthenticated = false
     var errorMessage: String?
+    @ObservationIgnored private var isReturningToTop = false
     
     @ObservationIgnored private var forYouTopCursor: String?
     @ObservationIgnored private var forYouBottomCursor: String?
@@ -378,15 +379,22 @@ final class TimelineViewModel {
         }
     }
     
-    // ⌘R: show everything that is already queued behind the "N new posts" pill, glide to the top, and load
-    // fresh posts in right there, instead of leaving them queued while the reader stays where they were
+    // Manual refresh returns to the top before inserting queued posts, so the current viewport never jumps.
     func reloadFromShortcut() {
-        guard !isRefreshing else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            applyPendingTweets(for: selectedFeed)
+        guard !isRefreshing, !isReturningToTop else { return }
+        isReturningToTop = true
+        let feed = selectedFeed
+        let listID = selectedListId
+        TimelineScrollCoordinator.shared.scrollToTop { [weak self] in
+            guard let self else { return }
+            self.isReturningToTop = false
+            guard NavigationManager.shared.currentTab == .home,
+                  self.selectedFeed == feed, self.selectedListId == listID, !self.isRefreshing else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                self.applyPendingTweets(for: feed)
+            }
+            self.refresh(silently: false, isUserInitiated: true)
         }
-        TimelineScrollCoordinator.shared.scrollToTop()
-        refresh(silently: false, isUserInitiated: true)
     }
     
     // MARK: - Feed Switching

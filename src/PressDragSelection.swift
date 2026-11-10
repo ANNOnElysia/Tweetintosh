@@ -49,6 +49,7 @@ private struct PressDragItem<ID: Hashable>: ViewModifier {
 }
 
 private struct PressDragSelection<ID: Hashable>: ViewModifier {
+    let onPress: ((ID) -> Void)?
     let onSelect: (ID) -> Void
     @StateObject private var state = PressDragState()
 
@@ -67,7 +68,10 @@ private struct PressDragSelection<ID: Hashable>: ViewModifier {
                     .onEnded { _ in state.current = nil }
             )
             .environment(\.pressDragSelect) { id in
-                if let id = id.base as? ID { onSelect(id) }
+                if let id = id.base as? ID {
+                    onPress?(id)
+                    onSelect(id)
+                }
             }
     }
 
@@ -79,6 +83,8 @@ private struct PressDragSelection<ID: Hashable>: ViewModifier {
         state.current = nearest
         if isDragAcross {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        } else {
+            onPress?(id)
         }
         onSelect(id)
     }
@@ -95,7 +101,7 @@ extension View {
     }
 
     // On the row holding the items
-    func pressDragSelection<ID: Hashable>(onSelect: @escaping (ID) -> Void) -> some View {
-        modifier(PressDragSelection(onSelect: onSelect))
+    func pressDragSelection<ID: Hashable>(onPress: ((ID) -> Void)? = nil, onSelect: @escaping (ID) -> Void) -> some View {
+        modifier(PressDragSelection(onPress: onPress, onSelect: onSelect))
     }
 }

@@ -330,6 +330,30 @@ final class NavigationManager {
         cmdHoldTimer?.invalidate()
     }
     
+    @ObservationIgnored private var isReturningNotificationsToTop = false
+
+    func refreshSelectedTab(_ tab: AppTab) {
+        guard currentTab == tab, tab == .home || tab == .notifications else { return }
+        closeAllPages()
+        switch tab {
+        case .home:
+            TimelineViewModel.shared.reloadFromShortcut()
+        case .notifications:
+            let viewModel = NotificationsViewModel.shared
+            guard !viewModel.isRefreshing, !isReturningNotificationsToTop else { return }
+            isReturningNotificationsToTop = true
+            let filter = viewModel.selectedFilter
+            TrackpadPullCoordinator.shared.scrollToTop { [weak self] in
+                guard let self else { return }
+                self.isReturningNotificationsToTop = false
+                guard self.currentTab == .notifications, viewModel.selectedFilter == filter else { return }
+                viewModel.refresh(silently: false)
+            }
+        case .messages, .videos:
+            break
+        }
+    }
+
     func selectTab(_ tab: AppTab) {
         // ⌥4 and the menu do nothing while the Videos tab is turned off
         guard AppTab.available.contains(tab) else { return }

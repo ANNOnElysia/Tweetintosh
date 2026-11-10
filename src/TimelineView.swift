@@ -46,6 +46,26 @@ extension NSScrollView {
         let bounds = contentView.bounds
         return contentView.constrainBoundsRect(NSRect(x: bounds.minX, y: -100_000, width: bounds.width, height: bounds.height)).minY
     }
+
+    func scrollToTop(completion: @escaping () -> Void) {
+        let clip = contentView
+        let target = NSPoint(x: clip.bounds.minX, y: restingTopY)
+        guard abs(clip.bounds.minY - target.y) > 0.5,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            clip.setBoundsOrigin(target)
+            reflectScrolledClipView(clip)
+            completion()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.28
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            clip.animator().setBoundsOrigin(target)
+        } completionHandler: {
+            self.reflectScrolledClipView(clip)
+            completion()
+        }
+    }
 }
 
 // MARK: - Native NSScrollView Anchor & Viewport Coordinator
@@ -219,19 +239,16 @@ final class TimelineScrollCoordinator: ObservableObject {
         keyCurrentY = clip.bounds.origin.y
     }
     
-    func scrollToTop() {
-        guard let sv = scrollView else { return }
-        DispatchQueue.main.async {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.35
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                sv.contentView.animator().scroll(to: NSPoint(x: 0, y: sv.restingTopY))
-            } completionHandler: {
-                sv.reflectScrolledClipView(sv.contentView)
-                self.unreadCountAbove = 0
-                TrackpadPullCoordinator.shared.isAtTop = true
-                TimelineScrollState.shared.isAtTop = true
-            }
+    func scrollToTop(completion: @escaping () -> Void = {}) {
+        guard let sv = scrollView else {
+            completion()
+            return
+        }
+        sv.scrollToTop {
+            self.unreadCountAbove = 0
+            TrackpadPullCoordinator.shared.isAtTop = true
+            TimelineScrollState.shared.isAtTop = true
+            completion()
         }
     }
 }
@@ -303,6 +320,14 @@ final class TrackpadPullCoordinator {
     var onPullProgress: ((CGFloat) -> Void)?
     var onTriggerRefresh: (() -> Void)?
     var onCancelPull: (() -> Void)?
+
+    func scrollToTop(completion: @escaping () -> Void) {
+        guard scrollViewOwner == activeOwner, let sv = registeredScrollView else {
+            completion()
+            return
+        }
+        sv.scrollToTop(completion: completion)
+    }
     
     var isAtTop: Bool = true
     var isRefreshing: Bool = false
