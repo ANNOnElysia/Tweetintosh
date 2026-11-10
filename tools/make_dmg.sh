@@ -3,8 +3,10 @@ set -e
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VOLNAME="Tweetintosh"
-DMG_FINAL="$BASE_DIR/Tweetintosh-v0.1.0.dmg"
 APP_SRC="$BASE_DIR/Tweetintosh.app"
+# Named after the version in src/Info.plist, which the app, the release and the update feed all share
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BASE_DIR/src/Info.plist")"
+DMG_FINAL="$BASE_DIR/Tweetintosh-v$VERSION.dmg"
 STAGE_DIR="/tmp/tweetintosh_stage"
 
 if [ ! -d "$APP_SRC" ]; then

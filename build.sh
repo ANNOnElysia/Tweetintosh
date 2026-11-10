@@ -28,6 +28,12 @@ echo "-> Packaging binary..."
 cp "$BASE_DIR/.build/release/Tweetintosh" "$MACOS_DIR/Tweetintosh"
 strip "$MACOS_DIR/Tweetintosh"
 
+# Sparkle, which checks for and installs updates, ships inside the app. ditto keeps the framework's symlinks.
+echo "-> Embedding Sparkle..."
+mkdir -p "$CONTENTS_DIR/Frameworks"
+ditto "$BASE_DIR/.build/release/Sparkle.framework" "$CONTENTS_DIR/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/Tweetintosh"
+
 # SwiftPM records the deployment target (15.0) as the SDK the binary was built with, and macOS draws an app's system
 # controls in the style of that SDK: switches, sliders and pop-ups came out as Sequoia's, without Liquid Glass. Record
 # the SDK actually used, so the app gets the current system's controls.

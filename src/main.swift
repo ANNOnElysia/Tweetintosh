@@ -134,6 +134,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         ScrollInput.shared.start()
+        // Before the menu, which shows Check for Updates… only when updates can be checked
+        UpdateManager.shared.start()
         setupMainMenu()
         menuLanguageObserver = LocalizationManager.shared.$currentLanguage
             .removeDuplicates()
@@ -613,6 +615,7 @@ final class SettingsWindow: NSWindow {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu(title: "Tweetintosh")
         appMenu.addItem(withTitle: loc.t("menu_about"), action: #selector(showAbout), keyEquivalent: "")
+        addUpdateCommand(to: appMenu)
         appMenu.addItem(NSMenuItem.separator())
         let prefItem = NSMenuItem(title: loc.t("settings") + "…", action: #selector(showSettings), keyEquivalent: ",")
         prefItem.keyEquivalentModifierMask = .command
