@@ -252,7 +252,7 @@ struct TweetActions {
     }
 }
 
-// Equal columns, so the same button lines up from one post to the next whatever its count is
+// Equal columns keep actions aligned; narrow panes give up spacing before compressing their counts.
 struct TweetActionBar: View {
     let tweet: Tweet
     var actions = TweetActions()
@@ -278,25 +278,37 @@ struct TweetActionBar: View {
     private static let bookmarkGap: CGFloat = 18
     
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
+        ViewThatFits(in: .horizontal) {
+            bar(compact: false)
+            bar(compact: true)
+            bar(compact: true, compressCounts: true)
+        }
+    }
+
+    private func bar(compact: Bool, compressCounts: Bool = false) -> some View {
+        let reach: CGFloat = compact ? 0 : Self.reach
+        let bookmarkGap: CGFloat = compact ? 6 : Self.bookmarkGap
+        return HStack(alignment: .center, spacing: 0) {
             // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
             Group {
-                cell(help: loc.t("reply"), action: { actions.reply(tweet) }) { hovered in
+                cell(help: loc.t("reply"), lead: reach, action: { actions.reply(tweet) }) { hovered in
                     label(icon: "bubble.left", count: tweet.replyCount,
-                          color: hovered ? Self.replyColor : ThemeManager.secondaryText)
+                          color: hovered ? Self.replyColor : ThemeManager.secondaryText,
+                          compact: compact, compressCounts: compressCounts)
                 }
                 
                 // A plain Button that pops up an NSMenu on click: SwiftUI's Menu is backed by an NSPopUpButton,
                 // and creating one per row as rows scroll into view was a major source of scroll hitches.
-                cell(help: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), press: repostPress, action: {
+                cell(help: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), lead: reach, press: repostPress, action: {
                     guard !repostPress.consumeClick() else { return }
                     showRepostMenu()
                 }) { hovered in
                     label(icon: "arrow.2.squarepath", count: tweet.retweetCount, isActive: tweet.isRetweeted,
-                          color: tweet.isRetweeted || hovered ? Self.repostColor : ThemeManager.secondaryText)
+                          color: tweet.isRetweeted || hovered ? Self.repostColor : ThemeManager.secondaryText,
+                          compact: compact, compressCounts: compressCounts)
                 }
                 
-                cell(help: tweet.isFavorited ? loc.t("unlike") : loc.t("like"), action: {
+                cell(help: tweet.isFavorited ? loc.t("unlike") : loc.t("like"), lead: reach, action: {
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
                         like.scale = 1.35
                     }
@@ -309,13 +321,15 @@ struct TweetActionBar: View {
                 }) { hovered in
                     label(icon: tweet.isFavorited ? "heart.fill" : "heart", count: tweet.favoriteCount,
                           isActive: tweet.isFavorited, iconScale: like.scale,
-                          color: tweet.isFavorited || hovered ? Self.likeColor : ThemeManager.secondaryText)
+                          color: tweet.isFavorited || hovered ? Self.likeColor : ThemeManager.secondaryText,
+                          compact: compact, compressCounts: compressCounts)
                 }
             }
             .opacity(tweet.author.hasBlockedYou ? 0.35 : 1)
             
             if !isProminent {
-                label(icon: "chart.bar.xaxis", count: tweet.viewCount ?? 0, color: ThemeManager.secondaryText)
+                label(icon: "chart.bar.xaxis", count: tweet.viewCount ?? 0, color: ThemeManager.secondaryText,
+                      compact: compact, compressCounts: compressCounts)
                     .help(loc.t("views"))
                     .padding(.top, reachAbove)
                     .padding(.bottom, reachBelow)
@@ -324,19 +338,21 @@ struct TweetActionBar: View {
             
             // Beside the timeline's share button, with a narrow gap the two split between them
             cell(help: loc.t(tweet.isBookmarked ? "remove_bookmark" : "bookmark"),
-                 trailing: isProminent ? 0 : Self.bookmarkGap / 2, fills: isProminent,
+                 lead: reach, trailing: isProminent ? 0 : bookmarkGap / 2, fills: isProminent,
                  action: { actions.bookmark(tweet) }) { hovered in
                 label(icon: tweet.isBookmarked ? "bookmark.fill" : "bookmark",
                       count: isProminent ? tweet.bookmarkCount : 0, isActive: tweet.isBookmarked,
-                      color: tweet.isBookmarked || hovered ? ThemeManager.accent : ThemeManager.secondaryText)
+                      color: tweet.isBookmarked || hovered ? ThemeManager.accent : ThemeManager.secondaryText,
+                      compact: compact, compressCounts: compressCounts)
             }
             // The cell takes up only its icon; its target reaches halfway across the gap after it
-            .padding(.trailing, isProminent ? 0 : Self.bookmarkGap)
+            .padding(.trailing, isProminent ? 0 : bookmarkGap)
             
-            cell(help: loc.t("copy_link"), lead: isProminent ? Self.reach : Self.bookmarkGap / 2, fills: false,
+            cell(help: loc.t("copy_link"), lead: isProminent ? reach : bookmarkGap / 2, fills: false,
                  action: { actions.share(tweet) }) { hovered in
                 label(icon: "square.and.arrow.up", count: 0,
-                      color: hovered ? ThemeManager.accent : ThemeManager.secondaryText)
+                      color: hovered ? ThemeManager.accent : ThemeManager.secondaryText,
+                      compact: compact, compressCounts: compressCounts)
             }
         }
     }
@@ -370,16 +386,22 @@ struct TweetActionBar: View {
         .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
     }
     
-    private func label(icon: String, count: Int, isActive: Bool = false, iconScale: CGFloat = 1, color: Color) -> some View {
-        HStack(spacing: 5) {
+    private func label(icon: String, count: Int, isActive: Bool = false, iconScale: CGFloat = 1,
+                       color: Color, compact: Bool, compressCounts: Bool) -> some View {
+        HStack(spacing: compact ? 2 : 5) {
             Image(systemName: icon)
                 .font(.system(size: iconSize, weight: isActive && icon == "arrow.2.squarepath" ? .bold : .regular))
                 .scaleEffect(iconScale)
+                .fixedSize()
             if count > 0 {
                 Text(formatCount(count))
                     .font(theme.appFont(size: textSize, weight: isActive ? .semibold : .regular))
+                    .lineLimit(1)
+                    .minimumScaleFactor(compressCounts ? 0.8 : 1)
             }
         }
+        // Both spacing presets report their full width before the last resort of compressing count text.
+        .fixedSize(horizontal: !compressCounts, vertical: true)
         .foregroundColor(color)
         .contentShape(Rectangle())
     }

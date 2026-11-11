@@ -26,6 +26,7 @@ Tweetintosh focuses on utility, keyboard navigation, and desktop ergonomics that
 - **Stable Reading Position**: Background timeline polling never auto-scrolls or displaces the text you are reading. New items wait behind a top indicator until summoned.
 - **Responsive Timeline**: The Home timeline prioritizes visible and nearby posts when measuring rows, and prepares media in the background. With the detail pane hidden, scrolling either blank margin also scrolls the timeline, with or without the sidebar.
 - **Comment Media Preloading**: Post pages prepare comment avatars and media in the background and insert each new page of replies together. Scrolling uses the native speed without an added multiplier.
+- **Compact Post Actions**: Narrow panes tighten action spacing before compressing counts, keeping reply, repost, like, and view counts on one line.
 - **Soft Refresh Edges**: Home and Notifications smoothly open and close space above the first row while refreshing, with the same animation fading to transparent at both sides.
 - **Click Again to Refresh**: Click the selected Home or Notifications button in the top bar or sidebar to glide quickly to the top, then refresh its current feed. Respects Reduce Motion.
 - **Multi-Account Switching**: Save multiple profiles and switch between them without re-authenticating.
@@ -52,6 +53,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 - **阅读位置保护**：后台检测到新推文时仅在顶部显示更新计数，绝不会自动将时间线强制置顶移位。
 - **流畅浏览时间线**：主页优先测量屏幕内及附近的推文，并在后台准备媒体内容。详情栏隐藏时，无论是否展开左侧栏，在时间线两侧留白处滚动也能滚动时间线。
 - **评论媒体预加载**：详情页在后台提前缓存评论头像和媒体，每页评论一次性加入列表；滚动保持原生速度，不叠加倍率。
+- **紧凑推文操作栏**：窄栏优先缩小按钮及图标与数字间距，再适度压缩计数文字，回复、转推、点赞及浏览数保持单行。
 - **柔和刷新边缘**：主页与通知页在刷新时平滑展开、收起首行上方的空白区域，刷新动画的左右两侧统一渐隐至透明。
 - **再次点击刷新**：再次点击顶栏或侧栏中已选中的主页、通知按钮，先快速平滑返回页首，再刷新当前信息流，并遵循系统“减少动态效果”设置。
 - **多账号快速切换**：支持保存多个 X 账号，随时一键切换身份。
