@@ -31,6 +31,14 @@ private struct NotificationsPullRefreshIndicatorOverlay: View {
             )
             .frame(height: 40)
             .frame(maxWidth: .infinity)
+            .mask {
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.12),
+                    .init(color: .black, location: 0.88),
+                    .init(color: .clear, location: 1)
+                ], startPoint: .leading, endPoint: .trailing)
+            }
             .offset(y: offsetY)
             .opacity(opac)
             .allowsHitTesting(false)
@@ -152,13 +160,15 @@ struct NotificationsView: View {
     
     // MARK: - Notifications Scroll Content
     private var notificationsContent: some View {
-        ScrollViewReader { scrollProxy in
-            // Clearance under top capsules (Primary Capsule + Secondary Filter Capsule). Fixed even while
-            // refreshing: the spinner draws over the first rows, so no feed's refresh state can shift the page.
+        let isBusy = viewModel.isRefreshing
+            || (viewModel.isAwaitingSelectedFeed && !viewModel.displayedItems.isEmpty)
+
+        return ScrollViewReader { scrollProxy in
+            // Reserve the same 40-point refresh space as Home so the indicator never covers the first row.
             // A stack rather than a List: rows have to fade out and close the gap on a filter change, and a List
             // skips that animation for a contiguous block of removals.
             ScrollColumn(
-                topSpacer: nav.sidebarExpanded ? 36 : 118,
+                topSpacer: (nav.sidebarExpanded ? 36 : 118) + (isBusy ? 40 : 0),
                 onScrollView: { sv in
                     TrackpadPullCoordinator.shared.attachScrollView(sv, owner: "Notifications")
                 },
@@ -208,6 +218,10 @@ struct NotificationsView: View {
             .overlay(alignment: .top) {
                 NotificationsPullRefreshIndicatorOverlay()
             }
+            .animation(
+                NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.3),
+                value: isBusy
+            )
         }
     }
     
