@@ -120,6 +120,7 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
         ancestors = data.ancestors
         replies = data.replies
         bottomCursor = data.bottomCursor
+        prefetchMedia(for: [focalTweet] + data.ancestors + data.replies)
     }
     
     func loadDetail() {
@@ -162,10 +163,9 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
                 defer { completion() }
                 guard let self = self, case .success(let data) = result else { return }
                 var existing = Set(self.replies.map { $0.id })
-                for reply in data.replies where !existing.contains(reply.id) && !reply.isPromoted {
-                    self.replies.append(reply)
-                    existing.insert(reply.id)
-                }
+                let newReplies = data.replies.filter { !$0.isPromoted && existing.insert($0.id).inserted }
+                self.replies.append(contentsOf: newReplies)
+                self.prefetchMedia(for: newReplies)
             }
         }
     }
@@ -220,21 +220,26 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
                 self.isLoadingMore = false
                 switch result {
                 case .success(let data):
-                    // Append new unique replies
+                    // Publish once per page: each change rebuilds the conversation groups and updates the List.
                     var existingIds = Set(self.replies.map { $0.id })
-                    var added = 0
-                    for r in data.replies where !existingIds.contains(r.id) {
-                        self.replies.append(r)
-                        existingIds.insert(r.id)
-                        added += 1
-                    }
+                    let newReplies = data.replies.filter { existingIds.insert($0.id).inserted }
+                    self.replies.append(contentsOf: newReplies)
+                    self.prefetchMedia(for: newReplies)
                     // X keeps handing back a cursor even when the replies have run out; stop paging (and the
                     // spinner) once a page brings nothing new
-                    self.bottomCursor = (added == 0 || data.bottomCursor == cursor) ? nil : data.bottomCursor
+                    self.bottomCursor = (newReplies.isEmpty || data.bottomCursor == cursor) ? nil : data.bottomCursor
                 case .failure:
                     break
                 }
             }
+        }
+    }
+
+    private func prefetchMedia(for tweets: [Tweet]) {
+        let tweets = Array(tweets.prefix(60))
+        let cache = MediaCacheManager.shared
+        DispatchQueue.global(qos: .utility).async {
+            cache.prefetchTweetsMedia(tweets)
         }
     }
     
