@@ -104,6 +104,7 @@ final class APIClient {
     // MARK: - Fetch GraphQL Home Timeline (For You & Following)
     func fetchGraphQLHomeTimeline(
         feedType: HomeFeedType,
+        listId: String? = nil,
         cursor: String? = nil,
         seenTweetIds: [String] = [],
         completion: @escaping (Result<(tweets: [Tweet], topCursor: String?, bottomCursor: String?), APIError>) -> Void
@@ -141,13 +142,14 @@ final class APIClient {
         
         // Handle List timeline with GET method as expected by Twitter
         if feedType == .list {
-            let listId = TimelineViewModel.shared.selectedListId
-            guard !listId.isEmpty else {
+            // The requested list, not whichever one is selected now: the reader may have moved on before the answer
+            let requestedListId = listId ?? TimelineViewModel.shared.selectedListId
+            guard !requestedListId.isEmpty else {
                 completion(.success(([], nil, nil)))
                 return
             }
             
-            var listVariables: [String: Any] = ["listId": listId, "count": 20]
+            var listVariables: [String: Any] = ["listId": requestedListId, "count": 20]
             if let cursor = cursor {
                 listVariables["cursor"] = cursor
             }
@@ -312,15 +314,18 @@ final class APIClient {
             let entries = (inst["entries"] as? [[String: Any]]) ?? []
             for e in entries {
                 let eid = e["entryId"] as? String ?? ""
-                
-                if eid.hasPrefix("cursor-top-") {
-                    if let content = e["content"] as? [String: Any],
-                       let val = content["value"] as? String {
+                let content = e["content"] as? [String: Any]
+                // A cursor is typed in its content as often as it is named by its entry id; reading only the id
+                // turned pages that carried their next cursor this way into a feed that had ended.
+                if let cursorType = content?["cursorType"] as? String, let value = content?["value"] as? String {
+                    if cursorType == "Bottom" { bottomCursor = value }
+                    if cursorType == "Top" { topCursor = value }
+                } else if eid.hasPrefix("cursor-top-") {
+                    if let val = content?["value"] as? String {
                         topCursor = val
                     }
                 } else if eid.hasPrefix("cursor-bottom-") {
-                    if let content = e["content"] as? [String: Any],
-                       let val = content["value"] as? String {
+                    if let val = content?["value"] as? String {
                         bottomCursor = val
                     }
                 } else if eid.hasPrefix("tweet-") || (ThemeManager.shared.showPromotedPosts && (eid.hasPrefix("promoted-tweet-") || eid.hasPrefix("promotedTweet-") || eid.lowercased().contains("promoted"))) {
@@ -331,6 +336,13 @@ final class APIClient {
                         }
                     }
                 }
+            }
+            // Later pages hand over their next cursor by replacing the previous one
+            if let content = (inst["entry"] as? [String: Any])?["content"] as? [String: Any],
+               let cursorType = content["cursorType"] as? String,
+               let value = content["value"] as? String {
+                if cursorType == "Bottom" { bottomCursor = value }
+                if cursorType == "Top" { topCursor = value }
             }
         }
         

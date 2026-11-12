@@ -543,4 +543,7 @@ struct TimelineSnapshot: Codable {
     var topCursor: String?
     var bottomCursor: String?
     var savedAt: Date
+    // Whether these posts are every post that was loaded, so bottomCursor continues them exactly. Absent in snapshots
+    // written before this was recorded, which cannot be trusted either way; a cut-down snapshot writes false.
+    var isComplete: Bool?
 }

@@ -2543,6 +2543,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "加载中",
             .traditionalChinese: "載入中"
         ],
+        "timeline_load_more_failed": [
+            .english: "Couldn't load more posts",
+            .japanese: "これ以上ポストを読み込めませんでした",
+            .korean: "더 많은 포스트를 불러오지 못했습니다",
+            .simplifiedChinese: "无法加载更多推文",
+            .traditionalChinese: "無法載入更多貼文"
+        ],
+        "timeline_load_more_retry": [
+            .english: "Try again",
+            .japanese: "再試行",
+            .korean: "다시 시도",
+            .simplifiedChinese: "重试",
+            .traditionalChinese: "重試"
+        ],
+        "timeline_no_more_posts": [
+            .english: "No more posts",
+            .japanese: "これ以上のポストはありません",
+            .korean: "더 이상 포스트가 없습니다",
+            .simplifiedChinese: "没有更多推文",
+            .traditionalChinese: "沒有更多貼文"
+        ],
+        "timeline_nothing_more_for_now": [
+            .english: "Nothing more for now",
+            .japanese: "今はこれ以上ありません",
+            .korean: "지금은 더 이상 없습니다",
+            .simplifiedChinese: "暂时没有更多推文",
+            .traditionalChinese: "暫時沒有更多貼文"
+        ],
         "experimental": [
             .english: "Experimental",
             .japanese: "試験運用",
