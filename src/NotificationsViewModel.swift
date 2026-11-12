@@ -260,6 +260,10 @@ final class NotificationsViewModel: ObservableObject {
     // Leaving rows fade in place first, then the survivors close the gap
     private static let leaveDuration = 0.12
     private static let settleDuration = 0.22
+    // A fast refresh still shows its spinner for this long, without holding the rows back
+    private static let minimumRefreshDuration: TimeInterval = 2.4
+    // Which refresh owns each feed's spinner, so a stale timer cannot end a newer one's
+    private var refreshIndicators: [NotificationFilter: UUID] = [:]
     private var transitionID = UUID()
 
     var isRefreshing: Bool {
@@ -295,6 +299,7 @@ final class NotificationsViewModel: ObservableObject {
         displayedFilter = .all
         displayedItems = []
         fadingItemIDs = []
+        refreshIndicators = [:]
         transitionID = UUID()
     }
     
@@ -362,16 +367,15 @@ final class NotificationsViewModel: ObservableObject {
         state.showsRefresh = !silently
         state.failed = false
         feeds[feed] = state
+        if !silently { refreshIndicators[feed] = requestID }
 
         let startTime = Date()
         APIClient.shared.fetchNotifications(feed: feed) { [weak self] result in
-            let elapsed = Date().timeIntervalSince(startTime)
-            let remainingDelay = max(0.0, 2.4 - elapsed)
+            let remaining = max(0.0, Self.minimumRefreshDuration - Date().timeIntervalSince(startTime))
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + (silently ? 0 : remainingDelay)) {
+            DispatchQueue.main.async {
                 guard let self = self, var state = self.feeds[feed], state.refreshID == requestID else { return }
                 state.refreshID = nil
-                state.showsRefresh = false
                 switch result {
                 case .success(let data):
                     state.page = Page(items: data.items, topCursor: data.topCursor,
@@ -383,7 +387,24 @@ final class NotificationsViewModel: ObservableObject {
                     state.failed = true
                     self.feeds[feed] = state
                 }
+                if !silently { self.endRefreshIndicator(feed: feed, requestID: requestID, after: remaining) }
             }
+        }
+    }
+
+    // The rows are already up to date when this runs; only the spinner waits out its minimum.
+    private func endRefreshIndicator(feed: NotificationFilter, requestID: UUID, after delay: TimeInterval) {
+        let finish = { [weak self] in
+            guard let self, self.refreshIndicators[feed] == requestID,
+                  var state = self.feeds[feed] else { return }
+            self.refreshIndicators[feed] = nil
+            state.showsRefresh = false
+            self.feeds[feed] = state
+        }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: finish)
+        } else {
+            finish()
         }
     }
     

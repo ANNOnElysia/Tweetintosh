@@ -525,6 +525,10 @@ final class TimelineViewModel {
         let requestSession = accountSession
         let seenIdsToSend = (currentFeed == .forYou) ? seenTweetIds : []
         let startTime = Date()
+        // The spinner keeps a minimum on-screen time so a fast answer doesn't flash it; the posts themselves are
+        // applied as soon as they arrive rather than waiting for it.
+        let indicatorID = lastFetchAt
+        let minDisplayDuration: Double = isUserInitiated ? 2.4 : 1.2
         
         APIClient.shared.fetchGraphQLHomeTimeline(
             feedType: currentFeed,
@@ -532,15 +536,12 @@ final class TimelineViewModel {
             cursor: nil,
             seenTweetIds: seenIdsToSend
         ) { [weak self] result in
-            let elapsed = Date().timeIntervalSince(startTime)
-            let minDisplayDuration: Double = isUserInitiated ? 2.4 : 1.2
-            let remainingDelay = max(0.0, minDisplayDuration - elapsed)
+            let remaining = max(0.0, minDisplayDuration - Date().timeIntervalSince(startTime))
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + (silently ? 0 : remainingDelay)) {
+            DispatchQueue.main.async {
                 // A refresh for the previous account must not paint over the new one's feed
                 guard let self = self, self.accountSession == requestSession else { return }
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
-                    self.isRefreshing = false
                     self.isLoadingInitial = false
                 }
                 
@@ -649,7 +650,23 @@ final class TimelineViewModel {
                         self.errorMessage = err.localizedDescription
                     }
                 }
+                
+                if !silently { self.endRefreshIndicator(indicatorID, after: remaining) }
             }
+        }
+    }
+    
+    // The posts are already on screen when this runs; only the spinner waits out its minimum. Only the refresh that
+    // set the id may end it, so a later refresh is not cut short by an earlier timer.
+    private func endRefreshIndicator(_ id: Date, after delay: TimeInterval) {
+        let finish = { [weak self] in
+            guard let self, self.lastFetchAt == id, self.isRefreshing else { return }
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) { self.isRefreshing = false }
+        }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: finish)
+        } else {
+            finish()
         }
     }
     
