@@ -248,16 +248,18 @@ private struct NotificationFilterCapsuleBar: View {
     let nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
-    @Namespace private var filterTabNamespace
+    @State private var previewFilter: PressDragPreview<NotificationFilter>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     var body: some View {
         HStack(spacing: 3) {
             ForEach(NotificationFilter.allCases) { filter in
-                let isSelected = viewModel.selectedFilter == filter
+                let isSelected = (previewFilter?.id ?? viewModel.selectedFilter) == filter
+                let isCurrentFilter = viewModel.selectedFilter == filter
                 Group {
                     HStack(spacing: 4) {
                         Image(systemName: filter.iconName)
-                            .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
+                            .font(.system(size: 12.5, weight: isCurrentFilter ? .bold : .medium))
                         
                         if nav.showShortcutBadges {
                             // Shortcut Indicator (⌥Q, ⌥W, ⌥E, ⌥R)
@@ -277,20 +279,29 @@ private struct NotificationFilterCapsuleBar: View {
                     .frame(height: 26)
                     .frame(minWidth: nav.showShortcutBadges ? 46 : 32)
                     .padding(.horizontal, nav.showShortcutBadges ? 6 : 4)
-                    .background {
-                        if isSelected {
-                            activeFilterBackground
-                        }
-                    }
                     .contentShape(Rectangle())
                 }
                 .pressDragItem(filter)
+                .accessibilityLabel(loc.t(filter.titleKey))
+                .accessibilityAddTraits(isCurrentFilter ? [.isSelected] : [])
                 .help(loc.t(filter.titleKey))
             }
         }
-        .pressDragSelection { (filter: NotificationFilter) in
+        .pressDragSelectionSurface(
+            selection: viewModel.selectedFilter, preview: previewFilter
+        ) {
+            if previewFilter != nil {
+                DraggingSelectionBackground(shape: Capsule())
+            } else {
+                activeFilterBackground
+            }
+        }
+        .padding(.vertical, 5)
+        .pressDragSelection(preview: $previewFilter, axis: .horizontal) { (filter: NotificationFilter) in
             viewModel.selectFilter(filter)
         }
+        .padding(.vertical, -5)
+        .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: previewFilter == nil)
         .padding(.horizontal, 4)
         .padding(.vertical, 3.5)
         .modifier(
@@ -300,8 +311,8 @@ private struct NotificationFilterCapsuleBar: View {
                 isInteractive: false
             )
         )
-        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: viewModel.selectedFilter)
+        .animation(reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.85), value: nav.showShortcutBadges)
+        .animation(reduceMotion ? nil : SidebarMotion.selection, value: viewModel.selectedFilter)
         .fixedSize()
     }
     
@@ -316,7 +327,6 @@ private struct NotificationFilterCapsuleBar: View {
                 Capsule()
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.22) : (theme.isLight ? 0.08 : 0.14)))
                     .tweetGlass(tabGlass, in: Capsule())
-                    .matchedGeometryEffect(id: "notif-active-filter", in: filterTabNamespace)
             } else {
                 defaultActiveBackground
             }
@@ -333,7 +343,6 @@ private struct NotificationFilterCapsuleBar: View {
                     .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.22), lineWidth: 0.7)
                     .allowsHitTesting(false)
             )
-            .matchedGeometryEffect(id: "notif-active-filter", in: filterTabNamespace)
     }
 }
 

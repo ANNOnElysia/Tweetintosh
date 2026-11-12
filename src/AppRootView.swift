@@ -165,6 +165,8 @@ enum SidebarMotion {
     static let toggle = Animation.spring(response: 0.28, dampingFraction: 0.90)
     // The selected tab's glass capsule on its own, which has less distance to cover than the sidebar.
     static let selection = Animation.spring(response: 0.22, dampingFraction: 0.86)
+    // The dragged glass settles after release without slowing direct pointer tracking.
+    static let dragSelection = Animation.spring(response: 0.4, dampingFraction: 0.86)
     static let content = Animation.spring(response: 0.24, dampingFraction: 0.88)
 }
 
@@ -465,6 +467,18 @@ struct AppRootView: View {
     }
 }
 
+struct DraggingSelectionBackground<S: Shape>: View {
+    let shape: S
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
+        shape.fill(Color.clear)
+            .modifier(AdaptiveGlassModifier(
+                isLiquid: theme.useLiquidGlass, shape: shape, isClear: true, isInteractive: false
+            ))
+    }
+}
+
 // MARK: - Top Floating Capsule (Horizontal Droplet)
 private struct LiquidGlassCapsule: View {
     @Binding var selection: AppTab
@@ -472,8 +486,9 @@ private struct LiquidGlassCapsule: View {
     @Bindable var nav = NavigationManager.shared
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
-    @Namespace private var capsuleTabNamespace
     @FocusState private var isSearchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var previewTab: PressDragPreview<AppTab>?
     
     var body: some View {
         HStack(spacing: 0) {
@@ -493,13 +508,14 @@ private struct LiquidGlassCapsule: View {
                     // Center Tabs: Home, Notifications, Messages (Dynamic Width, No Truncation)
                     HStack(spacing: 3) {
                         ForEach(AppTab.available) { tab in
-                            let isSelected = selection == tab && !nav.isSearchActive
+                            let isSelected = (previewTab?.id ?? selection) == tab
+                            let isCurrentTab = selection == tab
                             Group {
                                 HStack(spacing: 5) {
                                     Image(systemName: tab.iconName)
-                                        .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                                        .font(.system(size: 12, weight: isCurrentTab ? .bold : .medium))
                                     Text(tabTitle(tab))
-                                        .font(theme.appFont(size: 12.5, weight: isSelected ? .bold : .medium))
+                                        .font(theme.appFont(size: 12.5, weight: isCurrentTab ? .bold : .medium))
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
                                         .layoutPriority(1)
@@ -521,28 +537,33 @@ private struct LiquidGlassCapsule: View {
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
                                 .fixedSize(horizontal: true, vertical: false)
-                                .layoutPriority(isSelected ? 2 : 1)
-                                .background {
-                                    if isSelected {
-                                        activeTabBackground
-                                    }
-                                }
+                                .layoutPriority(isCurrentTab ? 2 : 1)
                                 .contentShape(Rectangle())
                             }
                             .pressDragItem(tab)
+                            .accessibilityAddTraits(isCurrentTab ? [.isSelected] : [])
+                        }
+                    }
+                    .pressDragSelectionSurface(
+                        selection: selection, preview: previewTab
+                    ) {
+                        if previewTab != nil {
+                            DraggingSelectionBackground(shape: Capsule())
+                        } else {
+                            activeTabBackground
                         }
                     }
                     // The whole height of the bar and the space around it picks the nearest tab
                     .padding(.top, TopBarTarget.above + 4)
                     .padding(.bottom, TopBarTarget.below + 4)
-                    .pressDragSelection(onPress: { (tab: AppTab) in
+                    .pressDragSelection(preview: $previewTab, axis: .horizontal) { (tab: AppTab) in
                         nav.refreshSelectedTab(tab)
-                    }) { (tab: AppTab) in
-                        withAnimation(SidebarMotion.selection) {
+                        withAnimation(reduceMotion ? nil : SidebarMotion.selection) {
                             selection = tab
                             nav.isSearchActive = false
                         }
                     }
+                    .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: previewTab == nil)
                     .padding(.top, -(TopBarTarget.above + 4))
                     .padding(.bottom, -(TopBarTarget.below + 4))
                     .transition(.opacity)
@@ -730,7 +751,6 @@ private struct LiquidGlassCapsule: View {
                 Capsule()
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.24) : (theme.isLight ? 0.08 : 0.16)))
                     .tweetGlass(tabGlass, in: Capsule())
-                    .matchedGeometryEffect(id: "capsule-active-tab", in: capsuleTabNamespace)
             } else {
                 defaultActiveTabBackground
             }
@@ -747,7 +767,6 @@ private struct LiquidGlassCapsule: View {
                     .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.25), lineWidth: 0.7)
                     .allowsHitTesting(false)
             )
-            .matchedGeometryEffect(id: "capsule-active-tab", in: capsuleTabNamespace)
     }
     
     private func tabTitle(_ tab: AppTab) -> String {
@@ -786,7 +805,8 @@ private struct LiquidGlassSidebar: View {
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject private var accounts = AccountManager.shared
-    @Namespace private var selectionNamespace
+    @State private var previewTab: PressDragPreview<AppTab>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -810,23 +830,18 @@ private struct LiquidGlassSidebar: View {
                 .padding(.horizontal, 8)
             
             // Navigation Tabs
-            ForEach(AppTab.available) { tab in
-                let isSelected = selection == tab
-                Button {
-                    nav.refreshSelectedTab(tab)
-                    withAnimation(SidebarMotion.selection) {
-                        nav.closeAllPages()
-                        selection = tab
-                    }
-                } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(AppTab.available) { tab in
+                    let isSelected = (previewTab?.id ?? selection) == tab
+                    let isCurrentTab = selection == tab
                     HStack(spacing: 10) {
                         Image(systemName: tab.iconName)
-                            .font(.system(size: 13.5, weight: isSelected ? .bold : .medium))
+                            .font(.system(size: 13.5, weight: isCurrentTab ? .bold : .medium))
                             .foregroundColor(ThemeManager.accent)
                             .frame(width: 20)
                         
                         Text(tabTitle(tab))
-                            .font(theme.appFont(size: 13, weight: isSelected ? .semibold : .regular))
+                            .font(theme.appFont(size: 13, weight: isCurrentTab ? .semibold : .regular))
                             .foregroundColor(theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))
                         
                         Spacer()
@@ -846,16 +861,31 @@ private struct LiquidGlassSidebar: View {
                     }
                     .padding(.horizontal, 11)
                     .padding(.vertical, 8)
-                    .background {
-                        if isSelected {
-                            sidebarActiveTabBackground
-                        }
-                    }
+                    .frame(minHeight: 36)
                     .contentShape(Rectangle())
+                    .pressDragItem(tab)
+                    .accessibilityAddTraits(isCurrentTab ? [.isSelected] : [])
                 }
-                .buttonStyle(.target)
-                .padding(.horizontal, 8)
             }
+            .pressDragSelectionSurface(
+                selection: selection, preview: previewTab
+            ) {
+                if previewTab != nil {
+                    DraggingSelectionBackground(shape: Capsule(style: .continuous))
+                } else {
+                    sidebarActiveTabBackground
+                }
+            }
+            .pressDragSelection(preview: $previewTab, axis: .vertical) { (tab: AppTab) in
+                nav.refreshSelectedTab(tab)
+                withAnimation(reduceMotion ? nil : SidebarMotion.selection) {
+                    nav.closeAllPages()
+                    selection = tab
+                }
+            }
+            .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: previewTab == nil)
+            .animation(reduceMotion ? nil : SidebarMotion.selection, value: selection)
+            .padding(.horizontal, 8)
             
             SidebarContextSection(selection: $selection)
             
@@ -998,7 +1028,6 @@ private struct LiquidGlassSidebar: View {
                 Capsule(style: .continuous)
                     .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
                     .tweetGlass(tabGlass, in: Capsule(style: .continuous))
-                    .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)
             } else {
                 defaultSidebarActiveTabBackground
             }
@@ -1015,7 +1044,6 @@ private struct LiquidGlassSidebar: View {
                     .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.18), lineWidth: 0.6)
                     .allowsHitTesting(false)
             )
-            .matchedGeometryEffect(id: "sidebar-active-tab", in: selectionNamespace)
     }
 }
 
@@ -1119,6 +1147,9 @@ private struct SidebarContextSection: View {
     private let nav = NavigationManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var theme = ThemeManager.shared
+    @State private var feedPreview: PressDragPreview<SidebarFeedChoice>?
+    @State private var filterPreview: PressDragPreview<NotificationFilter>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     var body: some View {
         Group {
@@ -1159,14 +1190,17 @@ private struct SidebarContextSection: View {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach([HomeFeedType.forYou, .following, .bookmarks]) { type in
                     row(title: loc.t(type.titleKey), badge: type.shortcutLetter,
-                        isSelected: timelineVM.selectedFeed == type) {
+                        isSelected: feedPreview == nil && timelineVM.selectedFeed == type,
+                        isPreviewed: feedPreview?.id == .feed(type)) {
                         iconTile(type.iconName)
                     }
                     .pressDragItem(SidebarFeedChoice.feed(type))
+                    .accessibilityAddTraits(timelineVM.selectedFeed == type ? [.isSelected] : [])
                 }
                 ForEach(timelineVM.userLists) { list in
                     row(title: list.name, badge: nil,
-                        isSelected: timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id) {
+                        isSelected: feedPreview == nil && timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id,
+                        isPreviewed: feedPreview?.id == .list(list.id)) {
                         if let banner = list.bannerUrl {
                             CachedAsyncImage(urlString: banner, targetSize: CGSize(width: 26, height: 26))
                                 .frame(width: 26, height: 26)
@@ -1177,10 +1211,16 @@ private struct SidebarContextSection: View {
                     }
                     .help(list.memberCount > 0 ? "\(list.name) · \(list.memberCount)" : list.name)
                     .pressDragItem(SidebarFeedChoice.list(list.id))
+                    .accessibilityAddTraits(timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id ? [.isSelected] : [])
                 }
             }
-            .pressDragSelection { (choice: SidebarFeedChoice) in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+            .pressDragSelectionSurface(
+                selection: nil, preview: feedPreview
+            ) {
+                DraggingSelectionBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .pressDragSelection(preview: $feedPreview, axis: .vertical) { (choice: SidebarFeedChoice) in
+                withAnimation(reduceMotion ? nil : SidebarMotion.selection) {
                     nav.closeAllPages()
                     switch choice {
                     case .feed(let type):
@@ -1190,6 +1230,7 @@ private struct SidebarContextSection: View {
                     }
                 }
             }
+            .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: feedPreview == nil)
             
             Button {
                 if let url = URL(string: "https://x.com/i/lists") { NSWorkspace.shared.open(url) }
@@ -1209,26 +1250,34 @@ private struct SidebarContextSection: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(NotificationFilter.allCases) { filter in
                 row(title: loc.t(filter.titleKey), badge: filter.shortcutKey,
-                    isSelected: notifications.selectedFilter == filter) {
+                    isSelected: filterPreview == nil && notifications.selectedFilter == filter,
+                    isPreviewed: filterPreview?.id == filter) {
                     iconTile(filter.iconName)
                 }
                 .pressDragItem(filter)
+                .accessibilityAddTraits(notifications.selectedFilter == filter ? [.isSelected] : [])
             }
         }
-        .pressDragSelection { (filter: NotificationFilter) in
+        .pressDragSelectionSurface(
+            selection: nil, preview: filterPreview
+        ) {
+            DraggingSelectionBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .pressDragSelection(preview: $filterPreview, axis: .vertical) { (filter: NotificationFilter) in
             nav.closeAllPages()
             notifications.selectFilter(filter)
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: notifications.selectedFilter)
+        .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: filterPreview == nil)
+        .animation(reduceMotion ? nil : SidebarMotion.selection, value: notifications.selectedFilter)
     }
     
-    private func row<Icon: View>(title: String, badge: String?, isSelected: Bool, titleColor: Color? = nil,
+    private func row<Icon: View>(title: String, badge: String?, isSelected: Bool, isPreviewed: Bool = false, titleColor: Color? = nil,
                                  @ViewBuilder icon: () -> Icon) -> some View {
         HStack(spacing: 9) {
             icon()
             Text(title)
                 .font(theme.appFont(size: 13))
-                .foregroundColor(titleColor ?? (theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92)))
+                .foregroundColor(titleColor ?? (isPreviewed ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText : Color.white.opacity(0.92))))
                 .lineLimit(1)
             Spacer(minLength: 0)
             if nav.showShortcutBadges, let badge = badge {
@@ -1239,10 +1288,12 @@ private struct SidebarContextSection: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .frame(minHeight: 36)
         .background {
             if isSelected {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14))
+                    .allowsHitTesting(false)
             }
         }
         .contentShape(Rectangle())
