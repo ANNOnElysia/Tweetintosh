@@ -32,6 +32,7 @@ final class MediaCacheManager: ObservableObject {
 
     // One network request per image URL, shared by the prefetcher and every loader showing the picture.
     private struct ImageDataRequest {
+        let id: UUID
         var task: URLSessionDataTask
         var waiters: [UUID: (Data?) -> Void]
     }
@@ -303,12 +304,13 @@ final class MediaCacheManager: ObservableObject {
             let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
                 guard let self else { return }
                 let waiters: [(Data?) -> Void] = self.requestQueue.sync {
-                    let finished = self.imageRequests.removeValue(forKey: urlStr)
-                    return finished.map { Array($0.waiters.values) } ?? []
+                    guard let finished = self.imageRequests[urlStr], finished.id == token else { return [] }
+                    self.imageRequests[urlStr] = nil
+                    return Array(finished.waiters.values)
                 }
                 for waiter in waiters { waiter(data) }
             }
-            self.imageRequests[urlStr] = ImageDataRequest(task: task, waiters: [token: completion])
+            self.imageRequests[urlStr] = ImageDataRequest(id: token, task: task, waiters: [token: completion])
             task.resume()
         }
         return token
