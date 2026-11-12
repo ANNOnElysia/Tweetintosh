@@ -33,7 +33,7 @@ final class MediaCacheManager: ObservableObject {
     // One network request per image URL, shared by the prefetcher and every loader showing the picture.
     private struct ImageDataRequest {
         let id: UUID
-        var task: URLSessionDataTask
+        var task: URLSessionDataTask?
         var waiters: [UUID: (Data?) -> Void]
     }
     private let requestQueue = DispatchQueue(label: "com.anno.tweetintosh.mediacache.requests")
@@ -267,14 +267,16 @@ final class MediaCacheManager: ObservableObject {
     private func startPrefetch() {
         while prefetchActive < Self.maxConcurrentPrefetches, !prefetchPending.isEmpty {
             let urlStr = prefetchPending.removeFirst()
-            prefetchQueued.remove(urlStr)
+            // A visible loader may have filled the cache while this URL waited for a prefetch slot.
+            guard !hasCachedImage(for: urlStr), imageRequests[urlStr] == nil else {
+                prefetchQueued.remove(urlStr)
+                continue
+            }
             prefetchActive += 1
-            fetchImageData(for: urlStr) { [weak self] data in
+            fetchImageData(for: urlStr) { [weak self] _ in
                 guard let self else { return }
-                if let data, CGImageSourceCreateWithData(data as CFData, nil) != nil {
-                    self.writeImageDataIfNeeded(data, for: urlStr)
-                }
                 self.requestQueue.async {
+                    self.prefetchQueued.remove(urlStr)
                     self.prefetchActive -= 1
                     self.startPrefetch()
                 }
@@ -300,20 +302,48 @@ final class MediaCacheManager: ObservableObject {
                 self.imageRequests[urlStr] = existing
                 return
             }
-            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
-            let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-                guard let self else { return }
-                let waiters: [(Data?) -> Void] = self.requestQueue.sync {
-                    guard let finished = self.imageRequests[urlStr], finished.id == token else { return [] }
-                    self.imageRequests[urlStr] = nil
-                    return Array(finished.waiters.values)
+            self.imageRequests[urlStr] = ImageDataRequest(id: token, task: nil, waiters: [token: completion])
+            self.ioQueue.async {
+                let path = self.imageFilePath(for: urlStr)
+                if let data = try? Data(contentsOf: path), CGImageSourceCreateWithData(data as CFData, nil) != nil {
+                    self.finishImageData(for: urlStr, id: token, data: data)
+                    return
                 }
-                for waiter in waiters { waiter(data) }
+                self.requestQueue.async {
+                    guard var registered = self.imageRequests[urlStr], registered.id == token else { return }
+                    let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
+                    let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+                        guard let self else { return }
+                        guard let data, CGImageSourceCreateWithData(data as CFData, nil) != nil else {
+                            self.finishImageData(for: urlStr, id: token, data: nil)
+                            return
+                        }
+                        // Keep the shared request registered until its bytes are on disk. Late consumers and
+                        // prefetches then join it instead of starting another download during the write.
+                        self.ioQueue.async {
+                            if !FileManager.default.fileExists(atPath: path.path) {
+                                try? data.write(to: path, options: .atomic)
+                            }
+                            self.finishImageData(for: urlStr, id: token, data: data)
+                        }
+                    }
+                    registered.task = task
+                    self.imageRequests[urlStr] = registered
+                    task.resume()
+                }
             }
-            self.imageRequests[urlStr] = ImageDataRequest(id: token, task: task, waiters: [token: completion])
-            task.resume()
         }
         return token
+    }
+
+    // Called off requestQueue, after disk lookup or after the download has finished persisting its bytes.
+    private func finishImageData(for urlStr: String, id: UUID, data: Data?) {
+        let waiters: [(Data?) -> Void] = requestQueue.sync {
+            guard let finished = imageRequests[urlStr], finished.id == id else { return [] }
+            imageRequests[urlStr] = nil
+            return Array(finished.waiters.values)
+        }
+        for waiter in waiters { waiter(data) }
     }
 
     /// Says this caller no longer wants the picture; the download is cancelled when it was the last one.
@@ -323,7 +353,7 @@ final class MediaCacheManager: ObservableObject {
                   request.waiters.removeValue(forKey: token) != nil else { return }
             if request.waiters.isEmpty {
                 self.imageRequests[urlStr] = nil
-                request.task.cancel()
+                request.task?.cancel()
             } else {
                 self.imageRequests[urlStr] = request
             }
