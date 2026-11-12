@@ -296,10 +296,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
             // Generate authentic x-client-transaction-id from X's document shell
             let txId = "";
             try {
-                const resp = await fetch("/");
-                const html = await resp.text();
-                const doc = new DOMParser().parseFromString(html, "text/html");
-                const ct = await TweetintoshTx.default.create(doc);
+                const ct = await tweetintoshTransactionGenerator();
                 txId = await ct.generateTransactionId("POST", path);
             } catch (e) {
                 console.error("Failed to generate transaction id:", e);
@@ -336,6 +333,25 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
             // The cookie may have been replaced again by this response
             const latestCsrf = (document.cookie.match(/(?:^|;\\s*)ct0=([^;]+)/) || [])[1] || sentCsrf;
             return { status: response.status, text: text, hasCaptcha: hasCaptcha, csrf: latestCsrf };
+        }
+
+        // X's own client initializes this once per page: the document shell and its indices don't change while the
+        // page lives, and only the per-request transaction id does. Concurrent writes share the same initialization.
+        function tweetintoshTransactionGenerator() {
+            if (!window.__tweetintoshTxGenerator) {
+                window.__tweetintoshTxGenerator = (async () => {
+                    const resp = await fetch("/");
+                    const html = await resp.text();
+                    const doc = new DOMParser().parseFromString(html, "text/html");
+                    return await TweetintoshTx.default.create(doc);
+                })();
+                // A failed initialization must not be cached, so the next write tries again.
+                window.__tweetintoshTxGenerator = window.__tweetintoshTxGenerator.catch((error) => {
+                    window.__tweetintoshTxGenerator = null;
+                    throw error;
+                });
+            }
+            return await window.__tweetintoshTxGenerator;
         }
 
         return await executeRequest();
