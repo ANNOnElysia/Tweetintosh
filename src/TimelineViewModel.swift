@@ -48,6 +48,7 @@ final class TimelineViewModel {
     var isAuthenticated = false
     var errorMessage: String?
     @ObservationIgnored private var isReturningToTop = false
+    @ObservationIgnored private var refreshIndicatorID: UUID?
     
     @ObservationIgnored private var forYouTopCursor: String?
     @ObservationIgnored private var forYouBottomCursor: String?
@@ -258,6 +259,7 @@ final class TimelineViewModel {
         isAuthenticated = false
         isLoadingInitial = false
         isRefreshing = false
+        refreshIndicatorID = nil
         isLoadingMore = false
         errorMessage = nil
         tweets = []
@@ -515,7 +517,9 @@ final class TimelineViewModel {
     // MARK: - Refresh (Pull or Initial)
     func refresh(silently: Bool = false, isUserInitiated: Bool = false) {
         lastFetchAt = Date()
-        if !silently {
+        let indicatorID = silently ? nil : UUID()
+        if let indicatorID {
+            refreshIndicatorID = indicatorID
             isRefreshing = true
         }
 
@@ -527,7 +531,6 @@ final class TimelineViewModel {
         let startTime = Date()
         // The spinner keeps a minimum on-screen time so a fast answer doesn't flash it; the posts themselves are
         // applied as soon as they arrive rather than waiting for it.
-        let indicatorID = lastFetchAt
         let minDisplayDuration: Double = isUserInitiated ? 2.4 : 1.2
         
         APIClient.shared.fetchGraphQLHomeTimeline(
@@ -651,16 +654,16 @@ final class TimelineViewModel {
                     }
                 }
                 
-                if !silently { self.endRefreshIndicator(indicatorID, after: remaining) }
+                if let indicatorID { self.endRefreshIndicator(indicatorID, after: remaining) }
             }
         }
     }
     
-    // The posts are already on screen when this runs; only the spinner waits out its minimum. Only the refresh that
-    // set the id may end it, so a later refresh is not cut short by an earlier timer.
-    private func endRefreshIndicator(_ id: Date, after delay: TimeInterval) {
+    // Silent requests update the polling clock but do not own or replace a visible refresh indicator.
+    private func endRefreshIndicator(_ id: UUID, after delay: TimeInterval) {
         let finish = { [weak self] in
-            guard let self, self.lastFetchAt == id, self.isRefreshing else { return }
+            guard let self, self.refreshIndicatorID == id else { return }
+            self.refreshIndicatorID = nil
             withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) { self.isRefreshing = false }
         }
         if delay > 0 {
