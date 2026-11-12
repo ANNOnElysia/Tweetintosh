@@ -25,7 +25,7 @@ Tweetintosh focuses on utility, keyboard navigation, and desktop ergonomics that
 - **About Window**: A centered native window shows the app icon and version, with icon buttons to open the GitHub repository and website.
 - **Inline Link Pointers**: URLs and @mentions show a pointing hand. Scrolling, resizing, and changing posts clear the previous text's hover state.
 - **Stable Reading Position**: Background timeline polling never auto-scrolls or displaces the text you are reading. New items wait behind a top indicator until summoned.
-- **Responsive Timeline**: The Home timeline prioritizes visible and nearby posts when measuring rows, and prepares media in the background. With the detail pane hidden, scrolling either blank margin also scrolls the timeline, with or without the sidebar.
+- **Responsive Timeline**: The Home timeline prioritizes visible and nearby posts when measuring rows, and prepares media in the background. Image tiles share downloads, release them when no longer visible, and reuse cached sizes when returning; queued preloads skip images already cached. With the detail pane hidden, scrolling either blank margin also scrolls the timeline, with or without the sidebar.
 - **Comment Media Preloading**: Post pages prepare comment avatars and media in the background and insert each new page of replies together. Scrolling uses the native speed without an added multiplier.
 - **Compact Post Actions**: Narrow panes tighten action spacing before compressing counts, keeping reply, repost, like, and view counts on one line.
 - **Soft Refresh Edges**: Home and Notifications smoothly open and close space above the first row while refreshing, with the same animation fading to transparent at both sides.
@@ -53,7 +53,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 - **关于窗口**：居中展示应用图标与版本，通过图标按钮在浏览器中打开 GitHub 仓库及官网。
 - **正文链接光标**：URL 与 @提及显示手形光标；滚动、调整窗口大小或切换帖子时清除旧正文的悬浮状态。
 - **阅读位置保护**：后台检测到新推文时仅在顶部显示更新计数，绝不会自动将时间线强制置顶移位。
-- **流畅浏览时间线**：主页优先测量屏幕内及附近的推文，并在后台准备媒体内容。详情栏隐藏时，无论是否展开左侧栏，在时间线两侧留白处滚动也能滚动时间线。
+- **流畅浏览时间线**：主页优先测量屏幕内及附近的推文，并在后台准备媒体内容。图片共享下载，离开可见区域后释放订阅，再次显示时复用对应尺寸的缓存；排队预加载会跳过已有缓存的图片。详情栏隐藏时，无论是否展开左侧栏，在时间线两侧留白处滚动也能滚动时间线。
 - **评论媒体预加载**：详情页在后台提前缓存评论头像和媒体，每页评论一次性加入列表；滚动保持原生速度，不叠加倍率。
 - **紧凑推文操作栏**：窄栏优先缩小按钮及图标与数字间距，再适度压缩计数文字，回复、转推、点赞及浏览数保持单行。
 - **柔和刷新边缘**：主页与通知页在刷新时平滑展开、收起首行上方的空白区域，刷新动画的左右两侧统一渐隐至透明。

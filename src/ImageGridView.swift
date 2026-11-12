@@ -65,7 +65,7 @@ final class ImageLoader: ObservableObject {
         let url: String
         let targetSize: CGSize?
 
-        // Display box in device pixels; nil decodes at full resolution
+        // Display box in device pixels; nil decodes at full resolution.
         var pixelSize: CGSize? {
             guard let size = targetSize, size.width > 0, size.height > 0 else { return nil }
             let scale = NSScreen.main?.backingScaleFactor ?? 2.0
@@ -73,21 +73,36 @@ final class ImageLoader: ObservableObject {
         }
     }
 
-    // Published as a CGImage so SwiftUI hands the decoded bitmap straight to Core Animation (no NSImage rep lookup)
+    private struct Flight {
+        let id: UUID
+        let request: Request
+    }
+
+    // Published as a CGImage so SwiftUI hands the decoded bitmap straight to Core Animation (no NSImage rep lookup).
     @Published private var loadedImage: CGImage?
-    // The request the picture on screen belongs to, the one wanted now, and the one being fetched
+    // All loader state stays on the main thread; background work only holds immutable requests and weak references.
     private var shown: Request?
     private var current: Request?
-    private var inFlight: Request?
+    private var inFlight: Flight?
+    private var pendingData: (flightID: UUID, url: String, token: UUID)?
+    private var resizeWork: DispatchWorkItem?
+    private var resizeID: UUID?
 
     init(urlString: String?, targetSize: CGSize? = nil) {
         guard let urlString = urlString else { return }
         let request = Request(url: urlString, targetSize: targetSize)
         current = request
-        // Immediate frame-0 hit if already decoded in memory
+        // Immediate frame-0 hit if already decoded in memory.
         if let mem = MediaCacheManager.shared.memoryImage(for: urlString, targetPixelSize: request.pixelSize) {
             loadedImage = Self.cgImage(of: mem)
             shown = request
+        }
+    }
+
+    deinit {
+        resizeWork?.cancel()
+        if let pendingData {
+            MediaCacheManager.shared.cancelImageData(for: pendingData.url, token: pendingData.token)
         }
     }
 
@@ -100,87 +115,128 @@ final class ImageLoader: ObservableObject {
         if let exact = MediaCacheManager.shared.memoryImage(for: urlString, targetPixelSize: request.pixelSize).flatMap(Self.cgImage(of:)) {
             return exact
         }
-        // The same picture at another size (its tile is being resized) is drawn scaled until the right size is ready
+        // The same picture at another size (its tile is being resized) is drawn scaled until the right size is ready.
         return shown?.url == urlString ? loadedImage : nil
     }
 
     func load(urlString: String?, targetSize: CGSize?) {
         guard let urlStr = urlString else {
-            current = nil
+            stop()
             return
         }
         let request = Request(url: urlStr, targetSize: targetSize)
+        if current?.url != urlStr { cancelPendingData() }
         current = request
+        resizeWork?.cancel()
+        resizeWork = nil
+        resizeID = nil
         let targetPixelSize = request.pixelSize
 
-        // 1. Memory cache hit -> synchronous frame-0 return without flicker
+        // A memory hit also retires any older subscription or decode for this loader.
         if let mem = MediaCacheManager.shared.memoryImage(for: urlStr, targetPixelSize: targetPixelSize) {
+            cancelPendingData()
             if shown != request || loadedImage == nil {
                 loadedImage = Self.cgImage(of: mem)
                 shown = request
             }
             return
         }
-        
-        // Only the size changed, as when the column is animating to a new width: the picture already decoded is drawn at
-        // the new size meanwhile, and decoded again once, when the size has stopped changing, rather than on every frame
+
+        // Keep drawing the previous size during a column animation, then decode once the size has settled.
         if shown?.url == urlStr, loadedImage != nil {
-            resizeWork?.cancel()
+            let id = UUID()
             let work = DispatchWorkItem { [weak self] in
-                guard let self = self, self.current == request else { return }
+                guard let self, self.resizeID == id, self.current == request else { return }
+                self.resizeWork = nil
+                self.resizeID = nil
                 self.fetch(request)
             }
             resizeWork = work
+            resizeID = id
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
             return
         }
         fetch(request)
     }
 
-    private var resizeWork: DispatchWorkItem?
+    func stop() {
+        current = nil
+        cancelPendingData()
+    }
 
     private func fetch(_ request: Request) {
-        let urlStr = request.url
+        guard inFlight?.request != request else { return }
+        // A size change can use the same download; choose its decode size when the bytes arrive.
+        if pendingData?.url == request.url { return }
+        cancelPendingData()
+        let flight = Flight(id: UUID(), request: request)
+        inFlight = flight
         let targetPixelSize = request.pixelSize
-        guard inFlight != request else { return }
-        inFlight = request
-        
-        // 2. Offload disk lookup and network I/O to background queue to guarantee 120Hz smooth scrolling
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            
-            // Check disk cache first
-            if let diskImg = MediaCacheManager.shared.diskImage(for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:)) {
-                DispatchQueue.main.async { self.finish(request, image: diskImg) }
-                return
-            }
-            
-            // 3. Network fetch
-            guard let url = URL(string: urlStr) else {
-                DispatchQueue.main.async { self.finish(request, image: nil) }
-                return
-            }
-            
-            let urlRequest = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-            URLSession.shared.dataTask(with: urlRequest) { [weak self] data, _, _ in
-                guard let self = self else { return }
-                // Decode (and downsample) on this background thread to prevent main-thread decompression hitches
-                let img = data.flatMap {
-                    MediaCacheManager.shared.storeImageData($0, for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:))
+            let image = MediaCacheManager.shared.diskImage(for: request.url, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:))
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.inFlight?.id == flight.id else { return }
+                if let image {
+                    self.finish(flight, image: image)
+                } else {
+                    self.subscribe(flight)
                 }
-                DispatchQueue.main.async { self.finish(request, image: img) }
-            }.resume()
+            }
         }
     }
-    
-    private func finish(_ request: Request, image: CGImage?) {
-        if inFlight == request { inFlight = nil }
-        guard let image = image, current == request else { return }
-        loadedImage = image
-        shown = request
+
+    private func subscribe(_ flight: Flight) {
+        // Register and save the token in one main-thread turn, so stop/reuse cannot lose a background registration.
+        guard inFlight?.id == flight.id, current?.url == flight.request.url else { return }
+        let urlStr = flight.request.url
+        let token = MediaCacheManager.shared.fetchImageData(for: urlStr) { [weak self] data in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.inFlight?.id == flight.id, let request = self.current else { return }
+                if self.pendingData?.flightID == flight.id { self.pendingData = nil }
+                let decodeFlight = Flight(id: flight.id, request: request)
+                self.inFlight = decodeFlight
+                let targetPixelSize = request.pixelSize
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    let image = data.flatMap {
+                        MediaCacheManager.shared.storeImageData($0, for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:))
+                    }
+                    DispatchQueue.main.async { [weak self] in
+                        self?.finish(decodeFlight, image: image)
+                    }
+                }
+            }
+        }
+        if let token {
+            pendingData = (flight.id, urlStr, token)
+        }
     }
-    
-    // Cache images are NSImage(cgImage:) wrappers, so this returns the backing CGImage without redrawing
+
+    // Invalidate work even when the disk lookup has not registered a data subscription yet.
+    private func cancelPendingData() {
+        resizeWork?.cancel()
+        resizeWork = nil
+        resizeID = nil
+        inFlight = nil
+        if let pending = pendingData {
+            pendingData = nil
+            MediaCacheManager.shared.cancelImageData(for: pending.url, token: pending.token)
+        }
+    }
+
+    private func finish(_ flight: Flight, image: CGImage?) {
+        guard inFlight?.id == flight.id else { return }
+        inFlight = nil
+        guard current == flight.request else {
+            if let current, current.url == flight.request.url, resizeWork == nil { fetch(current) }
+            return
+        }
+        guard let image else { return }
+        loadedImage = image
+        shown = flight.request
+    }
+
+    // Cache images are NSImage(cgImage:) wrappers, so this returns the backing CGImage without redrawing.
     private static func cgImage(of image: NSImage) -> CGImage? {
         image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
@@ -232,6 +288,9 @@ struct CachedAsyncImage: View {
             }
             .onAppear {
                 loader.load(urlString: urlString, targetSize: targetSize)
+            }
+            .onDisappear {
+                loader.stop()
             }
             // The address can arrive after the view does (a profile opened from an @mention knows only the handle until
             // X has answered), and a reused table cell is handed a different post, so a new address is loaded too
