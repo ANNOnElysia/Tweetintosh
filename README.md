@@ -32,7 +32,7 @@ Tweetintosh focuses on utility, keyboard navigation, and desktop ergonomics that
 - **Click Again to Refresh**: Click the selected Home or Notifications button in the top bar or sidebar to glide quickly to the top, then refresh its current feed. Respects Reduce Motion.
 - **Multi-Account Switching**: Save multiple profiles and switch between them without re-authenticating. Each account keeps its own message history, unlock keys, and pinned chats; switching clears the message draft and ignores the previous session's pending results. Messages keep loading when X renews the account's session cookies.
 - **Instant Launch & Offline Cache**: Recent timelines are stored locally so you can read previously loaded posts immediately upon launch, even in poor connectivity or airplane mode.
-- **Transient Authentication**: WebKit is loaded only once on first run to capture your session cookies, then immediately released from memory.
+- **Transient WebKit**: Sign-in captures session cookies once. Writes use a hidden browser page that shares transaction-generator initialization between requests and is released when idle.
 
 ---
 
@@ -60,7 +60,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 - **再次点击刷新**：再次点击顶栏或侧栏中已选中的主页、通知按钮，先快速平滑返回页首，再刷新当前信息流，并遵循系统“减少动态效果”设置。
 - **多账号快速切换**：支持保存多个 X 账号，随时一键切换身份。各账号独立保存私信历史、解锁密钥和置顶会话；切换时清空私信草稿，旧会话尚未完成的请求不会影响新会话。X 更新登录 Cookie 后，私信仍可继续加载。
 - **即时启动与离线缓存**：推文快照持久化保存在本地，断网或飞行模式下打开即可浏览既有内容，网络连通时静默更新。
-- **瞬态登录认证**：仅在初次登录时启动一次临时网页组件读取 Cookie 凭证，提取完毕后立即销毁该实例，日常运行不驻留网页运行时。
+- **临时 WebKit 页面**：登录时一次性提取会话 Cookie；写操作通过隐藏网页发送，同一页面内复用 transaction ID 生成器的初始化，空闲后释放页面。
 
 ---
 
