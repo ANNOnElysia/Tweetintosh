@@ -272,9 +272,6 @@ struct TweetActionBar: View {
     static let replyColor = Color(red: 0.114, green: 0.608, blue: 0.941)
     static let repostColor = Color(red: 0.0, green: 0.73, blue: 0.49)
     static let likeColor = Color(red: 0.976, green: 0.094, blue: 0.502)
-    // How far left of its icon each button reaches, into the empty end of the column before it, so the bar is split
-    // between the buttons near the midpoints between icons rather than at each icon's left edge
-    private static let reach: CGFloat = 24
     private static let bookmarkGap: CGFloat = 18
     
     var body: some View {
@@ -286,12 +283,11 @@ struct TweetActionBar: View {
     }
 
     private func bar(compact: Bool, compressCounts: Bool = false) -> some View {
-        let reach: CGFloat = compact ? 0 : Self.reach
         let bookmarkGap: CGFloat = compact ? 6 : Self.bookmarkGap
         return HStack(alignment: .center, spacing: 0) {
             // Still tappable: a tap explains why (the author has blocked you) instead of doing nothing
             Group {
-                cell(help: loc.t("reply"), lead: reach, action: { actions.reply(tweet) }) { hovered in
+                cell(help: loc.t("reply"), action: { actions.reply(tweet) }) { hovered in
                     label(icon: "bubble.left", count: tweet.replyCount,
                           color: hovered ? Self.replyColor : ThemeManager.secondaryText,
                           compact: compact, compressCounts: compressCounts)
@@ -299,7 +295,7 @@ struct TweetActionBar: View {
                 
                 // A plain Button that pops up an NSMenu on click: SwiftUI's Menu is backed by an NSPopUpButton,
                 // and creating one per row as rows scroll into view was a major source of scroll hitches.
-                cell(help: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), lead: reach, press: repostPress, action: {
+                cell(help: tweet.isRetweeted ? loc.t("undo_retweet") : loc.t("retweet"), press: repostPress, action: {
                     guard !repostPress.consumeClick() else { return }
                     showRepostMenu()
                 }) { hovered in
@@ -308,7 +304,7 @@ struct TweetActionBar: View {
                           compact: compact, compressCounts: compressCounts)
                 }
                 
-                cell(help: tweet.isFavorited ? loc.t("unlike") : loc.t("like"), lead: reach, action: {
+                cell(help: tweet.isFavorited ? loc.t("unlike") : loc.t("like"), action: {
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.45, blendDuration: 0)) {
                         like.scale = 1.35
                     }
@@ -338,8 +334,7 @@ struct TweetActionBar: View {
             
             // Beside the timeline's share button, with a narrow gap the two split between them
             cell(help: loc.t(tweet.isBookmarked ? "remove_bookmark" : "bookmark"),
-                 lead: reach, trailing: isProminent ? 0 : bookmarkGap / 2, fills: isProminent,
-                 action: { actions.bookmark(tweet) }) { hovered in
+                 fills: isProminent, action: { actions.bookmark(tweet) }) { hovered in
                 label(icon: tweet.isBookmarked ? "bookmark.fill" : "bookmark",
                       count: isProminent ? tweet.bookmarkCount : 0, isActive: tweet.isBookmarked,
                       color: tweet.isBookmarked || hovered ? ThemeManager.accent : ThemeManager.secondaryText,
@@ -348,7 +343,7 @@ struct TweetActionBar: View {
             // The cell takes up only its icon; its target reaches halfway across the gap after it
             .padding(.trailing, isProminent ? 0 : bookmarkGap)
             
-            cell(help: loc.t("copy_link"), lead: isProminent ? reach : bookmarkGap / 2, fills: false,
+            cell(help: loc.t("copy_link"), fills: false,
                  action: { actions.share(tweet) }) { hovered in
                 label(icon: "square.and.arrow.up", count: 0,
                       color: hovered ? ThemeManager.accent : ThemeManager.secondaryText,
@@ -357,20 +352,16 @@ struct TweetActionBar: View {
         }
     }
     
-    // One button and its target: `lead` points to the left of its icon, the whole height of the bar with the space
-    // above and below it, and to the right either the rest of its column (`fills`) or `trailing` points. Only the
-    // target grows; padding outside the button gives the space back, so the icons stay where they were.
-    private func cell<Label: View>(help: String, lead: CGFloat = reach, trailing: CGFloat = 0, fills: Bool = true,
+    // One button in its column. Only the icon and its count take the click (the `.target` style adds the minimum
+    // touch target around them); the rest of the column, and the bar's space above and below, stay empty so a click
+    // far from an icon does not land on it. The column itself still fills its share of the bar, which is what keeps
+    // the icons evenly spaced.
+    private func cell<Label: View>(help: String, fills: Bool = true,
                                    press: RepostPressState? = nil, action: @escaping () -> Void,
                                    @ViewBuilder label: @escaping (Bool) -> Label) -> some View {
         HoverReader(key: tweet.id) { hovered in
             Button(action: action) {
                 label(hovered)
-                    .padding(.trailing, trailing)
-                    .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
-                    .padding(.leading, lead)
-                    .padding(.top, reachAbove)
-                    .padding(.bottom, reachBelow)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.target)
@@ -381,8 +372,8 @@ struct TweetActionBar: View {
             }
         }
         .help(help)
-        .padding(.leading, -lead)
-        .padding(.trailing, fills ? lead : -trailing)
+        .padding(.top, reachAbove)
+        .padding(.bottom, reachBelow)
         .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
     }
     
