@@ -115,8 +115,9 @@ private struct PressDragSelection<ID: Hashable>: ViewModifier {
                         }
                     }
                     .onEnded { value in
-                        if preview != nil, state.bounds.contains(value.location), let destination = trackedPreview(value) {
-                            onSelect(destination.id)
+                        if preview != nil, state.bounds.contains(value.location) {
+                            let destination = preview?.wrappedValue?.id ?? item(at: value.location)?.base as? ID
+                            if let destination { onSelect(destination) }
                         }
                         reset()
                     }
@@ -134,18 +135,14 @@ private struct PressDragSelection<ID: Hashable>: ViewModifier {
     }
 
     private func trackedPreview(_ value: DragGesture.Value) -> PressDragPreview<ID>? {
-        guard let preview,
-              let source = preview.wrappedValue?.sourceID ?? (item(at: value.startLocation)?.base as? ID) else { return nil }
-        var translation = value.translation
+        guard let preview else { return nil }
         if !state.isDragging {
-            let distance = axis == .horizontal ? translation.width : translation.height
-            if abs(distance) < 3 {
-                translation = .zero
-            } else {
-                state.isDragging = true
-            }
+            let distance = axis == .horizontal ? value.translation.width : value.translation.height
+            guard abs(distance) >= 3 else { return nil }
+            state.isDragging = true
         }
-        return PressDragPreview(sourceID: source, translation: translation, axis: axis, frames: state.frames)
+        guard let source = preview.wrappedValue?.sourceID ?? (item(at: value.startLocation)?.base as? ID) else { return nil }
+        return PressDragPreview(sourceID: source, translation: value.translation, axis: axis, frames: state.frames)
     }
 
     private func track(_ point: CGPoint) {
