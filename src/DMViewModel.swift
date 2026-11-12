@@ -59,6 +59,16 @@ final class DMViewModel: ObservableObject {
     private func isCurrent(_ requestSession: DMAccountSession) -> Bool {
         session === requestSession && requestSession.accountId == AccountManager.shared.activeId
     }
+
+    private func requestSession() -> DMAccountSession {
+        let context = session
+        if let account = AccountManager.shared.accounts.first(where: {
+            $0.id == context.accountId && $0.authToken == context.authToken
+        }) {
+            context.refreshCredentials(account.credentials)
+        }
+        return context
+    }
     
     private init() {
         session = Self.makeSession()
@@ -285,7 +295,7 @@ final class DMViewModel: ObservableObject {
         
         isLoadingInbox = true
         errorMessage = nil
-        let requestSession = session
+        let requestSession = self.requestSession()
         
         // Fetch inbox state baseline (Unified X Chat GraphQL + Legacy REST)
         DMAPI.shared.fetchInbox(context: requestSession) { [weak self] result in
@@ -318,7 +328,7 @@ final class DMViewModel: ObservableObject {
     }
     
     func fetchLatestUserUpdates() {
-        let requestSession = session
+        let requestSession = self.requestSession()
         DMAPI.shared.fetchUserUpdates(context: requestSession) { [weak self] result in
             guard let self = self, self.isCurrent(requestSession) else { return }
             guard case .success(let (newConvs, newMsgs)) = result else { return }
@@ -362,7 +372,7 @@ final class DMViewModel: ObservableObject {
     }
     
     func fetchRecentDMEvents() {
-        let requestSession = session
+        let requestSession = self.requestSession()
         DMAPI.shared.fetchDMEvents(context: requestSession) { [weak self] result in
             guard let self = self, self.isCurrent(requestSession) else { return }
             guard case .success(let events) = result else { return }
@@ -390,7 +400,7 @@ final class DMViewModel: ObservableObject {
         
         isVerifyingPasscode = true
         passcodeErrorMessage = nil
-        let requestSession = session
+        let requestSession = self.requestSession()
         guard let activeUserId = requestSession.accountId, let credentials = requestSession.credentials else {
             isVerifyingPasscode = false
             return
@@ -437,7 +447,7 @@ final class DMViewModel: ObservableObject {
     }
     
     func decryptAllLoadedMessages() {
-        let requestSession = session
+        let requestSession = self.requestSession()
         guard requestSession.isUnlocked else { return }
         let loaded = messagesByConv
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -472,7 +482,7 @@ final class DMViewModel: ObservableObject {
     func loadMessages(for conversationId: String) {
         guard !isLoadingMessages else { return }
         isLoadingMessages = true
-        let requestSession = session
+        let requestSession = self.requestSession()
 
         DMAPI.shared.fetchConversation(conversationId: conversationId, context: requestSession) { [weak self] result in
             guard let self = self, self.isCurrent(requestSession) else { return }
@@ -519,7 +529,7 @@ final class DMViewModel: ObservableObject {
         pendingAttachments.removeAll()
         isSending = true
         
-        let requestSession = session
+        let requestSession = self.requestSession()
         let activeUserId = requestSession.accountId ?? ""
         let optimisticMsg = DMMessage(
             id: "local-\(UUID().uuidString)",
@@ -612,7 +622,7 @@ final class DMViewModel: ObservableObject {
             reportMissingSendKeys()
             return false
         }
-        let requestSession = session
+        let requestSession = self.requestSession()
         let messageId = UUID().uuidString.lowercased()
         let optimistic = placeholder(messageId, keys.conversationKeyVersion)
         messagesByConv[convId, default: []].append(optimistic)
@@ -758,7 +768,7 @@ final class DMViewModel: ObservableObject {
             return
         }
         let convId = message.conversationId
-        let requestSession = session
+        let requestSession = self.requestSession()
         let localId = "local-delete-\(UUID().uuidString)"
         var marker = outgoing(localId, convId, keyVersion: "", kind: .delete)
         marker.deletedSequenceIds = [seq]

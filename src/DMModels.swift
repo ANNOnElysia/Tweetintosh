@@ -12,12 +12,13 @@ import CryptoKit
 /// A request retains the account and state it began with, even after the UI opens another account's session.
 final class DMAccountSession {
     let accountId: String?
-    let credentials: AuthCredentials?
+    let authToken: String?
     let conversations = XChatConversationState()
     let receipts = DMReadReceiptStore()
 
     private let defaults: UserDefaults
     private let lock = NSLock()
+    private var credentialSnapshot: AuthCredentials?
     private var privateKey: P256.KeyAgreement.PrivateKey?
     private var signingKey: P256.Signing.PrivateKey?
     private var signingKeyVersion: String?
@@ -28,10 +29,26 @@ final class DMAccountSession {
 
     init(accountId: String?, credentials: AuthCredentials?, defaults: UserDefaults = .standard) {
         self.accountId = accountId
-        self.credentials = credentials
+        self.authToken = credentials?.authToken
+        self.credentialSnapshot = credentials
         self.defaults = defaults
         // The old global pin list has no owner, so it cannot safely be inherited by any account.
         pins = accountId.map { Set(defaults.stringArray(forKey: "com.anno.tweetintosh.dm.pinned.\($0)") ?? []) } ?? []
+    }
+
+    var credentials: AuthCredentials? {
+        lock.lock()
+        defer { lock.unlock() }
+        return credentialSnapshot
+    }
+
+    /// X rotates ct0 without changing the login; a different login must start another session.
+    func refreshCredentials(_ credentials: AuthCredentials) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let authToken, credentials.authToken == authToken,
+              credentials.userId == nil || credentials.userId == accountId else { return }
+        credentialSnapshot = credentials
     }
 
     var isUnlocked: Bool {
