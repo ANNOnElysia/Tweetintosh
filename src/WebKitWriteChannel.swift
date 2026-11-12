@@ -351,7 +351,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                     throw error;
                 });
             }
-            return await window.__tweetintoshTxGenerator;
+            return window.__tweetintoshTxGenerator;
         }
 
         return await executeRequest();
