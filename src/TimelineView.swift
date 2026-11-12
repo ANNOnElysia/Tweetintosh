@@ -102,6 +102,10 @@ final class TimelineScrollCoordinator: ObservableObject {
     private var preUpdateDocHeight: CGFloat = 0.0
     
     func registerScrollView(_ sv: NSScrollView) {
+        // The timeline is read by scrolling, not by dragging a bar, and the overlay scrollers are the one thing a bar
+        // adds here: a strip drawn over a post as it goes by. Both backends register here, so both are covered.
+        sv.hasVerticalScroller = false
+        sv.hasHorizontalScroller = false
         self.scrollView = sv
     }
     
@@ -602,6 +606,57 @@ private struct TimelinePullRefreshIndicatorOverlay: View {
     }
 }
 
+// The bottom of the feed, for both backends. It says what the next page is doing instead of spinning for ever, and it
+// is the only way out of a chain that failed: scrolling into a failed page again does not silently retry it.
+struct TimelineFooter: View {
+    var state: TimelineViewModel.FeedPagingState
+    var onRetry: () -> Void
+    @ObservedObject private var loc = LocalizationManager.shared
+    
+    var body: some View {
+        Group {
+            switch state {
+            case .loading:
+                LoadingIndicator(active: true)
+            case .failed:
+                VStack(spacing: 6) {
+                    message(loc.t("timeline_load_more_failed"))
+                    retryButton
+                }
+            case .empty:
+                VStack(spacing: 6) {
+                    message(loc.t("timeline_nothing_more_for_now"))
+                    retryButton
+                }
+            case .ended:
+                VStack(spacing: 6) {
+                    message(loc.t("timeline_no_more_posts"))
+                    retryButton
+                }
+            case .idle:
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 60)
+    }
+    
+    private func message(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12))
+            .foregroundColor(ThemeManager.secondaryText)
+    }
+    
+    private var retryButton: some View {
+        Button(action: onRetry) {
+            Text(loc.t("timeline_load_more_retry"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ThemeManager.accent)
+        }
+        .buttonStyle(.target)
+    }
+}
+
 struct MainTimelineView: View {
     let viewModel = TimelineViewModel.shared
     @ObservedObject var loc = LocalizationManager.shared
@@ -677,9 +732,10 @@ struct MainTimelineView: View {
     private var timelineTable: some View {
         TimelineTableView(
             tweets: viewModel.tweets,
-            isLoadingMore: viewModel.isLoadingMore,
+            pagingState: viewModel.pagingState,
             topSpacerHeight: (nav.sidebarExpanded ? 36 : 64) + (viewModel.isRefreshing ? 40 : 0) + listMetrics.titlebarInset,
-            onLoadMore: { viewModel.loadMore() }
+            onLoadMore: { viewModel.loadMore() },
+            onRetry: { viewModel.retryLoadMore() }
         )
         .overlay(alignment: .top) {
             TimelinePullRefreshIndicatorOverlay()
@@ -711,8 +767,7 @@ struct MainTimelineView: View {
                     .listRowBackground(Color.clear)
             }
             
-            LoadingIndicator(active: viewModel.isLoadingMore)
-                .frame(height: 60)
+            TimelineFooter(state: viewModel.pagingState) { viewModel.retryLoadMore() }
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -793,18 +848,27 @@ struct MainTimelineView: View {
 import os
 
 // Loads the next page when the reader gets within 1.5 screens of the bottom, read straight from the scroll view
-// instead of a footer row's onAppear (List recycles rows, so that callback is unreliable)
+// instead of a footer row's onAppear (List recycles rows, so that callback is unreliable).
+//
+// A page that arrives only adds height below the reader: the scroll position does not move, so no scroll notification
+// follows it, and waiting for one is what left the feed stopping with the screen only partly filled. reevaluate() is
+// therefore asked again after every page, and runs after the layout that placed the new rows.
 final class ListLoadMoreWatcher {
     static let shared = ListLoadMoreWatcher()
     
     private weak var scrollView: NSScrollView?
     private var observer: Any?
     private var onLoadMore: (() -> Void)?
+    private var isRecheckScheduled = false
     
     func attach(_ sv: NSScrollView, onLoadMore: @escaping () -> Void) {
         self.onLoadMore = onLoadMore
         ListMetrics.shared.update(from: sv.window)
-        guard scrollView !== sv else { return }
+        guard scrollView !== sv else {
+            // Re-attached by a view update, which must not end in a request that writes the state this update reads
+            reevaluate()
+            return
+        }
         if let observer = observer { NotificationCenter.default.removeObserver(observer) }
         scrollView = sv
         sv.contentView.postsBoundsChangedNotifications = true
@@ -813,12 +877,26 @@ final class ListLoadMoreWatcher {
         ) { [weak self] _ in
             self?.check()
         }
+        // A first page shorter than the screen needs the next one with nothing to scroll
+        reevaluate()
+    }
+    
+    func reevaluate() {
+        guard !isRecheckScheduled else { return }
+        isRecheckScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isRecheckScheduled = false
+            self.check()
+        }
     }
     
     private func check() {
         guard let sv = scrollView, let doc = sv.documentView else { return }
-        let clip = sv.contentView.bounds
-        if doc.frame.height - clip.maxY < clip.height * 1.5 {
+        // Rows added a moment ago count toward what is below the reader only after the table has laid them out
+        if doc.frame.height - sv.contentView.bounds.maxY < sv.contentView.bounds.height * 1.5 {
+            sv.layoutSubtreeIfNeeded()
+            guard doc.frame.height - sv.contentView.bounds.maxY < sv.contentView.bounds.height * 1.5 else { return }
             onLoadMore?()
         }
     }

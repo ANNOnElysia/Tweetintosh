@@ -390,18 +390,21 @@ private final class TimelineTweetCell: TimelineCellBase {
 
 private final class TimelineFooterCell: TimelineCellBase {
     static let identifier = NSUserInterfaceItemIdentifier("TimelineFooterCell")
-    private var host: NSHostingView<LoadingIndicator>?
-    private var active: Bool?
+    private var host: NSHostingView<TimelineFooter>?
+    // The retry closure is a new value on every render, so the hosted view is rebuilt only when what it draws changes;
+    // both closures call the same method on the shared view model.
+    private var shown: TimelineViewModel.FeedPagingState?
 
     override var hostedView: NSView? { host }
 
-    func show(active: Bool) {
-        guard self.active != active else { return }
-        self.active = active
+    func show(state: TimelineViewModel.FeedPagingState, onRetry: @escaping () -> Void) {
+        guard shown != state else { return }
+        shown = state
+        let view = TimelineFooter(state: state, onRetry: onRetry)
         if let host = host {
-            host.rootView = LoadingIndicator(active: active)
+            host.rootView = view
         } else {
-            let host = NSHostingView(rootView: LoadingIndicator(active: active))
+            let host = NSHostingView(rootView: view)
             host.sizingOptions = []
             host.safeAreaRegions = []
             install(host)
@@ -414,9 +417,10 @@ private final class TimelineFooterCell: TimelineCellBase {
 
 struct TimelineTableView: NSViewRepresentable {
     let tweets: [Tweet]
-    let isLoadingMore: Bool
+    let pagingState: TimelineViewModel.FeedPagingState
     let topSpacerHeight: CGFloat
     let onLoadMore: () -> Void
+    let onRetry: () -> Void
 
     @Environment(\.mediaColumnWidth) private var mediaColumnWidth
 
@@ -477,7 +481,7 @@ struct TimelineTableView: NSViewRepresentable {
         private var scrollDirection: CGFloat = 1
         private var scrollVelocity: CGFloat = 0
         private var topSpacerHeight: CGFloat = 0
-        private var isLoadingMore = false
+        private var pagingState: TimelineViewModel.FeedPagingState = .idle
         private var measureTimer: Timer?
         // Rows gliding to a new height after Show more / Show less
         private struct Glide { let id: String; let from: CGFloat; let to: CGFloat }
@@ -513,7 +517,7 @@ struct TimelineTableView: NSViewRepresentable {
             clipView.watchLiveScroll(of: scrollView)
             scrollView.documentView = tableView
             scrollView.drawsBackground = false
-            scrollView.hasVerticalScroller = true
+            scrollView.hasVerticalScroller = false
             scrollView.hasHorizontalScroller = false
             scrollView.autohidesScrollers = true
             scrollView.scrollerStyle = .overlay
@@ -589,10 +593,11 @@ struct TimelineTableView: NSViewRepresentable {
             }
             applyTopSpacer(view.topSpacerHeight)
             applyTweets(view.tweets)
-            if view.isLoadingMore != isLoadingMore {
-                isLoadingMore = view.isLoadingMore
+            if view.pagingState != pagingState {
+                pagingState = view.pagingState
                 let footerRow = tweets.count + 1
-                (tableView.view(atColumn: 0, row: footerRow, makeIfNecessary: false) as? TimelineFooterCell)?.show(active: isLoadingMore)
+                (tableView.view(atColumn: 0, row: footerRow, makeIfNecessary: false) as? TimelineFooterCell)?
+                    .show(state: pagingState, onRetry: parent?.onRetry ?? {})
             }
         }
 
@@ -1023,7 +1028,7 @@ struct TimelineTableView: NSViewRepresentable {
                     cell.identifier = TimelineFooterCell.identifier
                     return cell
                 }()
-                cell.show(active: isLoadingMore)
+                cell.show(state: parent?.pagingState ?? .idle, onRetry: parent?.onRetry ?? {})
                 return cell
             }
             let tweet = tweets[row - 1]
