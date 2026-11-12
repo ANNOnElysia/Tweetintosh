@@ -773,7 +773,6 @@ struct TweetDetailView: View {
                 }
             }
             .contentShape(Rectangle())
-            .navigationPointer()
             .onTapGesture {
                 NavigationManager.shared.openTweetDetail(tweet, fromPane: isInDetailPane)
             }

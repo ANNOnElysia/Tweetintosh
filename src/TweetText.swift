@@ -96,6 +96,7 @@ struct LongTextToggle: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.target)
+            .navigationPointer()
             .padding(.top, 2)
         }
     }
@@ -181,7 +182,10 @@ private struct TweetLinkPointer: ViewModifier {
 
     private var pointerStyle: PointerStyle? {
         if isOverLink && isEnabled && textLinkPointerEnabled && layoutKey == currentLayoutKey { return .link }
-        return selectable && isEnabled ? .horizontalText : nil
+        if selectable && isEnabled { return .horizontalText }
+        // The text under the pointer is not a link; an enclosing row may still be clickable, but the hand there
+        // would hide the link and never release the pointer when it leaves the link.
+        return .default
     }
 
     private func isOverLink(at point: CGPoint) -> Bool {

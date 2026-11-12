@@ -132,7 +132,6 @@ struct TweetRowView: View {
                 .padding(.horizontal, 16)
             }
             .contentShape(Rectangle())
-            .navigationPointer()
             .onTapGesture {
                 NavigationManager.shared.openTweetDetail(tweet)
             }

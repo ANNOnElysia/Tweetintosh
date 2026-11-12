@@ -1103,6 +1103,7 @@ struct FoldableText<Content: View>: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.target)
+                .navigationPointer()
             }
         }
     }
