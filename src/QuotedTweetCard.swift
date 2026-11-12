@@ -98,7 +98,6 @@ struct QuotedTweetCard: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .navigationPointer(isInteractive)
         .allowsHitTesting(isInteractive)
         .onHover { hovering in
             if isInteractive {

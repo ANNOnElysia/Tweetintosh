@@ -106,7 +106,10 @@ struct TweetRowView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 // A deep press on a link previews it; its release must not also open the browser
                                 .handlesTweetLinks()
-                                .peeksText(of: tweet, fontSize: theme.postSize(14.5), lineSpacing: theme.lineSpacing())
+                                // Selectable in the timeline itself, as on the post's page, without losing the
+                                // click that opens it or the pointer that marks its links.
+                                .textSelection(.enabled)
+                                .peeksText(of: tweet, fontSize: theme.postSize(14.5), lineSpacing: theme.lineSpacing(), selectable: true)
                             LongTextToggle(tweet: tweet)
                         }
                         
@@ -132,7 +135,6 @@ struct TweetRowView: View {
                 .padding(.horizontal, 16)
             }
             .contentShape(Rectangle())
-            .navigationPointer()
             .onTapGesture {
                 NavigationManager.shared.openTweetDetail(tweet)
             }
