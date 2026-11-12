@@ -43,19 +43,20 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     
     /// Runs a GraphQL mutation from inside x.com. The answer is the decoded body of a successful response; a
     /// refusal or a transport failure comes back as the matching APIError.
-    func perform(path: String, body: [String: Any], completion: @escaping (Result<[String: Any], APIError>) -> Void) {
-        perform(path: path, body: body, asForm: false, completion: completion)
+    func perform(path: String, body: [String: Any], credentials: AuthCredentials? = nil, completion: @escaping (Result<[String: Any], APIError>) -> Void) {
+        perform(path: path, body: body, credentials: credentials, asForm: false, completion: completion)
     }
 
     /// The same for X's older 1.1 endpoints, which take a form rather than JSON (such as account/update_profile.json).
     /// A success with an empty body, as some of them answer, comes back as an empty dictionary.
-    func performForm(path: String, fields: [String: String], completion: @escaping (Result<[String: Any], APIError>) -> Void) {
-        perform(path: path, body: fields, asForm: true, completion: completion)
+    func performForm(path: String, fields: [String: String], credentials: AuthCredentials? = nil, completion: @escaping (Result<[String: Any], APIError>) -> Void) {
+        perform(path: path, body: fields, credentials: credentials, asForm: true, completion: completion)
     }
 
-    private func perform(path: String, body: [String: Any], asForm: Bool, completion: @escaping (Result<[String: Any], APIError>) -> Void) {
+    private func perform(path: String, body: [String: Any], credentials: AuthCredentials?, asForm: Bool, completion: @escaping (Result<[String: Any], APIError>) -> Void) {
+        let initiatingCredentials = credentials ?? CredentialsManager.shared.loadCredentials()
         DispatchQueue.main.async {
-            guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            guard let creds = initiatingCredentials, creds.isValid else {
                 completion(.failure(.unauthenticated))
                 return
             }
@@ -63,6 +64,10 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
             self.prepare(for: creds)
             self.whenLoaded(
                 ready: {
+                    guard self.identity == creds.authToken else {
+                        completion(.failure(.unauthenticated))
+                        return
+                    }
                     self.send(path: path, body: body, asForm: asForm, creds: creds) { result in
                         self.scheduleIdleTeardown()
                         completion(result)
@@ -182,14 +187,14 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         // Ensure cookies are in place, then load the home page for genuine browser context
         store.getAllCookies { [weak self] _ in
             DispatchQueue.main.async {
-                guard let self, let view = self.webView else { return }
+                guard let self, view === self.webView, self.identity == creds.authToken else { return }
                 view.load(URLRequest(url: URL(string: "https://x.com/")!))
             }
         }
         
         // A page that never finishes loading must not swallow requests
         DispatchQueue.main.asyncAfter(deadline: .now() + loadTimeout) { [weak self] in
-            guard let self, !self.isLoaded, self.webView != nil else { return }
+            guard let self, !self.isLoaded, view === self.webView, self.identity == creds.authToken else { return }
             writeLog.error("the write channel page did not load in time")
             self.failWaiting(.networkError(URLError(.timedOut)))
         }
@@ -241,7 +246,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
         isLoaded = true
         writeLog.debug("write channel ready")
         keepCsrf(from: webView) { [weak self] in
-            guard let self else { return }
+            guard let self, webView === self.webView else { return }
             let queued = self.waitingForLoad
             self.waitingForLoad = []
             queued.forEach { $0.ready() }
@@ -252,12 +257,12 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     private func keepCsrf(from webView: WKWebView, then done: @escaping () -> Void) {
         let renewing = isRenewing
         isRenewing = false
-        guard let creds = CredentialsManager.shared.loadCredentials() else { done(); return }
+        guard webView === self.webView, let login = identity else { done(); return }
         webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
             let ct0 = cookies.first { $0.name == "ct0" && $0.domain.hasSuffix("x.com") && !$0.value.isEmpty }?.value
             DispatchQueue.main.async {
-                if let ct0, ct0 != creds.ct0 {
-                    AccountManager.shared.updateCsrf(ct0, forLogin: creds.authToken)
+                if let ct0 {
+                    AccountManager.shared.updateCsrf(ct0, forLogin: login)
                     writeLog.notice("keeping the CSRF token X issued\(renewing ? " after a refusal" : "", privacy: .public)")
                     if renewing {
                         NotificationCenter.default.post(name: NSNotification.Name("Tweetintosh_RefreshTimeline"), object: nil)
@@ -422,9 +427,10 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     /// Reconstructs the user's X Chat secret via X's Juicebox KMS protocol and WebAssembly. The secret is the
     /// 32-byte identity (decryption) key, followed on current accounts by the 32-byte signing key that sending
     /// needs; it comes back as hex together with the version of the key pair it belongs to.
-    func recoverXChatPrivateKey(passcode: String, userId: String, completion: @escaping (Result<XChatRecoveredSecret, APIError>) -> Void) {
+    func recoverXChatPrivateKey(passcode: String, userId: String, credentials: AuthCredentials? = nil, completion: @escaping (Result<XChatRecoveredSecret, APIError>) -> Void) {
+        let initiatingCredentials = credentials ?? CredentialsManager.shared.loadCredentials()
         DispatchQueue.main.async {
-            guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            guard let creds = initiatingCredentials, creds.isValid else {
                 completion(.failure(.unauthenticated))
                 return
             }
@@ -432,6 +438,10 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
             self.prepare(for: creds)
             self.whenLoaded(
                 ready: {
+                    guard self.identity == creds.authToken else {
+                        completion(.failure(.unauthenticated))
+                        return
+                    }
                     self.executeRecovery(passcode: passcode, userId: userId, creds: creds) { result in
                         self.scheduleIdleTeardown()
                         completion(result)

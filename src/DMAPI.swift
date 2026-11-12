@@ -124,6 +124,14 @@ struct ParsedXChatMessage {
 final class DMAPI {
     static let shared = DMAPI()
     private init() {}
+
+    private static func onMain<Value>(_ completion: @escaping (Value) -> Void) -> (Value) -> Void {
+        { value in
+            if Thread.isMainThread { completion(value) } else {
+                DispatchQueue.main.async { completion(value) }
+            }
+        }
+    }
     
     // GraphQL Query IDs captured from modern X Web
     private let initialXChatQueryId = "hI8FUrv1eY-ze6SrR9mbVA"
@@ -131,15 +139,16 @@ final class DMAPI {
     
     // MARK: - 1. Fetch Unified Inbox (X Chat GraphQL + Legacy REST)
     
-    func fetchInbox(completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
-        // First fetch X Chat GraphQL inbox (modern conversations)
-        fetchXChatInbox { [weak self] xChatResult in
+    func fetchInbox(context: DMAccountSession, completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
+        let completion = Self.onMain(completion)
+        // Both inboxes use the credentials captured when this session began.
+        fetchXChatInbox(context: context) { [weak self] xChatResult in
             guard let self = self else { return }
             
             switch xChatResult {
             case .success(let (xChatConvs, xChatMsgs)):
-                // Concurrently fetch legacy inbox to backfill any older historical threads
-                self.fetchLegacyInbox { legacyResult in
+                // Then fetch the legacy inbox to backfill older historical threads.
+                self.fetchLegacyInbox(context: context) { legacyResult in
                     var mergedConvs = xChatConvs
                     var mergedMsgs = xChatMsgs
                     
@@ -178,15 +187,15 @@ final class DMAPI {
                 
             case .failure(let error):
                 dmLog.warning("X Chat GraphQL fetch failed: \(error.localizedDescription), falling back to legacy inbox")
-                self.fetchLegacyInbox(completion: completion)
+                self.fetchLegacyInbox(context: context, completion: completion)
             }
         }
     }
     
     // MARK: - 1a. Fetch Modern X Chat Inbox (GraphQL GetInitialXChatPageQuery)
     
-    func fetchXChatInbox(completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
-        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+    private func fetchXChatInbox(context: DMAccountSession, completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
+        guard let creds = context.credentials, creds.isValid else {
             completion(.failure(.unauthenticated))
             return
         }
@@ -239,8 +248,7 @@ final class DMAPI {
                     return
                 }
                 
-                let activeUserId = AccountManager.shared.activeId ?? ""
-                let (convs, msgs) = self.parseXChatItems(items, activeUserId: activeUserId)
+                let (convs, msgs) = self.parseXChatItems(items, context: context)
                 
                 completion(.success((convs, msgs)))
             } catch {
@@ -252,8 +260,8 @@ final class DMAPI {
     
     // MARK: - 1b. Fetch Legacy REST Inbox (1.1 inbox_initial_state.json)
     
-    func fetchLegacyInbox(completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
-        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+    private func fetchLegacyInbox(context: DMAccountSession, completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
+        guard let creds = context.credentials, creds.isValid else {
             completion(.failure(.unauthenticated))
             return
         }
@@ -298,8 +306,7 @@ final class DMAPI {
                     return
                 }
                 
-                let activeUserId = AccountManager.shared.activeId ?? ""
-                let (convs, msgs) = self.parseInboxPayload(inbox, activeUserId: activeUserId)
+                let (convs, msgs) = self.parseInboxPayload(inbox, context: context)
                 
                 completion(.success((convs, msgs)))
             } catch {
@@ -311,8 +318,9 @@ final class DMAPI {
     
     // MARK: - 1c. Fetch User Updates (Latest real-time messages & active conversations)
     
-    func fetchUserUpdates(completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
-        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+    func fetchUserUpdates(context: DMAccountSession, completion: @escaping (Result<([DMConversation], [String: [DMMessage]]), APIError>) -> Void) {
+        let completion = Self.onMain(completion)
+        guard let creds = context.credentials, creds.isValid else {
             completion(.failure(.unauthenticated))
             return
         }
@@ -350,8 +358,7 @@ final class DMAPI {
                     return
                 }
                 
-                let activeUserId = AccountManager.shared.activeId ?? ""
-                let (convs, msgs) = self.parseInboxPayload(userInbox, activeUserId: activeUserId)
+                let (convs, msgs) = self.parseInboxPayload(userInbox, context: context)
                 
                 DispatchQueue.main.async {
                     completion(.success((convs, msgs)))
@@ -367,8 +374,9 @@ final class DMAPI {
     
     // MARK: - 1d. Fetch DM Events Stream
     
-    func fetchDMEvents(completion: @escaping (Result<[DMMessage], APIError>) -> Void) {
-        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+    func fetchDMEvents(context: DMAccountSession, completion: @escaping (Result<[DMMessage], APIError>) -> Void) {
+        let completion = Self.onMain(completion)
+        guard let creds = context.credentials, creds.isValid else {
             completion(.failure(.unauthenticated))
             return
         }
@@ -404,7 +412,7 @@ final class DMAPI {
                     return
                 }
                 
-                let activeUserId = AccountManager.shared.activeId ?? ""
+                let activeUserId = context.accountId ?? ""
                 var messages: [DMMessage] = []
                 for ev in events {
                     let msgId = (ev["id"] as? String) ?? ""
@@ -458,23 +466,26 @@ final class DMAPI {
     func fetchConversation(
         conversationId: String,
         maxId: String? = nil,
+        context: DMAccountSession,
         completion: @escaping (Result<[DMMessage], APIError>) -> Void
     ) {
+        let completion = Self.onMain(completion)
         if conversationId.contains(":") {
-            fetchXChatConversation(conversationId: conversationId, minSequenceId: maxId, completion: completion)
+            fetchXChatConversation(conversationId: conversationId, minSequenceId: maxId, context: context, completion: completion)
         } else {
-            fetchLegacyConversation(conversationId: conversationId, maxId: maxId, completion: completion)
+            fetchLegacyConversation(conversationId: conversationId, maxId: maxId, context: context, completion: completion)
         }
     }
     
     // MARK: - 2a. Fetch X Chat Conversation Page (GraphQL GetConversationPageQuery)
     
-    func fetchXChatConversation(
+    private func fetchXChatConversation(
         conversationId: String,
         minSequenceId: String? = nil,
+        context: DMAccountSession,
         completion: @escaping (Result<[DMMessage], APIError>) -> Void
     ) {
-        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+        guard let creds = context.credentials, creds.isValid else {
             completion(.failure(.unauthenticated))
             return
         }
@@ -528,25 +539,18 @@ final class DMAPI {
                     return
                 }
                 
-                let activeUserId = AccountManager.shared.activeId ?? ""
-                
                 // Parse missing conversation key change events first if provided
                 if let missingKeys = convPage["missing_conversation_key_change_events"] as? [String] {
                     for kEv in missingKeys {
-                        if let (kVer, encPayload) = self.parseKeyChangeEvent(base64: kEv, activeUserId: activeUserId) {
-                            DMViewModel.shared.rawConversationKeyEvents[kVer] = encPayload
-                            if let privKey = DMViewModel.shared.privateKey, DMViewModel.shared.conversationKeys[kVer] == nil {
-                                if let convKey = self.decryptConversationKey(data: encPayload, privateKey: privKey) {
-                                    DMViewModel.shared.conversationKeys[kVer] = convKey
-                                }
-                            }
+                        if let (version, payload) = self.parseKeyChangeEvent(base64: kEv, context: context) {
+                            context.recordConversationKey(payload, version: version)
                         }
                     }
                 }
                 
                 var messages: [DMMessage] = []
                 for b64 in encodedEvents {
-                    if let parsed = self.parseXChatEvent(base64: b64, activeUserId: activeUserId) {
+                    if let parsed = self.parseXChatEvent(base64: b64, context: context) {
                         messages.append(parsed)
                     }
                 }
@@ -567,12 +571,13 @@ final class DMAPI {
     
     // MARK: - 2b. Fetch Legacy Conversation History (1.1 dm/conversation/...)
     
-    func fetchLegacyConversation(
+    private func fetchLegacyConversation(
         conversationId: String,
         maxId: String? = nil,
+        context: DMAccountSession,
         completion: @escaping (Result<[DMMessage], APIError>) -> Void
     ) {
-        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+        guard let creds = context.credentials, creds.isValid else {
             completion(.failure(.unauthenticated))
             return
         }
@@ -615,7 +620,7 @@ final class DMAPI {
                     return
                 }
                 
-                let activeUserId = AccountManager.shared.activeId ?? ""
+                let activeUserId = context.accountId ?? ""
                 var messages: [DMMessage] = []
                 
                 if let entries = convTimeline["entries"] as? [[String: Any]] {
@@ -674,10 +679,11 @@ final class DMAPI {
     
     // MARK: - 3. Parse X Chat Items into DMConversations & DMMessages
     
-    private func parseXChatItems(_ items: [[String: Any]], activeUserId: String) -> ([DMConversation], [String: [DMMessage]]) {
+    private func parseXChatItems(_ items: [[String: Any]], context: DMAccountSession) -> ([DMConversation], [String: [DMMessage]]) {
+        let activeUserId = context.accountId ?? ""
         var convList: [DMConversation] = []
         var messagesByConv: [String: [DMMessage]] = [:]
-        let pinnedIds = Set(UserDefaults.standard.stringArray(forKey: "com.anno.tweetintosh.dm.pinned") ?? [])
+        let pinnedIds = context.pinnedConversationIds
         
         for item in items {
             guard let cd = item["conversation_detail"] as? [String: Any],
@@ -726,13 +732,8 @@ final class DMAPI {
             // 2. Parse Key Change Events to register conversation keys
             if let keyEvents = item["latest_conversation_key_change_events"] as? [String] {
                 for kEv in keyEvents {
-                    if let (kVer, encPayload) = self.parseKeyChangeEvent(base64: kEv, activeUserId: activeUserId) {
-                        DMViewModel.shared.rawConversationKeyEvents[kVer] = encPayload
-                        if let privKey = DMViewModel.shared.privateKey, DMViewModel.shared.conversationKeys[kVer] == nil {
-                            if let convKey = self.decryptConversationKey(data: encPayload, privateKey: privKey) {
-                                DMViewModel.shared.conversationKeys[kVer] = convKey
-                            }
-                        }
+                    if let (version, payload) = self.parseKeyChangeEvent(base64: kEv, context: context) {
+                        context.recordConversationKey(payload, version: version)
                     }
                 }
             }
@@ -741,7 +742,7 @@ final class DMAPI {
             var parsedMsgs: [DMMessage] = []
             let evs = item["latest_message_events"] as? [String] ?? []
             for b64 in evs {
-                if let parsed = parseXChatEvent(base64: b64, activeUserId: activeUserId) {
+                if let parsed = parseXChatEvent(base64: b64, context: context) {
                     parsedMsgs.append(parsed)
                 }
             }
@@ -755,7 +756,7 @@ final class DMAPI {
                 sortDate = lastParsed.createdAt
             }
             if let notifB64 = item["latest_notifiable_message_create_event"] as? String,
-               let notifMsg = parseXChatEvent(base64: notifB64, activeUserId: activeUserId) {
+               let notifMsg = parseXChatEvent(base64: notifB64, context: context) {
                 if notifMsg.createdAt > sortDate {
                     sortDate = notifMsg.createdAt
                 }
@@ -787,7 +788,7 @@ final class DMAPI {
     
     // MARK: - 4. Parse Thrift Binary Encoded X Chat Event
     
-    func parseXChatEvent(base64: String, activeUserId: String) -> DMMessage? {
+    func parseXChatEvent(base64: String, context: DMAccountSession) -> DMMessage? {
         guard let data = Data(base64Encoded: base64) else { return nil }
         var reader = ThriftBinaryReader(data: data)
         var msg = ParsedXChatMessage()
@@ -821,17 +822,17 @@ final class DMAPI {
         // Sending needs the conversation's token and the key versions in use; every event can carry them.
         if !msg.conversationId.isEmpty {
             if let token = msg.conversationToken, !token.isEmpty {
-                XChatConversationState.shared.recordToken(token, conversationId: msg.conversationId, sequenceId: msg.eventId)
+                context.conversations.recordToken(token, conversationId: msg.conversationId, sequenceId: msg.eventId)
             }
             if let version = msg.keyVersion {
-                XChatConversationState.shared.recordKeyVersion(version, conversationId: msg.conversationId)
+                context.conversations.recordKeyVersion(version, conversationId: msg.conversationId)
             }
         }
         
         // A read receipt is not a chat entry, but its sender and time say who saw which messages, which the
         // message Info card reports.
         if msg.isReadReceipt, !msg.conversationId.isEmpty, !msg.senderId.isEmpty, msg.timestampMs > 0 {
-            DMReadReceiptStore.shared.record(DMReadReceipt(
+            context.receipts.record(DMReadReceipt(
                 eventId: msg.eventId.isEmpty ? "\(msg.senderId)-\(msg.timestampMs)" : msg.eventId,
                 conversationId: msg.conversationId,
                 readerId: msg.senderId,
@@ -845,44 +846,17 @@ final class DMAPI {
         guard msg.hasMessagePayload || msg.isDelete else { return nil }
         
         let date = msg.timestampMs > 0 ? Date(timeIntervalSince1970: Double(msg.timestampMs) / 1000.0) : Date()
-        let isOutgoing = (msg.senderId == activeUserId)
+        let isOutgoing = (msg.senderId == context.accountId)
         let resolvedId = msg.messageId.isEmpty ? (msg.eventId.isEmpty ? UUID().uuidString : msg.eventId) : msg.messageId
         
         var isActuallyEncrypted = msg.isEncrypted
         var content = msg.decoded
         
-        if isActuallyEncrypted, let raw = msg.rawCiphertext {
-            if let cached = DMViewModel.shared.decryptedMessageCache[resolvedId] ?? DMViewModel.shared.decryptedMessageCache[msg.eventId] {
-                content = cached
-                isActuallyEncrypted = false
-            } else {
-                var convKey: Data? = nil
-                if let keyVer = msg.keyVersion {
-                    convKey = DMViewModel.shared.conversationKeys[keyVer]
-                    if convKey == nil, let privKey = DMViewModel.shared.privateKey, let rawKey = DMViewModel.shared.rawConversationKeyEvents[keyVer] {
-                        convKey = decryptConversationKey(data: rawKey, privateKey: privKey)
-                        if let k = convKey {
-                            DMViewModel.shared.conversationKeys[keyVer] = k
-                        }
-                    }
-                }
-                
-                if let k = convKey, let decrypted = decryptMessagePayload(rawBinary: raw, conversationKey: k) {
-                    content = decrypted
-                    isActuallyEncrypted = false
-                    DMViewModel.shared.decryptedMessageCache[resolvedId] = decrypted
-                } else {
-                    // Robust fallback: try all known conversation keys
-                    for k in DMViewModel.shared.conversationKeys.values {
-                        if let decrypted = decryptMessagePayload(rawBinary: raw, conversationKey: k) {
-                            content = decrypted
-                            isActuallyEncrypted = false
-                            DMViewModel.shared.decryptedMessageCache[resolvedId] = decrypted
-                            break
-                        }
-                    }
-                }
-            }
+        if isActuallyEncrypted, let raw = msg.rawCiphertext,
+           let decrypted = context.decryptMessage(id: resolvedId, eventId: msg.eventId,
+               ciphertext: raw, keyVersion: msg.keyVersion) {
+            content = decrypted
+            isActuallyEncrypted = false
         }
         
         let rawB64 = msg.rawCiphertext?.base64EncodedString()
@@ -959,8 +933,8 @@ final class DMAPI {
         return decodeEntryHolder(&innerReader)
     }
     
-    /// Parses Thrift binary encoded KeyChangeEvent to extract (conversationKeyVersion, encryptedPayload) for the active user.
-    func parseKeyChangeEvent(base64: String, activeUserId: String) -> (keyVersion: String, encryptedPayload: Data)? {
+    /// Extracts the conversation key encrypted for the request's account, retaining versions in that session only.
+    func parseKeyChangeEvent(base64: String, context: DMAccountSession) -> (keyVersion: String, encryptedPayload: Data)? {
         guard let data = Data(base64Encoded: base64) else { return nil }
         var reader = ThriftBinaryReader(data: data)
         var keyVersion: String? = nil
@@ -1007,7 +981,7 @@ final class DMAPI {
                                             reader.skip(type: mType)
                                         }
                                     }
-                                    if pUid == activeUserId, let enc = pEncData {
+                                    if pUid == context.accountId, let enc = pEncData {
                                         encryptedPayload = enc
                                     }
                                 }
@@ -1025,7 +999,7 @@ final class DMAPI {
         }
         guard let ver = keyVersion, let payload = encryptedPayload else { return nil }
         if let conversationId {
-            XChatConversationState.shared.recordKeyVersion(ver, conversationId: conversationId)
+            context.conversations.recordKeyVersion(ver, conversationId: conversationId)
         }
         return (ver, payload)
     }
@@ -1204,7 +1178,8 @@ final class DMAPI {
     
     // MARK: - 5. Legacy REST Payload Parser Helper
     
-    private func parseInboxPayload(_ dict: [String: Any], activeUserId: String) -> ([DMConversation], [String: [DMMessage]]) {
+    private func parseInboxPayload(_ dict: [String: Any], context: DMAccountSession) -> ([DMConversation], [String: [DMMessage]]) {
+        let activeUserId = context.accountId ?? ""
         var usersMap: [String: DMParticipant] = [:]
         if let rawUsers = dict["users"] as? [String: [String: Any]] {
             for (uid, uDict) in rawUsers {
@@ -1270,7 +1245,7 @@ final class DMAPI {
         }
         
         var convList: [DMConversation] = []
-        let pinnedIds = Set(UserDefaults.standard.stringArray(forKey: "com.anno.tweetintosh.dm.pinned") ?? [])
+        let pinnedIds = context.pinnedConversationIds
         
         if let rawConvs = dict["conversations"] as? [String: [String: Any]] {
             for (cid, cDict) in rawConvs {
@@ -1333,8 +1308,13 @@ final class DMAPI {
         conversationId: String,
         text: String,
         mediaUrls: [String] = [],
+        context: DMAccountSession,
         completion: @escaping (Result<DMMessage, APIError>) -> Void
     ) {
+        guard let credentials = context.credentials, credentials.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !mediaUrls.isEmpty else {
             completion(.failure(.invalidResponse))
@@ -1357,7 +1337,7 @@ final class DMAPI {
             body["media_id"] = firstMedia
         }
         
-        let activeUserId = AccountManager.shared.activeId ?? ""
+        let activeUserId = context.accountId ?? ""
         let optimisticMessage = DMMessage(
             id: "temp-\(UUID().uuidString)",
             conversationId: conversationId,
@@ -1369,7 +1349,7 @@ final class DMAPI {
             mediaUrl: mediaUrls.first
         )
         
-        WebKitWriteChannel.shared.perform(path: "/i/api/1.1/dm/new2.json", body: body) { result in
+        WebKitWriteChannel.shared.perform(path: "/i/api/1.1/dm/new2.json", body: body, credentials: credentials) { result in
             switch result {
             case .success(let json):
                 dmLog.debug("DM sent successfully: \(json.keys)")

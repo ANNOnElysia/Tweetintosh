@@ -101,8 +101,6 @@ struct ThriftBinaryWriter {
 /// What decoding learns about each conversation that sending needs: the conversation token X hands out and the
 /// conversation key versions in use. Decoding runs off the main thread, so access is locked.
 final class XChatConversationState {
-    static let shared = XChatConversationState()
-    private init() {}
 
     private let lock = NSLock()
     private var tokens: [String: (token: String, sequence: Int64)] = [:]
@@ -138,13 +136,6 @@ final class XChatConversationState {
         return keyVersions[conversationId] ?? []
     }
 
-    /// A different account's chats may share an id with these, and its tokens are not theirs.
-    func reset() {
-        lock.lock()
-        tokens = [:]
-        keyVersions = [:]
-        lock.unlock()
-    }
 }
 
 // MARK: - Outgoing Message
@@ -342,9 +333,13 @@ extension DMAPI {
         conversationId: String,
         messageId: String,
         keys: XChatSendKeys,
+        context: DMAccountSession,
         completion: @escaping (Result<DMMessage, APIError>) -> Void
     ) {
-        let senderId = AccountManager.shared.activeId ?? ""
+        guard let senderId = context.accountId, let credentials = context.credentials, credentials.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
         guard let built = XChatOutgoing.build(
             entry: entry,
             messageId: messageId,
@@ -362,7 +357,7 @@ extension DMAPI {
             "encoded_message_create_event": built.encodedCreateEvent.base64EncodedString(),
             "encoded_message_event_signature": built.encodedSignature.base64EncodedString()
         ]
-        if let token = XChatConversationState.shared.token(for: conversationId) {
+        if let token = context.conversations.token(for: conversationId) {
             variables["conversation_token"] = token
         }
         // x.com sends the variables as a JSON string inside the body, not as an object.
@@ -372,7 +367,7 @@ extension DMAPI {
             return
         }
 
-        WebKitWriteChannel.shared.perform(path: Self.sendMessageCreatePath, body: ["variables": variablesString]) { result in
+        WebKitWriteChannel.shared.perform(path: Self.sendMessageCreatePath, body: ["variables": variablesString], credentials: credentials) { result in
             switch result {
             case .success(let json):
                 let payload = (json["data"] as? [String: Any])?["xchat_send_create_message_event"] as? [String: Any]
@@ -381,11 +376,12 @@ extension DMAPI {
                     completion(.failure(.invalidResponse))
                     return
                 }
-                guard let message = self.parseXChatEvent(base64: encoded, activeUserId: senderId) else {
-                    completion(.failure(.parseError))
-                    return
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let message = self.parseXChatEvent(base64: encoded, context: context)
+                    DispatchQueue.main.async {
+                        if let message { completion(.success(message)) } else { completion(.failure(.parseError)) }
+                    }
                 }
-                completion(.success(message))
             case .failure(let error):
                 dmLog.error("X Chat send failed: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -400,9 +396,13 @@ extension DMAPI {
         conversationId: String,
         signingKey: P256.Signing.PrivateKey,
         signingKeyVersion: String,
+        context: DMAccountSession,
         completion: @escaping (Result<Void, APIError>) -> Void
     ) {
-        let senderId = AccountManager.shared.activeId ?? ""
+        guard let senderId = context.accountId, let credentials = context.credentials, credentials.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
         let actionId = UUID().uuidString.lowercased()
         guard let deletion = XChatOutgoing.deletion(
             sequenceIds: sequenceIds,
@@ -435,7 +435,7 @@ extension DMAPI {
             completion(.failure(.invalidResponse))
             return
         }
-        WebKitWriteChannel.shared.perform(path: Self.deleteMessagesPath, body: ["variables": variablesString]) { result in
+        WebKitWriteChannel.shared.perform(path: Self.deleteMessagesPath, body: ["variables": variablesString], credentials: credentials) { result in
             switch result {
             case .success(let json):
                 let response = (json["data"] as? [String: Any])?["xchat_delete_messages"] as? [String: Any]

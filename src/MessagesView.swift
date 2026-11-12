@@ -919,7 +919,7 @@ private struct DMBubbleScrollView: View {
     /// "Seen" only once a read receipt covers the last message, "Sent" until then.
     private func status(for msg: DMMessage) -> String? {
         guard msg.isOutgoing, !msg.isEncrypted else { return nil }
-        let seen = !DMSeen.seenTimes(for: msg, among: messages).isEmpty
+        let seen = !DMSeen.seenTimes(for: msg, among: messages, receipts: vm.session.receipts).isEmpty
         return loc.t(seen ? "messages_seen" : "messages_sent_status")
     }
     
