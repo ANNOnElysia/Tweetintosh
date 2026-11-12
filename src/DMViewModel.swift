@@ -55,6 +55,8 @@ final class DMViewModel: ObservableObject {
     // subscription that writes changes back.
     private var cacheOwnerId: String?
     private var hasFetchedInbox = false
+    // Bumped when the active account changes, so an answer for the previous account is dropped rather than merged.
+    private var accountSession = 0
     private var cacheSubscription: AnyCancellable?
     @Published var pinnedConversationIds: Set<String> = []
     
@@ -90,31 +92,85 @@ final class DMViewModel: ObservableObject {
             self.pinnedConversationIds = Set(saved)
         }
         
-        // Restore verified private key from secure persistent storage if already unlocked
-        if let savedHex = UserDefaults.standard.string(forKey: passcodeStorageKey),
-           applySecret(hex: savedHex, keyVersion: UserDefaults.standard.string(forKey: keyVersionStorageKey)) {
-            self.isPasscodeUnlocked = true
-        } else {
-            self.isPasscodeUnlocked = false
-        }
-        
         // Show the chats as they were last seen straight away; the inbox fetch then brings them up to date.
         cacheOwnerId = AccountManager.shared.activeId
+        restoreSecretForActiveAccount()
         if let cached = DMCacheManager.shared.load() {
             conversations = cached.conversations
             messagesByConv = cached.messages
         }
+        observeCache(for: cacheOwnerId)
+    }
+
+    /// Starts over for the account that is active now: its cached snapshot and secret, with no trace of the last one.
+    func reloadForActiveAccount() {
+        // Answers still in flight for the previous account must not land in this one.
+        accountSession += 1
+        conversations = []
+        messagesByConv = [:]
+        selectedConversationId = nil
+        selectedConversationIds = []
+        isEditMode = false
+        searchQuery = ""
+        filter = .all
+        inputText = ""
+        replyingTo = nil
+        pendingAttachments = []
+        errorMessage = nil
+        isLoadingInbox = false
+        isLoadingMessages = false
+        isSending = false
+        isVerifyingPasscode = false
+        passcodeInput = ""
+        passcodeErrorMessage = nil
+        showPasscodeSheet = false
+        isPasscodeUnlocked = false
+        privateKey = nil
+        signingKey = nil
+        signingKeyVersion = nil
+        decryptedMessageCache = [:]
+        rawConversationKeyEvents = [:]
+        conversationKeys = [:]
+        hasFetchedInbox = false
+        XChatConversationState.shared.reset()
+
+        restoreSecretForActiveAccount()
+        if let cached = DMCacheManager.shared.load() {
+            conversations = cached.conversations
+            messagesByConv = cached.messages
+        }
+        observeCache(for: AccountManager.shared.activeId)
+        if isPasscodeUnlocked {
+            decryptAllLoadedMessages()
+        }
+    }
+
+    // The passcode secret is stored per account, so this reads whichever account is active now.
+    private func restoreSecretForActiveAccount() {
+        if let savedHex = UserDefaults.standard.string(forKey: passcodeStorageKey),
+           applySecret(hex: savedHex, keyVersion: UserDefaults.standard.string(forKey: keyVersionStorageKey)) {
+            isPasscodeUnlocked = true
+        } else {
+            isPasscodeUnlocked = false
+        }
+    }
+
+    // One save pipeline per account: a save debounced before a switch is dropped with its subscription, and the owner
+    // it was started for must still be the active one by the time it runs.
+    private func observeCache(for owner: String?) {
+        cacheSubscription?.cancel()
+        cacheOwnerId = owner
         cacheSubscription = Publishers.CombineLatest($conversations, $messagesByConv)
             .dropFirst()
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
             .sink { [weak self] conversations, messages in
-                self?.saveCache(conversations: conversations, messages: messages)
+                self?.saveCache(owner: owner, conversations: conversations, messages: messages)
             }
     }
     
-    private func saveCache(conversations: [DMConversation], messages: [String: [DMMessage]]) {
+    private func saveCache(owner: String?, conversations: [DMConversation], messages: [String: [DMMessage]]) {
         // Chats loaded for one account are never written into another's folder.
-        guard let owner = cacheOwnerId, owner == AccountManager.shared.activeId,
+        guard let owner, owner == AccountManager.shared.activeId,
               !conversations.isEmpty || !messages.isEmpty else { return }
         DMCacheManager.shared.save(.init(accountId: owner, conversations: conversations, messages: messages))
     }
@@ -263,10 +319,11 @@ final class DMViewModel: ObservableObject {
         
         isLoadingInbox = true
         errorMessage = nil
+        let requestSession = accountSession
         
         // Fetch inbox state baseline (Unified X Chat GraphQL + Legacy REST)
         DMAPI.shared.fetchInbox { [weak self] result in
-            guard let self = self else { return }
+            guard let self = self, self.accountSession == requestSession else { return }
             self.isLoadingInbox = false
             
             switch result {
@@ -295,8 +352,9 @@ final class DMViewModel: ObservableObject {
     }
     
     func fetchLatestUserUpdates() {
+        let requestSession = accountSession
         DMAPI.shared.fetchUserUpdates { [weak self] result in
-            guard let self = self else { return }
+            guard let self = self, self.accountSession == requestSession else { return }
             guard case .success(let (newConvs, newMsgs)) = result else { return }
             
             var mergedConvs = self.conversations
@@ -338,8 +396,9 @@ final class DMViewModel: ObservableObject {
     }
     
     func fetchRecentDMEvents() {
+        let requestSession = accountSession
         DMAPI.shared.fetchDMEvents { [weak self] result in
-            guard let self = self else { return }
+            guard let self = self, self.accountSession == requestSession else { return }
             guard case .success(let events) = result else { return }
             
             // Merge events into conversations and messages
@@ -474,9 +533,10 @@ final class DMViewModel: ObservableObject {
     func loadMessages(for conversationId: String) {
         guard !isLoadingMessages else { return }
         isLoadingMessages = true
+        let requestSession = accountSession
         
         DMAPI.shared.fetchConversation(conversationId: conversationId) { [weak self] result in
-            guard let self = self else { return }
+            guard let self = self, self.accountSession == requestSession else { return }
             self.isLoadingMessages = false
             
             switch result {

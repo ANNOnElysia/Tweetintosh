@@ -137,6 +137,14 @@ final class XChatConversationState {
         defer { lock.unlock() }
         return keyVersions[conversationId] ?? []
     }
+
+    /// A different account's chats may share an id with these, and its tokens are not theirs.
+    func reset() {
+        lock.lock()
+        tokens = [:]
+        keyVersions = [:]
+        lock.unlock()
+    }
 }
 
 // MARK: - Outgoing Message
