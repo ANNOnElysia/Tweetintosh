@@ -251,58 +251,98 @@ extension View {
         modifier(PeekableModifier(resolve: resolve))
     }
 
-    // For a post's body text: a deep press previews a link or @mention, and looks up any other word
-    func peeksText(of tweet: Tweet, fontSize: CGFloat, lineSpacing: CGFloat) -> some View {
-        peekable { [tweet] point, size in
-            PeekTextLinks.target(at: point, size: size, text: tweet.displayBodyText, links: tweet.displayLinks,
-                                 fontSize: fontSize, lineSpacing: lineSpacing)
-        }
+    // For a post's body text: a deep press previews a link or @mention, and looks up any other word. The pointer
+    // becomes a hand over those same runs.
+    func peeksText(of tweet: Tweet, fontSize: CGFloat, lineSpacing: CGFloat,
+                   selectable: Bool = false) -> some View {
+        tweetLinkPointer(of: tweet, fontSize: fontSize, lineSpacing: lineSpacing, selectable: selectable)
+            .peekable { [tweet] point, size in
+                PeekTextLinks.target(at: point, size: size, text: tweet.displayBodyText, links: tweet.displayLinks,
+                                     fontSize: fontSize, lineSpacing: lineSpacing)
+            }
     }
 }
 
 // MARK: - Link Hit Testing
 
 enum PeekTextLinks {
-    // Finds what is under a point in tweet body text by laying the text out with TextKit using the same font, line
-    // spacing and width as the SwiftUI Text: a link, an @mention, or else the word to look up.
+    // One TextKit layout of a post's body at a given width. The peek and the pointing hand both ask where a point
+    // lands in the text; laying it out again for every mouse move would cost more than the answer is worth.
+    final class Layout {
+        private let text: String
+        private let links: [DisplayLink]
+        private let storage: NSTextStorage
+        private let layoutManager: NSLayoutManager
+        private let container: NSTextContainer
+
+        init(text: String, links: [DisplayLink], fontSize: CGFloat, lineSpacing: CGFloat, width: CGFloat) {
+            self.text = text
+            self.links = links
+            let theme = ThemeManager.shared
+            let font: NSFont = theme.fontType == .mincho
+                ? (NSFont(name: theme.activeSerifFontName, size: fontSize + 0.5) ?? .systemFont(ofSize: fontSize))
+                : .systemFont(ofSize: fontSize)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = lineSpacing
+
+            storage = NSTextStorage(string: text, attributes: [.font: font, .paragraphStyle: paragraph])
+            layoutManager = NSLayoutManager()
+            container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+            container.lineFragmentPadding = 0
+            layoutManager.addTextContainer(container)
+            storage.addLayoutManager(layoutManager)
+        }
+
+        // True over a link or @mention, where the pointer should be a hand
+        func isLink(at point: CGPoint) -> Bool {
+            guard let index = index(at: point) else { return false }
+            return link(at: index) != nil
+        }
+
+        // Finds what is under a point: a link, an @mention, or else the word to look up
+        func target(at point: CGPoint) -> PeekTarget? {
+            guard let index = index(at: point, tolerance: CGSize(width: 6, height: 4)) else { return nil }
+            if let target = link(at: index) { return target }
+
+            let range = PeekTextLinks.wordRange(in: storage, at: index)
+            let word = (text as NSString).substring(with: range)
+            guard word.rangeOfCharacter(from: .alphanumerics) != nil else { return nil }
+            let start = layoutManager.glyphIndexForCharacter(at: range.location)
+            let line = layoutManager.lineFragmentRect(forGlyphAt: start, effectiveRange: nil)
+            let location = layoutManager.location(forGlyphAt: start)
+            let font = (storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont)
+                ?? .systemFont(ofSize: 13)
+            return .word(PeekWord(text: NSAttributedString(string: word, attributes: [.font: font]),
+                                  baseline: CGPoint(x: line.minX + location.x, y: line.minY + location.y)))
+        }
+
+        // The character under a point, when the point is on the glyph rather than beside it
+        private func index(at point: CGPoint, tolerance: CGSize = .zero) -> Int? {
+            var fraction: CGFloat = 0
+            let glyph = layoutManager.glyphIndex(for: point, in: container, fractionOfDistanceThroughGlyph: &fraction)
+            let rect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+                .insetBy(dx: -tolerance.width, dy: -tolerance.height)
+            guard rect.contains(point) else { return nil }
+            return layoutManager.characterIndexForGlyph(at: glyph)
+        }
+
+        private func link(at index: Int) -> PeekTarget? {
+            if let hit = links.first(where: { index >= $0.location && index < $0.location + $0.length }) {
+                return URL(string: hit.url).map(PeekTarget.link)
+            }
+            let mentions = TweetText.mentionRanges(in: text, excluding: links)
+            if let mention = mentions.first(where: { NSLocationInRange(index, $0.range) }) {
+                return .profile(TweetUser(id: "", name: mention.name, screenName: mention.name, avatarUrl: nil, isVerified: false))
+            }
+            return nil
+        }
+    }
+
+    // Kept for the peek, which needs the answer once rather than to cache the layout
     static func target(at point: CGPoint, size: CGSize, text: String, links: [DisplayLink],
                        fontSize: CGFloat, lineSpacing: CGFloat) -> PeekTarget? {
-        let theme = ThemeManager.shared
-        let font: NSFont = theme.fontType == .mincho
-            ? (NSFont(name: theme.activeSerifFontName, size: fontSize + 0.5) ?? .systemFont(ofSize: fontSize))
-            : .systemFont(ofSize: fontSize)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = lineSpacing
-
-        let storage = NSTextStorage(string: text, attributes: [.font: font, .paragraphStyle: paragraph])
-        let layout = NSLayoutManager()
-        let container = NSTextContainer(size: CGSize(width: size.width, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 0
-        layout.addTextContainer(container)
-        storage.addLayoutManager(layout)
-
-        var fraction: CGFloat = 0
-        let glyph = layout.glyphIndex(for: point, in: container, fractionOfDistanceThroughGlyph: &fraction)
-        let glyphRect = layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
-        guard glyphRect.insetBy(dx: -6, dy: -4).contains(point) else { return nil }
-        let index = layout.characterIndexForGlyph(at: glyph)
-
-        if let hit = links.first(where: { index >= $0.location && index < $0.location + $0.length }) {
-            return URL(string: hit.url).map(PeekTarget.link)
-        }
-        let mentions = TweetText.mentionRanges(in: text, excluding: links)
-        if let mention = mentions.first(where: { NSLocationInRange(index, $0.range) }) {
-            return .profile(TweetUser(id: "", name: mention.name, screenName: mention.name, avatarUrl: nil, isVerified: false))
-        }
-
-        let range = wordRange(in: storage, at: index)
-        let word = (text as NSString).substring(with: range)
-        guard word.rangeOfCharacter(from: .alphanumerics) != nil else { return nil }
-        let start = layout.glyphIndexForCharacter(at: range.location)
-        let line = layout.lineFragmentRect(forGlyphAt: start, effectiveRange: nil)
-        let location = layout.location(forGlyphAt: start)
-        return .word(PeekWord(text: NSAttributedString(string: word, attributes: [.font: font]),
-                              baseline: CGPoint(x: line.minX + location.x, y: line.minY + location.y)))
+        Layout(text: text, links: links, fontSize: fontSize, lineSpacing: lineSpacing, width: size.width)
+            .target(at: point)
     }
 
     // The dictionary's own idea of the term first, which is what splits Chinese and Japanese into words. Text it has

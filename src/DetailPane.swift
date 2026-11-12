@@ -219,6 +219,13 @@ private struct TimelineScrollMargin: NSViewRepresentable {
     func updateNSView(_ nsView: MarginView, context: Context) {}
 
     final class MarginView: NSView {
+        // The margin answers no click, so it must not inherit a hand left by the row the pointer came from. An arrow
+        // region of its own tells AppKit to restore it here, which a view with no cursor rects does not do.
+        override func resetCursorRects() {
+            super.resetCursorRects()
+            addCursorRect(bounds.intersection(visibleRect), cursor: .arrow)
+        }
+
         override func scrollWheel(with event: NSEvent) {
             guard let scrollView = TimelineScrollCoordinator.shared.scrollView,
                   let window, scrollView.window === window,

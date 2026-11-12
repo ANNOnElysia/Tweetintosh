@@ -111,3 +111,15 @@ private struct TargetButton: View {
 extension PrimitiveButtonStyle where Self == TargetButtonStyle {
     static var target: TargetButtonStyle { TargetButtonStyle() }
 }
+
+extension View {
+    // A pointing hand belongs to content that opens a post, a profile or another page, so a row that navigates shows
+    // the extent of its hit area before the click lands. Actions, menus and tabs keep the arrow, as standard macOS
+    // controls do; Apple defines this hand as the pointer for links and other opened items.
+    // Pass false where the row currently opens nothing, so a preview doesn't claim an action it won't take. It only
+    // withholds the hand: a subview's own pointer style, such as a link inside the row, still applies.
+    func navigationPointer(_ isActive: Bool = true) -> some View {
+        // Keep the hover receiver alive when the cursor changes; switching view branches replaces it mid-hover.
+        pointerStyle(isActive ? .link : nil)
+    }
+}

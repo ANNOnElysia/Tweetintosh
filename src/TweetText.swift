@@ -106,4 +106,96 @@ extension View {
     func handlesTweetLinks() -> some View {
         environment(\.openURL, OpenURLAction { TweetText.open($0) })
     }
+
+    // SwiftUI puts a post's links and @mentions inside one Text and offers no pointer style for a run of it, so the
+    // hand would otherwise cover the whole post or none of it. The same TextKit hit test the deep-press peek uses
+    // says where the pointer is; the layout is built once per width, and only a link or @mention gets the hand.
+    func tweetLinkPointer(of tweet: Tweet, fontSize: CGFloat, lineSpacing: CGFloat,
+                          selectable: Bool = false) -> some View {
+        modifier(TweetLinkPointer(tweet: tweet, fontSize: fontSize, lineSpacing: lineSpacing, selectable: selectable))
+    }
+}
+
+private struct TextLinkPointerEnabledKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var textLinkPointerEnabled: Bool {
+        get { self[TextLinkPointerEnabledKey.self] }
+        set { self[TextLinkPointerEnabledKey.self] = newValue }
+    }
+}
+
+private struct TweetLinkPointer: ViewModifier {
+    let tweet: Tweet
+    let fontSize: CGFloat
+    let lineSpacing: CGFloat
+    let selectable: Bool
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.textLinkPointerEnabled) private var textLinkPointerEnabled
+    @State private var size: CGSize = .zero
+    @State private var isOverLink = false
+    @State private var layout: PeekTextLinks.Layout?
+    @State private var layoutKey: LayoutKey?
+
+    // Everything the layout's glyph positions depend on
+    private struct LayoutKey: Equatable {
+        let tweetID: String
+        let text: String
+        let links: [DisplayLink]
+        let size: CGSize
+        let fontSize: CGFloat
+        let lineSpacing: CGFloat
+        let fontType: String
+        let language: String
+    }
+
+    private var currentLayoutKey: LayoutKey {
+        LayoutKey(tweetID: tweet.id, text: tweet.displayBodyText, links: tweet.displayLinks, size: size,
+                  fontSize: fontSize, lineSpacing: lineSpacing, fontType: ThemeManager.shared.fontType.rawValue,
+                  language: LocalizationManager.shared.currentLanguage.rawValue)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let point):
+                    let overLink = self.isOverLink(at: point)
+                    if overLink != isOverLink { isOverLink = overLink }
+                case .ended:
+                    if isOverLink { isOverLink = false }
+                }
+            }
+            // A reused cell or a reflow must not reuse the previous text's hover result while the pointer is still.
+            // Selectable text names its own I-beam so this layer and AppKit's text view don't fight over the cursor;
+            // a plain post leaves the pointer to the row or inherited style.
+            .pointerStyle(pointerStyle)
+            .onChange(of: currentLayoutKey) { isOverLink = false }
+            .onChange(of: isEnabled && textLinkPointerEnabled) { isOverLink = false }
+            .onDisappear { isOverLink = false }
+    }
+
+    private var pointerStyle: PointerStyle? {
+        if isOverLink && isEnabled && textLinkPointerEnabled && layoutKey == currentLayoutKey { return .link }
+        return selectable && isEnabled ? .horizontalText : nil
+    }
+
+    private func isOverLink(at point: CGPoint) -> Bool {
+        guard isEnabled && textLinkPointerEnabled, size.width > 0 else { return false }
+        let key = currentLayoutKey
+        let layout: PeekTextLinks.Layout
+        if let cached = self.layout, layoutKey == key {
+            layout = cached
+        } else {
+            layout = PeekTextLinks.Layout(text: tweet.displayBodyText, links: tweet.displayLinks,
+                                          fontSize: fontSize, lineSpacing: lineSpacing, width: size.width)
+            self.layout = layout
+            layoutKey = key
+        }
+        return layout.isLink(at: point)
+    }
 }

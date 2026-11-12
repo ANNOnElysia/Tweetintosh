@@ -469,7 +469,7 @@ struct TweetDetailView: View {
                     .foregroundColor(ThemeManager.primaryText)
                     .lineSpacing(5)
                     .textSelection(.enabled)
-                    .peeksText(of: viewModel.focalTweet, fontSize: theme.postSize(17), lineSpacing: 5)
+                    .peeksText(of: viewModel.focalTweet, fontSize: theme.postSize(17), lineSpacing: 5, selectable: true)
             }
             
             // An X Article attached to the post: opens the reader
@@ -773,6 +773,7 @@ struct TweetDetailView: View {
                 }
             }
             .contentShape(Rectangle())
+            .navigationPointer()
             .onTapGesture {
                 NavigationManager.shared.openTweetDetail(tweet, fromPane: isInDetailPane)
             }

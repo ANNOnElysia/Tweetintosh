@@ -378,6 +378,7 @@ private struct SearchUserRow: View {
                 .background(ThemeManager.divider)
         }
         .contentShape(Rectangle())
+        .navigationPointer()
         .onTapGesture {
             NavigationManager.shared.openProfile(user)
         }
