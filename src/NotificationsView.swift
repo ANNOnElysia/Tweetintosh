@@ -301,7 +301,7 @@ private struct NotificationFilterCapsuleBar: View {
             viewModel.selectFilter(filter)
         }
         .padding(.vertical, -5)
-        .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: previewFilter == nil)
+        .animation(reduceMotion ? nil : SidebarMotion.selection, value: previewFilter == nil)
         .padding(.horizontal, 4)
         .padding(.vertical, 3.5)
         .modifier(

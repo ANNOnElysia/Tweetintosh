@@ -165,8 +165,6 @@ enum SidebarMotion {
     static let toggle = Animation.spring(response: 0.28, dampingFraction: 0.90)
     // The selected tab's glass capsule on its own, which has less distance to cover than the sidebar.
     static let selection = Animation.spring(response: 0.22, dampingFraction: 0.86)
-    // The dragged glass settles after release without slowing direct pointer tracking.
-    static let dragSelection = Animation.spring(response: 0.4, dampingFraction: 0.86)
     static let content = Animation.spring(response: 0.24, dampingFraction: 0.88)
 }
 
@@ -479,6 +477,42 @@ struct DraggingSelectionBackground<S: Shape>: View {
     }
 }
 
+// The selected background used by the sidebar tabs, feeds and filters. The shape decides whether it
+// reads as the tab capsule or a list row.
+private struct SidebarActiveBackground<S: Shape>: View {
+    let shape: S
+    @ObservedObject private var theme = ThemeManager.shared
+
+    @ViewBuilder
+    var body: some View {
+        if theme.useLiquidGlass {
+            if #available(macOS 26.0, *) {
+                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
+                let glass: Glass = theme.useLiquidGlassTint
+                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.22))
+                    : .regular
+                shape
+                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
+                    .tweetGlass(glass, in: shape)
+            } else {
+                fallback
+            }
+        } else {
+            fallback
+        }
+    }
+
+    private var fallback: some View {
+        shape
+            .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.22))
+            .overlay(
+                shape
+                    .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.18), lineWidth: 0.6)
+                    .allowsHitTesting(false)
+            )
+    }
+}
+
 // MARK: - Top Floating Capsule (Horizontal Droplet)
 private struct LiquidGlassCapsule: View {
     @Binding var selection: AppTab
@@ -563,7 +597,8 @@ private struct LiquidGlassCapsule: View {
                             nav.isSearchActive = false
                         }
                     }
-                    .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: previewTab == nil)
+                    .animation(reduceMotion ? nil : SidebarMotion.selection, value: previewTab == nil)
+                    .animation(reduceMotion ? nil : SidebarMotion.selection, value: selection)
                     .padding(.top, -(TopBarTarget.above + 4))
                     .padding(.bottom, -(TopBarTarget.below + 4))
                     .transition(.opacity)
@@ -873,7 +908,7 @@ private struct LiquidGlassSidebar: View {
                 if previewTab != nil {
                     DraggingSelectionBackground(shape: Capsule(style: .continuous))
                 } else {
-                    sidebarActiveTabBackground
+                    SidebarActiveBackground(shape: Capsule(style: .continuous))
                 }
             }
             .pressDragSelection(preview: $previewTab, axis: .vertical) { (tab: AppTab) in
@@ -883,7 +918,7 @@ private struct LiquidGlassSidebar: View {
                     selection = tab
                 }
             }
-            .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: previewTab == nil)
+            .animation(reduceMotion ? nil : SidebarMotion.selection, value: previewTab == nil)
             .animation(reduceMotion ? nil : SidebarMotion.selection, value: selection)
             .padding(.horizontal, 8)
             
@@ -1017,34 +1052,6 @@ private struct LiquidGlassSidebar: View {
         }
     }
     
-    @ViewBuilder
-    private var sidebarActiveTabBackground: some View {
-        if theme.useLiquidGlass {
-            if #available(macOS 26.0, *) {
-                let tintColor = theme.useLiquidGlassTint ? ThemeManager.accent : (theme.isLight ? Color.black : Color.white)
-                let tabGlass: Glass = theme.useLiquidGlassTint
-                    ? .regular.tint(ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.22))
-                    : .regular
-                Capsule(style: .continuous)
-                    .fill(tintColor.opacity(theme.useLiquidGlassTint ? (theme.isLight ? 0.14 : 0.20) : (theme.isLight ? 0.08 : 0.14)))
-                    .tweetGlass(tabGlass, in: Capsule(style: .continuous))
-            } else {
-                defaultSidebarActiveTabBackground
-            }
-        } else {
-            defaultSidebarActiveTabBackground
-        }
-    }
-    
-    private var defaultSidebarActiveTabBackground: some View {
-        Capsule(style: .continuous)
-            .fill(theme.isLight ? ThemeManager.accent.opacity(0.16) : ThemeManager.accent.opacity(0.22))
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(theme.isLight ? ThemeManager.accent.opacity(0.35) : Color.white.opacity(0.18), lineWidth: 0.6)
-                    .allowsHitTesting(false)
-            )
-    }
 }
 
 // MARK: - Sidebar Search
@@ -1185,12 +1192,17 @@ private struct SidebarContextSection: View {
         }
     }
     
+    private var selectedFeedChoice: SidebarFeedChoice? {
+        timelineVM.selectedFeed == .list
+            ? .list(timelineVM.selectedListId)
+            : .feed(timelineVM.selectedFeed)
+    }
+
     private var feedRows: some View {
         VStack(alignment: .leading, spacing: 2) {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach([HomeFeedType.forYou, .following, .bookmarks]) { type in
                     row(title: loc.t(type.titleKey), badge: type.shortcutLetter,
-                        isSelected: feedPreview == nil && timelineVM.selectedFeed == type,
                         isPreviewed: feedPreview?.id == .feed(type)) {
                         iconTile(type.iconName)
                     }
@@ -1199,7 +1211,6 @@ private struct SidebarContextSection: View {
                 }
                 ForEach(timelineVM.userLists) { list in
                     row(title: list.name, badge: nil,
-                        isSelected: feedPreview == nil && timelineVM.selectedFeed == .list && timelineVM.selectedListId == list.id,
                         isPreviewed: feedPreview?.id == .list(list.id)) {
                         if let banner = list.bannerUrl {
                             CachedAsyncImage(urlString: banner, targetSize: CGSize(width: 26, height: 26))
@@ -1215,9 +1226,9 @@ private struct SidebarContextSection: View {
                 }
             }
             .pressDragSelectionSurface(
-                selection: nil, preview: feedPreview
+                selection: selectedFeedChoice, preview: feedPreview
             ) {
-                DraggingSelectionBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                SidebarActiveBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .pressDragSelection(preview: $feedPreview, axis: .vertical) { (choice: SidebarFeedChoice) in
                 withAnimation(reduceMotion ? nil : SidebarMotion.selection) {
@@ -1230,12 +1241,13 @@ private struct SidebarContextSection: View {
                     }
                 }
             }
-            .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: feedPreview == nil)
+            .animation(reduceMotion ? nil : SidebarMotion.selection, value: feedPreview == nil)
+            .animation(reduceMotion ? nil : SidebarMotion.selection, value: selectedFeedChoice)
             
             Button {
                 if let url = URL(string: "https://x.com/i/lists") { NSWorkspace.shared.open(url) }
             } label: {
-                row(title: loc.t("manage_lists_on_x"), badge: nil, isSelected: false, titleColor: ThemeManager.accent) {
+                row(title: loc.t("manage_lists_on_x"), badge: nil, titleColor: ThemeManager.accent) {
                     iconTile("arrow.up.forward")
                 }
             }
@@ -1250,7 +1262,6 @@ private struct SidebarContextSection: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(NotificationFilter.allCases) { filter in
                 row(title: loc.t(filter.titleKey), badge: filter.shortcutKey,
-                    isSelected: filterPreview == nil && notifications.selectedFilter == filter,
                     isPreviewed: filterPreview?.id == filter) {
                     iconTile(filter.iconName)
                 }
@@ -1259,19 +1270,19 @@ private struct SidebarContextSection: View {
             }
         }
         .pressDragSelectionSurface(
-            selection: nil, preview: filterPreview
+            selection: notifications.selectedFilter, preview: filterPreview
         ) {
-            DraggingSelectionBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            SidebarActiveBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .pressDragSelection(preview: $filterPreview, axis: .vertical) { (filter: NotificationFilter) in
             nav.closeAllPages()
             notifications.selectFilter(filter)
         }
-        .animation(reduceMotion ? nil : SidebarMotion.dragSelection, value: filterPreview == nil)
+        .animation(reduceMotion ? nil : SidebarMotion.selection, value: filterPreview == nil)
         .animation(reduceMotion ? nil : SidebarMotion.selection, value: notifications.selectedFilter)
     }
     
-    private func row<Icon: View>(title: String, badge: String?, isSelected: Bool, isPreviewed: Bool = false, titleColor: Color? = nil,
+    private func row<Icon: View>(title: String, badge: String?, isPreviewed: Bool = false, titleColor: Color? = nil,
                                  @ViewBuilder icon: () -> Icon) -> some View {
         HStack(spacing: 9) {
             icon()
@@ -1289,13 +1300,6 @@ private struct SidebarContextSection: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .frame(minHeight: 36)
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.14))
-                    .allowsHitTesting(false)
-            }
-        }
         .contentShape(Rectangle())
     }
     
