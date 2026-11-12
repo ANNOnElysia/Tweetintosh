@@ -29,6 +29,19 @@ final class MediaCacheManager: ObservableObject {
         q.qualityOfService = .utility
         return q
     }()
+
+    // One network request per image URL, shared by the prefetcher and every loader showing the picture.
+    private struct ImageDataRequest {
+        var task: URLSessionDataTask
+        var waiters: [UUID: (Data?) -> Void]
+    }
+    private let requestQueue = DispatchQueue(label: "com.anno.tweetintosh.mediacache.requests")
+    private var imageRequests: [String: ImageDataRequest] = [:]
+    // Prefetches wait here rather than occupying a queue thread while their download runs
+    private var prefetchPending: [String] = []
+    private var prefetchQueued: Set<String> = []
+    private var prefetchActive = 0
+    private static let maxConcurrentPrefetches = 6
     
     @Published var formattedCacheSize: String = "0 B"
     
@@ -238,30 +251,83 @@ final class MediaCacheManager: ObservableObject {
 
     // MARK: - Prefetching Engine (Background Concurrency Controlled)
     func prefetchImages(urls: [String]) {
-        var seen = Set<String>()
-        for urlStr in urls where seen.insert(urlStr).inserted {
-            guard let url = URL(string: urlStr) else { continue }
-
-            let op = BlockOperation { [weak self] in
-                guard let self = self else { return }
-                if self.hasCachedImage(for: urlStr) { return }
-
-                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
-                let semaphore = DispatchSemaphore(value: 0)
-
-                // Persist raw bytes only; rows decode at their own display size when they appear
-                URLSession.shared.dataTask(with: request) { data, _, _ in
-                    defer { semaphore.signal() }
-                    if let data = data, CGImageSourceCreateWithData(data as CFData, nil) != nil {
-                        self.writeImageDataIfNeeded(data, for: urlStr)
-                    }
-                }.resume()
-                
-                _ = semaphore.wait(timeout: .now() + 25)
+        requestQueue.async { [weak self] in
+            guard let self else { return }
+            for urlStr in urls where URL(string: urlStr) != nil {
+                guard !self.hasCachedImage(for: urlStr), self.imageRequests[urlStr] == nil,
+                      self.prefetchQueued.insert(urlStr).inserted else { continue }
+                self.prefetchPending.append(urlStr)
             }
-            downloadQueue.addOperation(op)
+            self.startPrefetch()
         }
     }
+
+    // Call on requestQueue. Starts up to maxConcurrentPrefetches downloads and lets URLSession own their threads.
+    private func startPrefetch() {
+        while prefetchActive < Self.maxConcurrentPrefetches, !prefetchPending.isEmpty {
+            let urlStr = prefetchPending.removeFirst()
+            prefetchQueued.remove(urlStr)
+            prefetchActive += 1
+            fetchImageData(for: urlStr) { [weak self] data in
+                guard let self else { return }
+                if let data, CGImageSourceCreateWithData(data as CFData, nil) != nil {
+                    self.writeImageDataIfNeeded(data, for: urlStr)
+                }
+                self.requestQueue.async {
+                    self.prefetchActive -= 1
+                    self.startPrefetch()
+                }
+            }
+        }
+    }
+
+    // MARK: - Shared image requests
+
+    /// The bytes for an image, fetched once however many places ask for it at the same time. Returns a token the
+    /// caller hands back when it no longer shows the picture; the download stops once nobody wants it.
+    @discardableResult
+    func fetchImageData(for urlStr: String, completion: @escaping (Data?) -> Void) -> UUID? {
+        guard let url = URL(string: urlStr) else {
+            completion(nil)
+            return nil
+        }
+        let token = UUID()
+        requestQueue.async { [weak self] in
+            guard let self else { return }
+            if var existing = self.imageRequests[urlStr] {
+                existing.waiters[token] = completion
+                self.imageRequests[urlStr] = existing
+                return
+            }
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
+            let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+                guard let self else { return }
+                let waiters: [(Data?) -> Void] = self.requestQueue.sync {
+                    let finished = self.imageRequests.removeValue(forKey: urlStr)
+                    return finished.map { Array($0.waiters.values) } ?? []
+                }
+                for waiter in waiters { waiter(data) }
+            }
+            self.imageRequests[urlStr] = ImageDataRequest(task: task, waiters: [token: completion])
+            task.resume()
+        }
+        return token
+    }
+
+    /// Says this caller no longer wants the picture; the download is cancelled when it was the last one.
+    func cancelImageData(for urlStr: String, token: UUID) {
+        requestQueue.async { [weak self] in
+            guard let self, var request = self.imageRequests[urlStr],
+                  request.waiters.removeValue(forKey: token) != nil else { return }
+            if request.waiters.isEmpty {
+                self.imageRequests[urlStr] = nil
+                request.task.cancel()
+            } else {
+                self.imageRequests[urlStr] = request
+            }
+        }
+    }
+    
     
     func prefetchVideo(urlStr: String) {
         guard !urlStr.isEmpty else { return }

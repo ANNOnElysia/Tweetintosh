@@ -107,9 +107,12 @@ final class ImageLoader: ObservableObject {
     func load(urlString: String?, targetSize: CGSize?) {
         guard let urlStr = urlString else {
             current = nil
+            cancelPendingData()
             return
         }
         let request = Request(url: urlStr, targetSize: targetSize)
+        // A different picture makes the old download pointless; the same picture at a new size still needs it.
+        if current?.url != urlStr { cancelPendingData() }
         current = request
         let targetPixelSize = request.pixelSize
 
@@ -155,26 +158,35 @@ final class ImageLoader: ObservableObject {
                 return
             }
             
-            // 3. Network fetch
-            guard let url = URL(string: urlStr) else {
-                DispatchQueue.main.async { self.finish(request, image: nil) }
-                return
-            }
-            
-            let urlRequest = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-            URLSession.shared.dataTask(with: urlRequest) { [weak self] data, _, _ in
-                guard let self = self else { return }
-                // Decode (and downsample) on this background thread to prevent main-thread decompression hitches
-                let img = data.flatMap {
+            // 3. Network fetch, shared with every other view showing this picture and with the prefetcher
+            let token = MediaCacheManager.shared.fetchImageData(for: urlStr) { [weak self] data in
+                guard let self else { return }
+                let image = data.flatMap {
                     MediaCacheManager.shared.storeImageData($0, for: urlStr, targetPixelSize: targetPixelSize).flatMap(Self.cgImage(of:))
                 }
-                DispatchQueue.main.async { self.finish(request, image: img) }
-            }.resume()
+                DispatchQueue.main.async { self.finish(request, image: image) }
+            }
+            DispatchQueue.main.async {
+                // The row may have moved on while the request was being registered.
+                guard self.current == request, let token else { return }
+                self.pendingData = (urlStr, token)
+            }
         }
+    }
+    
+    private var pendingData: (url: String, token: UUID)?
+    
+    // Drops this loader's interest in a download it no longer shows; the request stops if nobody else wants it either.
+    private func cancelPendingData() {
+        guard let pending = pendingData else { return }
+        pendingData = nil
+        if inFlight?.url == pending.url { inFlight = nil }
+        MediaCacheManager.shared.cancelImageData(for: pending.url, token: pending.token)
     }
     
     private func finish(_ request: Request, image: CGImage?) {
         if inFlight == request { inFlight = nil }
+        if pendingData?.url == request.url { pendingData = nil }
         guard let image = image, current == request else { return }
         loadedImage = image
         shown = request
