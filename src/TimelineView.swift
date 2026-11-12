@@ -27,7 +27,9 @@ struct PausesHitTestingWhileScrolling: ViewModifier {
     @ObservedObject private var state = TimelineLiveScrollState.shared
 
     func body(content: Content) -> some View {
-        content.allowsHitTesting(!state.isLiveScrolling)
+        content
+            .allowsHitTesting(!state.isLiveScrolling)
+            .environment(\.textLinkPointerEnabled, !state.isLiveScrolling)
     }
 }
 

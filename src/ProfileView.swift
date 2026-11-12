@@ -990,6 +990,7 @@ private struct ProfileMediaCell: View {
                 }
             }
             .contentShape(Rectangle())
+            .navigationPointer()
             .onTapGesture {
                 NavigationManager.shared.openTweetDetail(tweet)
             }
@@ -1005,6 +1006,7 @@ extension View {
     func opensProfile(_ user: TweetUser) -> some View {
         self
             .contentShape(Rectangle())
+            .navigationPointer()
             .onTapGesture {
                 NavigationManager.shared.openProfile(user)
             }

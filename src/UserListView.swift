@@ -170,6 +170,7 @@ struct UserListView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .contentShape(Rectangle())
+            .navigationPointer()
             .onTapGesture { NavigationManager.shared.openProfile(user) }
 
             Divider().background(ThemeManager.divider)

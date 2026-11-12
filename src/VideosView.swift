@@ -271,6 +271,7 @@ private struct VideoPage: View {
                     .lineLimit(3)
                     .handlesTweetLinks()
                     .textSelection(.enabled)
+                    .tweetLinkPointer(of: post, fontSize: 14, lineSpacing: 0, selectable: true)
             }
         }
         .foregroundStyle(.white)
