@@ -167,35 +167,37 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
         }
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
-            let finish = {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    if let profile = freshProfile {
-                        self.profile = profile
-                        self.user = profile.user
-                        self.isFollowing = profile.isFollowing
-                        self.isMuting = profile.isMuting
-                        self.isBlocking = profile.isBlocking
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                if let profile = freshProfile {
+                    self.profile = profile
+                    self.user = profile.user
+                    self.isFollowing = profile.isFollowing
+                    self.isMuting = profile.isMuting
+                    self.isBlocking = profile.isBlocking
+                }
+                // A failed fetch leaves the posts already on screen rather than emptying the page
+                if let page = freshPage {
+                    for other in ProfileTab.allCases where other != tab {
+                        self.tweets[other] = nil
+                        self.cursors[other] = nil
+                        self.exhausted.remove(other)
                     }
-                    // A failed fetch leaves the posts already on screen rather than emptying the page
-                    if let page = freshPage {
-                        for other in ProfileTab.allCases where other != tab {
-                            self.tweets[other] = nil
-                            self.cursors[other] = nil
-                            self.exhausted.remove(other)
-                        }
-                        self.tweets[tab] = page.items
-                        self.cursors[tab] = page.bottomCursor
-                        self.failedTabs.remove(tab)
-                        if page.items.isEmpty || page.bottomCursor == nil {
-                            self.exhausted.insert(tab)
-                        } else {
-                            self.exhausted.remove(tab)
-                        }
+                    self.tweets[tab] = page.items
+                    self.cursors[tab] = page.bottomCursor
+                    self.failedTabs.remove(tab)
+                    if page.items.isEmpty || page.bottomCursor == nil {
+                        self.exhausted.insert(tab)
+                    } else {
+                        self.exhausted.remove(tab)
                     }
-                    self.isRefreshing = false
                 }
             }
+            // The profile is already updated above; only the spinner waits out its minimum.
             let wait = max(0, minimumDuration - Date().timeIntervalSince(started))
+            let finish = { [weak self] in
+                guard let self, self.isRefreshing else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { self.isRefreshing = false }
+            }
             if wait > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: finish) } else { finish() }
         }
     }

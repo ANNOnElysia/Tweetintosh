@@ -181,21 +181,30 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
         apiClient.fetchTweetDetail(tweetId: focalTweet.id) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                let finish = {
+                if case .success(let data) = result {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        if case .success(let data) = result {
-                            self.applyDetail(data)
-                            // Keep own replies X hasn't listed yet; drop the ones it now lists
-                            let listed = Set(self.replies.map { $0.id })
-                            self.ownPendingReplies = self.ownPendingReplies.filter { !listed.contains($0.key) }
-                            self.replies.insert(contentsOf: self.ownPendingReplies.values.sorted { $0.id > $1.id }, at: 0)
-                        }
-                        self.isRefreshing = false
+                        self.applyDetail(data)
+                        // Keep own replies X hasn't listed yet; drop the ones it now lists
+                        let listed = Set(self.replies.map { $0.id })
+                        self.ownPendingReplies = self.ownPendingReplies.filter { !listed.contains($0.key) }
+                        self.replies.insert(contentsOf: self.ownPendingReplies.values.sorted { $0.id > $1.id }, at: 0)
                     }
                 }
-                let wait = max(0, minimumDuration - Date().timeIntervalSince(started))
-                if wait > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: finish) } else { finish() }
+                self.endRefreshing(after: max(0, minimumDuration - Date().timeIntervalSince(started)))
             }
+        }
+    }
+
+    // The page is already updated when this runs; only the spinner waits out its minimum.
+    private func endRefreshing(after delay: TimeInterval) {
+        let finish = { [weak self] in
+            guard let self, self.isRefreshing else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { self.isRefreshing = false }
+        }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: finish)
+        } else {
+            finish()
         }
     }
     
