@@ -40,81 +40,103 @@ final class DMViewModel: ObservableObject {
     @Published var isVerifyingPasscode: Bool = false
     @Published var passcodeErrorMessage: String? = nil
     
-    var privateKey: P256.KeyAgreement.PrivateKey?
-    // The second half of the recovered secret, and the version of the key pair it belongs to. Only secrets
-    // recovered since sending was added keep it; older ones have to be recovered again before sending.
-    var signingKey: P256.Signing.PrivateKey?
-    var signingKeyVersion: String?
-    var decryptedMessageCache: [String: DMDecodedContent] = [:]
-    var rawConversationKeyEvents: [String: Data] = [:]
-    var conversationKeys: [String: Data] = [:]
-    
-    private let pinnedStorageKey = "com.anno.tweetintosh.dm.pinned"
+    private(set) var session: DMAccountSession
     
     // The disk cache: whose chats are loaded, whether the server has been asked this session, and the
     // subscription that writes changes back.
     private var cacheOwnerId: String?
     private var hasFetchedInbox = false
     private var cacheSubscription: AnyCancellable?
-    @Published var pinnedConversationIds: Set<String> = []
-    
-    private var passcodeStorageKey: String {
-        let activeId = AccountManager.shared.activeId ?? "default"
-        return "com.anno.tweetintosh.dm.privkey.\(activeId)"
+    @Published private(set) var pinnedConversationIds: Set<String> = []
+
+    private static func makeSession() -> DMAccountSession {
+        let accountId = AccountManager.shared.activeId
+        let credentials = AccountManager.shared.accounts.first { $0.id == accountId }?.credentials
+        return DMAccountSession(accountId: accountId, credentials: credentials)
     }
-    
-    private var keyVersionStorageKey: String {
-        let activeId = AccountManager.shared.activeId ?? "default"
-        return "com.anno.tweetintosh.dm.pkversion.\(activeId)"
+
+    // Identity, rather than account id alone, also rejects an old answer after switching A → B → A.
+    private func isCurrent(_ requestSession: DMAccountSession) -> Bool {
+        session === requestSession && requestSession.accountId == AccountManager.shared.activeId
     }
-    
-    /// Loads a recovered X Chat secret: its first 32 bytes decrypt, and on current accounts the next 32 sign.
-    @discardableResult
-    private func applySecret(hex: String, keyVersion: String?) -> Bool {
-        guard let keyData = Data(hexString: hex),
-              let priv = try? P256.KeyAgreement.PrivateKey(rawRepresentation: keyData.prefix(32)) else { return false }
-        privateKey = priv
-        if keyData.count == 64, let keyVersion,
-           let signing = try? P256.Signing.PrivateKey(rawRepresentation: keyData.subdata(in: 32..<64)) {
-            signingKey = signing
-            signingKeyVersion = keyVersion
-        } else {
-            signingKey = nil
-            signingKeyVersion = nil
+
+    private func requestSession() -> DMAccountSession {
+        let context = session
+        if let account = AccountManager.shared.accounts.first(where: {
+            $0.id == context.accountId && $0.authToken == context.authToken
+        }) {
+            context.refreshCredentials(account.credentials)
         }
-        return true
+        return context
     }
     
     private init() {
-        if let saved = UserDefaults.standard.stringArray(forKey: pinnedStorageKey) {
-            self.pinnedConversationIds = Set(saved)
-        }
-        
-        // Restore verified private key from secure persistent storage if already unlocked
-        if let savedHex = UserDefaults.standard.string(forKey: passcodeStorageKey),
-           applySecret(hex: savedHex, keyVersion: UserDefaults.standard.string(forKey: keyVersionStorageKey)) {
-            self.isPasscodeUnlocked = true
-        } else {
-            self.isPasscodeUnlocked = false
-        }
-        
+        session = Self.makeSession()
+        pinnedConversationIds = session.pinnedConversationIds
+
         // Show the chats as they were last seen straight away; the inbox fetch then brings them up to date.
-        cacheOwnerId = AccountManager.shared.activeId
+        cacheOwnerId = session.accountId
+        isPasscodeUnlocked = session.restoreSecret()
         if let cached = DMCacheManager.shared.load() {
-            conversations = cached.conversations
+            conversations = applyingPins(to: cached.conversations)
             messagesByConv = cached.messages
         }
+        observeCache(for: cacheOwnerId)
+    }
+
+    /// Starts over for the account that is active now: its cached snapshot and secret, with no trace of the last one.
+    func reloadForActiveAccount() {
+        // Old requests keep their old session; none can fill the replacement session's caches.
+        session = Self.makeSession()
+        pinnedConversationIds = session.pinnedConversationIds
+        conversations = []
+        messagesByConv = [:]
+        selectedConversationId = nil
+        selectedConversationIds = []
+        isEditMode = false
+        searchQuery = ""
+        filter = .all
+        inputText = ""
+        replyingTo = nil
+        pendingAttachments = []
+        errorMessage = nil
+        isLoadingInbox = false
+        isLoadingMessages = false
+        isSending = false
+        isVerifyingPasscode = false
+        passcodeInput = ""
+        passcodeErrorMessage = nil
+        showPasscodeSheet = false
+        isPasscodeUnlocked = false
+        hasFetchedInbox = false
+
+        isPasscodeUnlocked = session.restoreSecret()
+        if let cached = DMCacheManager.shared.load() {
+            conversations = applyingPins(to: cached.conversations)
+            messagesByConv = cached.messages
+        }
+        observeCache(for: AccountManager.shared.activeId)
+        if isPasscodeUnlocked {
+            decryptAllLoadedMessages()
+        }
+    }
+
+    // One save pipeline per account: a save debounced before a switch is dropped with its subscription, and the owner
+    // it was started for must still be the active one by the time it runs.
+    private func observeCache(for owner: String?) {
+        cacheSubscription?.cancel()
+        cacheOwnerId = owner
         cacheSubscription = Publishers.CombineLatest($conversations, $messagesByConv)
             .dropFirst()
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
             .sink { [weak self] conversations, messages in
-                self?.saveCache(conversations: conversations, messages: messages)
+                self?.saveCache(owner: owner, conversations: conversations, messages: messages)
             }
     }
     
-    private func saveCache(conversations: [DMConversation], messages: [String: [DMMessage]]) {
+    private func saveCache(owner: String?, conversations: [DMConversation], messages: [String: [DMMessage]]) {
         // Chats loaded for one account are never written into another's folder.
-        guard let owner = cacheOwnerId, owner == AccountManager.shared.activeId,
+        guard let owner, owner == AccountManager.shared.activeId,
               !conversations.isEmpty || !messages.isEmpty else { return }
         DMCacheManager.shared.save(.init(accountId: owner, conversations: conversations, messages: messages))
     }
@@ -129,6 +151,19 @@ final class DMViewModel: ObservableObject {
             byId[m.id] = m
         }
         messagesByConv[convId] = byId.values.sorted { $0.createdAt < $1.createdAt }
+        if let index = conversations.firstIndex(where: { $0.id == convId }) {
+            let messages = messagesByConv[convId] ?? []
+            conversations[index].lastMessage = DMMessage.latestListed(in: messages)
+            conversations[index].hasEncryptedMessages = messages.contains { $0.isEncrypted }
+        }
+    }
+
+    private func applyingPins(to loaded: [DMConversation]) -> [DMConversation] {
+        loaded.map { conversation in
+            var conversation = conversation
+            conversation.isPinned = pinnedConversationIds.contains(conversation.id)
+            return conversation
+        }
     }
     
     /// The server's conversations, plus cached ones it did not list this time.
@@ -166,7 +201,7 @@ final class DMViewModel: ObservableObject {
         }
         let fetchedIds = Set(fetched.map(\.id))
         result.append(contentsOf: conversations.filter { !fetchedIds.contains($0.id) })
-        return Self.oneChatPerPerson(result).sorted {
+        return applyingPins(to: Self.oneChatPerPerson(result)).sorted {
             if $0.isPinned != $1.isPinned { return $0.isPinned }
             return $0.sortTimestamp > $1.sortTimestamp
         }
@@ -244,12 +279,9 @@ final class DMViewModel: ObservableObject {
     }
     
     func restoreUnlockedStateIfNeeded() {
-        if !isPasscodeUnlocked || privateKey == nil {
-            if let savedHex = UserDefaults.standard.string(forKey: passcodeStorageKey),
-               applySecret(hex: savedHex, keyVersion: UserDefaults.standard.string(forKey: keyVersionStorageKey)) {
-                self.isPasscodeUnlocked = true
-                decryptAllLoadedMessages()
-            }
+        if !isPasscodeUnlocked, session.restoreSecret() {
+            isPasscodeUnlocked = true
+            decryptAllLoadedMessages()
         }
     }
     
@@ -263,10 +295,11 @@ final class DMViewModel: ObservableObject {
         
         isLoadingInbox = true
         errorMessage = nil
+        let requestSession = self.requestSession()
         
         // Fetch inbox state baseline (Unified X Chat GraphQL + Legacy REST)
-        DMAPI.shared.fetchInbox { [weak self] result in
-            guard let self = self else { return }
+        DMAPI.shared.fetchInbox(context: requestSession) { [weak self] result in
+            guard let self = self, self.isCurrent(requestSession) else { return }
             self.isLoadingInbox = false
             
             switch result {
@@ -295,8 +328,9 @@ final class DMViewModel: ObservableObject {
     }
     
     func fetchLatestUserUpdates() {
-        DMAPI.shared.fetchUserUpdates { [weak self] result in
-            guard let self = self else { return }
+        let requestSession = self.requestSession()
+        DMAPI.shared.fetchUserUpdates(context: requestSession) { [weak self] result in
+            guard let self = self, self.isCurrent(requestSession) else { return }
             guard case .success(let (newConvs, newMsgs)) = result else { return }
             
             var mergedConvs = self.conversations
@@ -328,7 +362,7 @@ final class DMViewModel: ObservableObject {
             }
             
             // Re-sort with pinned on top, then sortTimestamp descending
-            self.conversations = mergedConvs.sorted {
+            self.conversations = self.applyingPins(to: mergedConvs).sorted {
                 if $0.isPinned != $1.isPinned {
                     return $0.isPinned && !$1.isPinned
                 }
@@ -338,8 +372,9 @@ final class DMViewModel: ObservableObject {
     }
     
     func fetchRecentDMEvents() {
-        DMAPI.shared.fetchDMEvents { [weak self] result in
-            guard let self = self else { return }
+        let requestSession = self.requestSession()
+        DMAPI.shared.fetchDMEvents(context: requestSession) { [weak self] result in
+            guard let self = self, self.isCurrent(requestSession) else { return }
             guard case .success(let events) = result else { return }
             
             // Merge events into conversations and messages
@@ -365,15 +400,19 @@ final class DMViewModel: ObservableObject {
         
         isVerifyingPasscode = true
         passcodeErrorMessage = nil
-        let activeUserId = AccountManager.shared.activeId ?? ""
-        
-        WebKitWriteChannel.shared.recoverXChatPrivateKey(passcode: clean, userId: activeUserId) { [weak self] result in
-            guard let self = self else { return }
+        let requestSession = self.requestSession()
+        guard let activeUserId = requestSession.accountId, let credentials = requestSession.credentials else {
+            isVerifyingPasscode = false
+            return
+        }
+
+        WebKitWriteChannel.shared.recoverXChatPrivateKey(passcode: clean, userId: activeUserId, credentials: credentials) { [weak self] result in
+            guard let self = self, self.isCurrent(requestSession) else { return }
             self.isVerifyingPasscode = false
             
             switch result {
             case .success(let secret):
-                guard self.applySecret(hex: secret.hex, keyVersion: secret.publicKeyVersion) else {
+                guard requestSession.applySecret(hex: secret.hex, keyVersion: secret.publicKeyVersion) else {
                     self.passcodeErrorMessage = LocalizationManager.shared.t("messages_passcode_error")
                     completion?(false)
                     return
@@ -384,8 +423,7 @@ final class DMViewModel: ObservableObject {
                 self.showPasscodeSheet = false
                 
                 // Persist verified private key so the user stays unlocked across launches
-                UserDefaults.standard.set(secret.hex, forKey: self.passcodeStorageKey)
-                UserDefaults.standard.set(secret.publicKeyVersion, forKey: self.keyVersionStorageKey)
+                requestSession.persistSecret(hex: secret.hex, keyVersion: secret.publicKeyVersion)
                 
                 // Decrypt all existing loaded messages in memory
                 self.decryptAllLoadedMessages()
@@ -409,55 +447,25 @@ final class DMViewModel: ObservableObject {
     }
     
     func decryptAllLoadedMessages() {
-        guard let privKey = privateKey else { return }
-        
-        // 1. Decrypt all conversation keys from raw key change events
-        for (ver, encPayload) in rawConversationKeyEvents {
-            if conversationKeys[ver] == nil {
-                if let convKey = DMAPI.shared.decryptConversationKey(data: encPayload, privateKey: privKey) {
-                    conversationKeys[ver] = convKey
+        let requestSession = self.requestSession()
+        guard requestSession.isUnlocked else { return }
+        let loaded = messagesByConv
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            requestSession.prepareConversationKeys()
+            let decrypted = loaded.mapValues { messages in
+                messages.map { message in
+                    guard message.isEncrypted, let base64 = message.rawCiphertextBase64,
+                          let ciphertext = Data(base64Encoded: base64),
+                          let content = requestSession.decryptMessage(id: message.id, eventId: message.sequenceId,
+                              ciphertext: ciphertext, keyVersion: message.keyVersion) else { return message }
+                    return message.decrypted(content)
                 }
             }
-        }
-        
-        // 2. Decrypt all loaded messages using their respective conversation keys
-        for (convId, msgs) in messagesByConv {
-            var updatedMsgs: [DMMessage] = []
-            var hasEncrypted = false
-            
-            for msg in msgs {
-                if msg.isEncrypted, let b64 = msg.rawCiphertextBase64, let rawData = Data(base64Encoded: b64) {
-                    var decryptedText: DMDecodedContent? = nil
-                    
-                    if let ver = msg.keyVersion, let convKey = conversationKeys[ver] {
-                        decryptedText = DMAPI.shared.decryptMessagePayload(rawBinary: rawData, conversationKey: convKey)
-                    }
-                    if decryptedText == nil {
-                        for convKey in conversationKeys.values {
-                            if let text = DMAPI.shared.decryptMessagePayload(rawBinary: rawData, conversationKey: convKey) {
-                                decryptedText = text
-                                break
-                            }
-                        }
-                    }
-                    
-                    if let content = decryptedText {
-                        decryptedMessageCache[msg.id] = content
-                        updatedMsgs.append(msg.decrypted(content))
-                    } else {
-                        hasEncrypted = true
-                        updatedMsgs.append(msg)
-                    }
-                } else {
-                    updatedMsgs.append(msg)
+            DispatchQueue.main.async {
+                guard let self, self.isCurrent(requestSession) else { return }
+                for (conversationId, messages) in decrypted {
+                    self.mergeMessages(messages, into: conversationId)
                 }
-            }
-            
-            messagesByConv[convId] = updatedMsgs
-            
-            if let idx = conversations.firstIndex(where: { $0.id == convId }) {
-                conversations[idx].lastMessage = DMMessage.latestListed(in: updatedMsgs)
-                conversations[idx].hasEncryptedMessages = hasEncrypted
             }
         }
     }
@@ -474,9 +482,10 @@ final class DMViewModel: ObservableObject {
     func loadMessages(for conversationId: String) {
         guard !isLoadingMessages else { return }
         isLoadingMessages = true
-        
-        DMAPI.shared.fetchConversation(conversationId: conversationId) { [weak self] result in
-            guard let self = self else { return }
+        let requestSession = self.requestSession()
+
+        DMAPI.shared.fetchConversation(conversationId: conversationId, context: requestSession) { [weak self] result in
+            guard let self = self, self.isCurrent(requestSession) else { return }
             self.isLoadingMessages = false
             
             switch result {
@@ -520,7 +529,8 @@ final class DMViewModel: ObservableObject {
         pendingAttachments.removeAll()
         isSending = true
         
-        let activeUserId = AccountManager.shared.activeId ?? ""
+        let requestSession = self.requestSession()
+        let activeUserId = requestSession.accountId ?? ""
         let optimisticMsg = DMMessage(
             id: "local-\(UUID().uuidString)",
             conversationId: convId,
@@ -538,8 +548,8 @@ final class DMViewModel: ObservableObject {
             conversations[idx].lastMessage = optimisticMsg
         }
         
-        DMAPI.shared.sendMessage(conversationId: convId, text: textToSend) { [weak self] result in
-            guard let self = self else { return }
+        DMAPI.shared.sendMessage(conversationId: convId, text: textToSend, context: requestSession) { [weak self] result in
+            guard let self = self, self.isCurrent(requestSession) else { return }
             self.isSending = false
             
             switch result {
@@ -566,29 +576,21 @@ final class DMViewModel: ObservableObject {
         convId.contains(":") || (messagesByConv[convId] ?? []).contains { $0.keyVersion != nil }
     }
     
-    private func conversationKey(version: String) -> Data? {
-        if let key = conversationKeys[version] { return key }
-        guard let priv = privateKey, let raw = rawConversationKeyEvents[version],
-              let key = DMAPI.shared.decryptConversationKey(data: raw, privateKey: priv) else { return nil }
-        conversationKeys[version] = key
-        return key
-    }
-    
     /// The signing key and the newest conversation key this account can open for `convId`.
     func sendKeys(for convId: String) -> XChatSendKeys? {
-        guard let signingKey, let signingKeyVersion else { return nil }
-        var versions = XChatConversationState.shared.keyVersions(for: convId)
+        guard let signing = session.signingCredentials else { return nil }
+        var versions = session.conversations.keyVersions(for: convId)
         for m in messagesByConv[convId] ?? [] {
             if let v = m.keyVersion { versions.insert(v) }
         }
         // Versions are creation times in milliseconds, so the largest is the newest.
         for version in versions.sorted(by: { (Int64($0) ?? 0) > (Int64($1) ?? 0) }) {
-            if let key = conversationKey(version: version) {
+            if let key = session.conversationKey(version: version) {
                 return XChatSendKeys(
                     conversationKey: key,
                     conversationKeyVersion: version,
-                    signingKey: signingKey,
-                    signingKeyVersion: signingKeyVersion
+                    signingKey: signing.key,
+                    signingKeyVersion: signing.version
                 )
             }
         }
@@ -598,7 +600,7 @@ final class DMViewModel: ObservableObject {
     private func reportMissingSendKeys() {
         let loc = LocalizationManager.shared
         // Without the signing key nothing can be sent; recovering the secret again brings it back.
-        if signingKey == nil {
+        if session.signingCredentials == nil {
             AppToastManager.shared.show(loc.t("messages_send_needs_passcode"), icon: "lock.fill")
             promptPasscode()
         } else {
@@ -620,6 +622,7 @@ final class DMViewModel: ObservableObject {
             reportMissingSendKeys()
             return false
         }
+        let requestSession = self.requestSession()
         let messageId = UUID().uuidString.lowercased()
         let optimistic = placeholder(messageId, keys.conversationKeyVersion)
         messagesByConv[convId, default: []].append(optimistic)
@@ -628,8 +631,8 @@ final class DMViewModel: ObservableObject {
             conversations[idx].lastMessage = latest
         }
         
-        DMAPI.shared.sendXChatEntry(entry, conversationId: convId, messageId: messageId, keys: keys) { [weak self] result in
-            guard let self else { return }
+        DMAPI.shared.sendXChatEntry(entry, conversationId: convId, messageId: messageId, keys: keys, context: requestSession) { [weak self] result in
+            guard let self, self.isCurrent(requestSession) else { return }
             var current = self.messagesByConv[convId] ?? []
             switch result {
             case .success(let stored):
@@ -663,7 +666,7 @@ final class DMViewModel: ObservableObject {
         DMMessage(
             id: id,
             conversationId: convId,
-            senderId: AccountManager.shared.activeId ?? "",
+            senderId: session.accountId ?? "",
             recipientId: nil,
             text: text,
             createdAt: Date(),
@@ -760,11 +763,12 @@ final class DMViewModel: ObservableObject {
     /// a refusal brings it back.
     func delete(_ message: DMMessage, forEveryone: Bool) {
         guard let seq = message.sequenceId else { return }
-        guard let signingKey, let signingKeyVersion else {
+        guard let signing = session.signingCredentials else {
             reportMissingSendKeys()
             return
         }
         let convId = message.conversationId
+        let requestSession = self.requestSession()
         let localId = "local-delete-\(UUID().uuidString)"
         var marker = outgoing(localId, convId, keyVersion: "", kind: .delete)
         marker.deletedSequenceIds = [seq]
@@ -774,10 +778,11 @@ final class DMViewModel: ObservableObject {
             sequenceIds: [seq],
             forEveryone: forEveryone,
             conversationId: convId,
-            signingKey: signingKey,
-            signingKeyVersion: signingKeyVersion
+            signingKey: signing.key,
+            signingKeyVersion: signing.version,
+            context: requestSession
         ) { [weak self] result in
-            guard let self, case .failure(let error) = result else { return }
+            guard let self, self.isCurrent(requestSession), case .failure(let error) = result else { return }
             self.messagesByConv[convId]?.removeAll { $0.id == localId }
             AppToastManager.shared.show(
                 LocalizationManager.shared.format("messages_delete_failed", ["reason": error.localizedDescription]),
@@ -789,12 +794,8 @@ final class DMViewModel: ObservableObject {
     // MARK: - Pin Management
     
     func togglePin(for conversationId: String) {
-        if pinnedConversationIds.contains(conversationId) {
-            pinnedConversationIds.remove(conversationId)
-        } else {
-            pinnedConversationIds.insert(conversationId)
-        }
-        UserDefaults.standard.set(Array(pinnedConversationIds), forKey: pinnedStorageKey)
+        session.togglePin(conversationId)
+        pinnedConversationIds = session.pinnedConversationIds
         
         // Update model in-place
         if let idx = conversations.firstIndex(where: { $0.id == conversationId }) {
@@ -821,21 +822,3 @@ final class DMViewModel: ObservableObject {
     }
 }
 
-// MARK: - Hex Data Conversion Extension
-
-private extension Data {
-    init?(hexString: String) {
-        let clean = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard clean.count % 2 == 0 else { return nil }
-        var data = Data(capacity: clean.count / 2)
-        var index = clean.startIndex
-        while index < clean.endIndex {
-            let nextIndex = clean.index(index, offsetBy: 2)
-            let byteString = clean[index..<nextIndex]
-            guard let byte = UInt8(byteString, radix: 16) else { return nil }
-            data.append(byte)
-            index = nextIndex
-        }
-        self = data
-    }
-}

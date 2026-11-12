@@ -296,6 +296,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func reloadForActiveAccount() {
         TimelineViewModel.shared.resetForSignOut()
         NotificationsViewModel.shared.resetForSignOut()
+        DMViewModel.shared.reloadForActiveAccount()
         NavigationManager.shared.resetForAccountChange()
         replaceMainWindow {
             TimelineViewModel.shared.signedIn()
@@ -324,6 +325,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         settingsWindow?.close()
         TimelineViewModel.shared.resetForSignOut()
         NotificationsViewModel.shared.resetForSignOut()
+        DMViewModel.shared.reloadForActiveAccount()
         NavigationManager.shared.resetForAccountChange()
         // The login page signs in by itself when it finds X's cookies, so they have to go too
         WKWebsiteDataStore.default().removeData(

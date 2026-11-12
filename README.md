@@ -30,7 +30,7 @@ Tweetintosh focuses on utility, keyboard navigation, and desktop ergonomics that
 - **Compact Post Actions**: Narrow panes tighten action spacing before compressing counts, keeping reply, repost, like, and view counts on one line.
 - **Soft Refresh Edges**: Home and Notifications smoothly open and close space above the first row while refreshing, with the same animation fading to transparent at both sides.
 - **Click Again to Refresh**: Click the selected Home or Notifications button in the top bar or sidebar to glide quickly to the top, then refresh its current feed. Respects Reduce Motion.
-- **Multi-Account Switching**: Save multiple profiles and switch between them without re-authenticating.
+- **Multi-Account Switching**: Save multiple profiles and switch between them without re-authenticating. Each account keeps its own message history, unlock keys, and pinned chats; switching clears the message draft and ignores the previous session's pending results. Messages keep loading when X renews the account's session cookies.
 - **Instant Launch & Offline Cache**: Recent timelines are stored locally so you can read previously loaded posts immediately upon launch, even in poor connectivity or airplane mode.
 - **Transient Authentication**: WebKit is loaded only once on first run to capture your session cookies, then immediately released from memory.
 
@@ -58,7 +58,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 - **紧凑推文操作栏**：窄栏优先缩小按钮及图标与数字间距，再适度压缩计数文字，回复、转推、点赞及浏览数保持单行。
 - **柔和刷新边缘**：主页与通知页在刷新时平滑展开、收起首行上方的空白区域，刷新动画的左右两侧统一渐隐至透明。
 - **再次点击刷新**：再次点击顶栏或侧栏中已选中的主页、通知按钮，先快速平滑返回页首，再刷新当前信息流，并遵循系统“减少动态效果”设置。
-- **多账号快速切换**：支持保存多个 X 账号，随时一键切换身份。
+- **多账号快速切换**：支持保存多个 X 账号，随时一键切换身份。各账号独立保存私信历史、解锁密钥和置顶会话；切换时清空私信草稿，旧会话尚未完成的请求不会影响新会话。X 更新登录 Cookie 后，私信仍可继续加载。
 - **即时启动与离线缓存**：推文快照持久化保存在本地，断网或飞行模式下打开即可浏览既有内容，网络连通时静默更新。
 - **瞬态登录认证**：仅在初次登录时启动一次临时网页组件读取 Cookie 凭证，提取完毕后立即销毁该实例，日常运行不驻留网页运行时。
 

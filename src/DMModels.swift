@@ -7,6 +7,184 @@
 //
 
 import Foundation
+import CryptoKit
+
+/// A request retains the account and state it began with, even after the UI opens another account's session.
+final class DMAccountSession {
+    let accountId: String?
+    let authToken: String?
+    let conversations = XChatConversationState()
+    let receipts = DMReadReceiptStore()
+
+    private let defaults: UserDefaults
+    private let lock = NSLock()
+    private var credentialSnapshot: AuthCredentials?
+    private var privateKey: P256.KeyAgreement.PrivateKey?
+    private var signingKey: P256.Signing.PrivateKey?
+    private var signingKeyVersion: String?
+    private var rawConversationKeys: [String: Data] = [:]
+    private var conversationKeys: [String: Data] = [:]
+    private var decryptedMessages: [String: DMDecodedContent] = [:]
+    private var pins: Set<String>
+
+    init(accountId: String?, credentials: AuthCredentials?, defaults: UserDefaults = .standard) {
+        self.accountId = accountId
+        self.authToken = credentials?.authToken
+        self.credentialSnapshot = credentials
+        self.defaults = defaults
+        // The old global pin list has no owner, so it cannot safely be inherited by any account.
+        pins = accountId.map { Set(defaults.stringArray(forKey: "com.anno.tweetintosh.dm.pinned.\($0)") ?? []) } ?? []
+    }
+
+    var credentials: AuthCredentials? {
+        lock.lock()
+        defer { lock.unlock() }
+        return credentialSnapshot
+    }
+
+    /// X rotates ct0 without changing the login; a different login must start another session.
+    func refreshCredentials(_ credentials: AuthCredentials) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let authToken, credentials.authToken == authToken,
+              credentials.userId == nil || credentials.userId == accountId else { return }
+        credentialSnapshot = credentials
+    }
+
+    var isUnlocked: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return privateKey != nil
+    }
+
+    var signingCredentials: (key: P256.Signing.PrivateKey, version: String)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let signingKey, let signingKeyVersion else { return nil }
+        return (signingKey, signingKeyVersion)
+    }
+
+    var pinnedConversationIds: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return pins
+    }
+
+    func togglePin(_ conversationId: String) {
+        guard let accountId else { return }
+        lock.lock()
+        if pins.contains(conversationId) { pins.remove(conversationId) } else { pins.insert(conversationId) }
+        let saved = Array(pins)
+        lock.unlock()
+        defaults.set(saved, forKey: "com.anno.tweetintosh.dm.pinned.\(accountId)")
+    }
+
+    @discardableResult
+    func restoreSecret() -> Bool {
+        guard let accountId,
+              let hex = defaults.string(forKey: "com.anno.tweetintosh.dm.privkey.\(accountId)") else { return false }
+        return applySecret(hex: hex, keyVersion: defaults.string(forKey: "com.anno.tweetintosh.dm.pkversion.\(accountId)"))
+    }
+
+    /// Parsing and cryptography stay outside the lock; only publishing the recovered keys is shared.
+    @discardableResult
+    func applySecret(hex: String, keyVersion: String?) -> Bool {
+        guard let data = Data(hexString: hex), data.count == 32 || data.count == 64,
+              let key = try? P256.KeyAgreement.PrivateKey(rawRepresentation: data.prefix(32)) else { return false }
+        let signing: P256.Signing.PrivateKey?
+        if data.count == 64, keyVersion != nil {
+            signing = try? P256.Signing.PrivateKey(rawRepresentation: data.subdata(in: 32..<64))
+        } else {
+            signing = nil
+        }
+        lock.lock()
+        privateKey = key
+        signingKey = signing
+        signingKeyVersion = signing == nil ? nil : keyVersion
+        lock.unlock()
+        return true
+    }
+
+    func persistSecret(hex: String, keyVersion: String?) {
+        guard let accountId else { return }
+        defaults.set(hex, forKey: "com.anno.tweetintosh.dm.privkey.\(accountId)")
+        defaults.set(keyVersion, forKey: "com.anno.tweetintosh.dm.pkversion.\(accountId)")
+    }
+
+    func recordConversationKey(_ payload: Data, version: String) {
+        lock.lock()
+        rawConversationKeys[version] = payload
+        lock.unlock()
+        _ = conversationKey(version: version)
+    }
+
+    func conversationKey(version: String) -> Data? {
+        lock.lock()
+        let known = conversationKeys[version]
+        let payload = rawConversationKeys[version]
+        let key = privateKey
+        lock.unlock()
+        if let known { return known }
+        guard let payload, let key,
+              let decrypted = DMAPI.shared.decryptConversationKey(data: payload, privateKey: key) else { return nil }
+        lock.lock()
+        conversationKeys[version] = decrypted
+        lock.unlock()
+        return decrypted
+    }
+
+    func prepareConversationKeys() {
+        lock.lock()
+        let versions = Array(rawConversationKeys.keys)
+        lock.unlock()
+        for version in versions { _ = conversationKey(version: version) }
+    }
+
+    func decryptMessage(id: String, eventId: String?, ciphertext: Data, keyVersion: String?) -> DMDecodedContent? {
+        lock.lock()
+        let cached = decryptedMessages[id] ?? eventId.flatMap { decryptedMessages[$0] }
+        lock.unlock()
+        if let cached { return cached }
+
+        var content: DMDecodedContent?
+        if let keyVersion, let key = conversationKey(version: keyVersion) {
+            content = DMAPI.shared.decryptMessagePayload(rawBinary: ciphertext, conversationKey: key)
+        }
+        if content == nil {
+            lock.lock()
+            let keys = Array(conversationKeys.values)
+            lock.unlock()
+            for key in keys {
+                if let decoded = DMAPI.shared.decryptMessagePayload(rawBinary: ciphertext, conversationKey: key) {
+                    content = decoded
+                    break
+                }
+            }
+        }
+        if let content {
+            lock.lock()
+            decryptedMessages[id] = content
+            lock.unlock()
+        }
+        return content
+    }
+}
+
+private extension Data {
+    init?(hexString: String) {
+        let clean = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count % 2 == 0 else { return nil }
+        var data = Data(capacity: clean.count / 2)
+        var index = clean.startIndex
+        while index < clean.endIndex {
+            let nextIndex = clean.index(index, offsetBy: 2)
+            guard let byte = UInt8(clean[index..<nextIndex], radix: 16) else { return nil }
+            data.append(byte)
+            index = nextIndex
+        }
+        self = data
+    }
+}
 
 // MARK: - Text, Emoji & Markdown Helper
 
@@ -286,8 +464,8 @@ struct DMReadReceipt: Equatable {
 /// When the other people in a chat saw a message. X Chat reports it two ways: encrypted mark-read entries that
 /// name the newest message seen, and plain read-receipt events (`DMReadReceiptStore`).
 enum DMSeen {
-    static func seenTimes(for message: DMMessage, among messages: [DMMessage]) -> [String: Date] {
-        var result = DMReadReceiptStore.shared.seenTimes(for: message)
+    static func seenTimes(for message: DMMessage, among messages: [DMMessage], receipts: DMReadReceiptStore) -> [String: Date] {
+        var result = receipts.seenTimes(for: message)
         let sequence = message.sequenceId.flatMap { Int64($0) }
         for mark in messages where mark.entryKind == .read && mark.senderId != message.senderId {
             let covers: Bool
@@ -305,16 +483,14 @@ enum DMSeen {
     }
     
     /// Whether anyone but `senderId` has reported reading this chat at all, so "not seen yet" can be trusted.
-    static func hasReceipts(in conversationId: String, excluding senderId: String, among messages: [DMMessage]) -> Bool {
+    static func hasReceipts(in conversationId: String, excluding senderId: String, among messages: [DMMessage], receipts: DMReadReceiptStore) -> Bool {
         messages.contains { $0.entryKind == .read && $0.senderId != senderId }
-            || DMReadReceiptStore.shared.hasReceipts(in: conversationId, excluding: senderId)
+            || receipts.hasReceipts(in: conversationId, excluding: senderId)
     }
 }
 
 /// Read receipts seen while decoding X Chat events. Decoding runs off the main thread, so access is locked.
 final class DMReadReceiptStore {
-    static let shared = DMReadReceiptStore()
-    private init() {}
     
     private let lock = NSLock()
     private var receipts: [String: [String: DMReadReceipt]] = [:]
