@@ -92,6 +92,8 @@ final class TweetDetailState: ObservableObject {
     @Published var expandedThreads: Set<String> = []
     // Conversations whose further replies are being fetched
     @Published var loadingThreads: Set<String> = []
+    @Published var translatedBody: String? = nil
+    @Published var showingTranslation: Bool = false
 }
 
 struct TweetDetailView: View {
@@ -463,13 +465,28 @@ struct TweetDetailView: View {
             
             // Tweet Body Text (Large, crisp typography)
             if !viewModel.focalTweet.displayBodyText.isEmpty {
-                Text(TweetText.attributed(viewModel.focalTweet))
-                    .handlesTweetLinks()
-                    .font(theme.tweetFont(size: theme.postSize(17)))
-                    .foregroundColor(ThemeManager.primaryText)
-                    .lineSpacing(5)
-                    .textSelection(.enabled)
-                    .peeksText(of: viewModel.focalTweet, fontSize: theme.postSize(17), lineSpacing: 5, selectable: true)
+                if state.showingTranslation, let translated = state.translatedBody {
+                    Text(translated)
+                        .font(theme.tweetFont(size: theme.postSize(17)))
+                        .foregroundColor(ThemeManager.primaryText)
+                        .lineSpacing(5)
+                        .textSelection(.enabled)
+                } else {
+                    Text(TweetText.attributed(viewModel.focalTweet))
+                        .handlesTweetLinks()
+                        .font(theme.tweetFont(size: theme.postSize(17)))
+                        .foregroundColor(ThemeManager.primaryText)
+                        .lineSpacing(5)
+                        .textSelection(.enabled)
+                        .peeksText(of: viewModel.focalTweet, fontSize: theme.postSize(17), lineSpacing: 5, selectable: true)
+                }
+
+                TweetTranslateControl(
+                    tweetId: viewModel.focalTweet.id,
+                    sourceText: viewModel.focalTweet.displayBodyText,
+                    translatedText: $state.translatedBody,
+                    showingTranslation: $state.showingTranslation
+                )
             }
             
             // An X Article attached to the post: opens the reader

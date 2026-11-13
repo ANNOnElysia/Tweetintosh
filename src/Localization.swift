@@ -1583,6 +1583,146 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "次浏览",
             .traditionalChinese: "次瀏覽"
         ],
+        "translate_post": [
+            .english: "Translate post",
+            .japanese: "ポストを翻訳",
+            .korean: "게시물 번역하기",
+            .simplifiedChinese: "翻译帖子",
+            .traditionalChinese: "翻譯貼文"
+        ],
+        "translating_post": [
+            .english: "Translating…",
+            .japanese: "翻訳中…",
+            .korean: "번역 중…",
+            .simplifiedChinese: "正在翻译…",
+            .traditionalChinese: "正在翻譯…"
+        ],
+        "show_original": [
+            .english: "Show original",
+            .japanese: "原文を表示",
+            .korean: "원문 보기",
+            .simplifiedChinese: "显示原文",
+            .traditionalChinese: "顯示原文"
+        ],
+        "settings_translation": [
+            .english: "Translation",
+            .japanese: "翻訳",
+            .korean: "번역",
+            .simplifiedChinese: "翻译",
+            .traditionalChinese: "翻譯"
+        ],
+        "translation_engine": [
+            .english: "Translation Engine",
+            .japanese: "翻訳エンジン",
+            .korean: "번역 엔진",
+            .simplifiedChinese: "翻译引擎",
+            .traditionalChinese: "翻譯引擎"
+        ],
+        "translation_engine_apple": [
+            .english: "Apple (On-Device)",
+            .japanese: "Apple（オンデバイス）",
+            .korean: "Apple (온디바이스)",
+            .simplifiedChinese: "Apple（本地离线）",
+            .traditionalChinese: "Apple（本機離線）"
+        ],
+        "translation_engine_byok": [
+            .english: "Custom AI (BYOK)",
+            .japanese: "カスタム AI (BYOK)",
+            .korean: "사용자 지정 AI (BYOK)",
+            .simplifiedChinese: "自定义 AI (BYOK)",
+            .traditionalChinese: "自訂 AI (BYOK)"
+        ],
+        "translation_base_url": [
+            .english: "API Base URL",
+            .japanese: "API ベース URL",
+            .korean: "API 기본 URL",
+            .simplifiedChinese: "API Base URL",
+            .traditionalChinese: "API Base URL"
+        ],
+        "translation_api_key": [
+            .english: "API Key",
+            .japanese: "API キー",
+            .korean: "API 키",
+            .simplifiedChinese: "API Key",
+            .traditionalChinese: "API Key"
+        ],
+        "translation_model": [
+            .english: "Model",
+            .japanese: "モデル",
+            .korean: "모델",
+            .simplifiedChinese: "模型名称",
+            .traditionalChinese: "模型名稱"
+        ],
+        "translation_target_language": [
+            .english: "Target Language",
+            .japanese: "翻訳先の言語",
+            .korean: "번역 대상 언어",
+            .simplifiedChinese: "目标语言",
+            .traditionalChinese: "目標語言"
+        ],
+        "translation_follow_app": [
+            .english: "Follow App Language",
+            .japanese: "アプリの言語に従う",
+            .korean: "앱 언어 따르기",
+            .simplifiedChinese: "跟随应用语言",
+            .traditionalChinese: "跟隨應用程式語言"
+        ],
+        "translation_byok_hint": [
+            .english: "Supports any OpenAI-compatible Chat Completions endpoint (OpenAI, DeepSeek, OpenRouter, Ollama, etc.).",
+            .japanese: "OpenAI 互換の Chat Completions エンドポイント（OpenAI、DeepSeek、OpenRouter、Ollama など）に対応しています。",
+            .korean: "OpenAI 호환 Chat Completions 엔드포인트(OpenAI, DeepSeek, OpenRouter, Ollama 등)를 지원합니다.",
+            .simplifiedChinese: "支持任意兼容 OpenAI Chat Completions 格式的接口（如 OpenAI、DeepSeek、OpenRouter、Ollama 等）。",
+            .traditionalChinese: "支援任意相容 OpenAI Chat Completions 格式的介面（如 OpenAI、DeepSeek、OpenRouter、Ollama 等）。"
+        ],
+        "translation_missing_key": [
+            .english: "Please set your API Key in Settings → Translation.",
+            .japanese: "設定 → 翻訳 で API キーを入力してください。",
+            .korean: "설정 → 번역에서 API 키를 입력하세요.",
+            .simplifiedChinese: "请先在 设置 → 翻译 中填写 API Key。",
+            .traditionalChinese: "請先在 設定 → 翻譯 中填寫 API Key。"
+        ],
+        "translation_failed": [
+            .english: "Translation failed: {error}",
+            .japanese: "翻訳に失敗しました: {error}",
+            .korean: "번역 실패: {error}",
+            .simplifiedChinese: "翻译失败：{error}",
+            .traditionalChinese: "翻譯失敗：{error}"
+        ],
+        "translation_verify_fetch": [
+            .english: "Verify & Fetch Models",
+            .japanese: "検証してモデルを取得",
+            .korean: "확인 및 모델 가져오기",
+            .simplifiedChinese: "验证并拉取模型",
+            .traditionalChinese: "驗證並拉取模型"
+        ],
+        "translation_verifying": [
+            .english: "Verifying…",
+            .japanese: "検証中…",
+            .korean: "확인 중…",
+            .simplifiedChinese: "验证中…",
+            .traditionalChinese: "驗證中…"
+        ],
+        "translation_verified_count": [
+            .english: "Connected ({count} models)",
+            .japanese: "接続済み（{count} モデル）",
+            .korean: "연결됨 ({count}개 모델)",
+            .simplifiedChinese: "已连接（{count} 个模型）",
+            .traditionalChinese: "已連線（{count} 個模型）"
+        ],
+        "translation_recommended_models": [
+            .english: "Recommended (Flash / Fast)",
+            .japanese: "おすすめ（高速・軽量モデル）",
+            .korean: "추천 (고속 / 경량 모델)",
+            .simplifiedChinese: "推荐轻量高速模型",
+            .traditionalChinese: "推薦輕量高速模型"
+        ],
+        "translation_fetched_models": [
+            .english: "Available from Endpoint",
+            .japanese: "エンドポイントから取得",
+            .korean: "엔드포인트에서 가져온 모델",
+            .simplifiedChinese: "接口返回的模型",
+            .traditionalChinese: "介面回傳的模型"
+        ],
         "profile_tab_posts": [
             .english: "Posts",
             .japanese: "ポスト",

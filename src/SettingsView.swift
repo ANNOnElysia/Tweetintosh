@@ -353,6 +353,9 @@ struct SettingsView: View {
     @ObservedObject var mediaCache = MediaCacheManager.shared
     
     @ObservedObject var accountManager = AccountManager.shared
+    @ObservedObject private var translation = TranslationSettingsManager.shared
+    @State private var showModelPicker = false
+    @State private var modelSearchQuery = ""
     private let cacheCleanup = CacheCleanup.shared
     private let updates = UpdateManager.shared
     
@@ -362,6 +365,210 @@ struct SettingsView: View {
     var onClearCache: () -> Void
     var onClose: () -> Void = {}
     
+    private var translationSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(loc.t("settings_translation"))
+                .font(theme.appFont(size: 13, weight: .semibold))
+                .foregroundColor(ThemeManager.secondaryText)
+
+            HStack {
+                Text(loc.t("translation_engine"))
+                    .font(theme.appFont(size: 13))
+                    .foregroundColor(ThemeManager.primaryText)
+                Spacer()
+                Picker("", selection: $translation.engine.animation(.easeInOut(duration: 0.2))) {
+                    ForEach(TranslationEngine.allCases) { engine in
+                        Text(engine.localizedTitle).tag(engine)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            HStack {
+                Text(loc.t("translation_target_language"))
+                    .font(theme.appFont(size: 13))
+                    .foregroundColor(ThemeManager.primaryText)
+                Spacer()
+                Picker("", selection: $translation.targetLanguage) {
+                    Text(loc.t("translation_follow_app")).tag(Optional<AppLanguage>.none)
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.displayName).tag(Optional(lang))
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            if translation.engine == .byok {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(loc.t("translation_base_url"))
+                            .font(theme.appFont(size: 11.5, weight: .medium))
+                            .foregroundColor(ThemeManager.secondaryText)
+                        TextField("https://api.openai.com/v1", text: $translation.apiBaseURL)
+                            .textFieldStyle(.roundedBorder)
+                            .font(theme.appFont(size: 12.5))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(loc.t("translation_api_key"))
+                            .font(theme.appFont(size: 11.5, weight: .medium))
+                            .foregroundColor(ThemeManager.secondaryText)
+                        SecureField("sk-...", text: $translation.apiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .font(theme.appFont(size: 12.5))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(loc.t("translation_model"))
+                            .font(theme.appFont(size: 11.5, weight: .medium))
+                            .foregroundColor(ThemeManager.secondaryText)
+                        HStack(spacing: 8) {
+                            TextField("gpt-4o-mini", text: $translation.modelName)
+                                .textFieldStyle(.roundedBorder)
+                                .font(theme.appFont(size: 12.5))
+
+                            Button {
+                                showModelPicker.toggle()
+                            } label: {
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(ThemeManager.secondaryText)
+                                    .frame(width: 24, height: 22)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.borderless)
+                            .popover(isPresented: $showModelPicker, arrowEdge: .bottom) {
+                                modelPickerPopover
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        Button {
+                            Task { await translation.verifyAndFetchModels() }
+                        } label: {
+                            HStack(spacing: 5) {
+                                if translation.isVerifying {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                    Text(loc.t("translation_verifying"))
+                                } else {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 11, weight: .medium))
+                                    Text(loc.t("translation_verify_fetch"))
+                                }
+                            }
+                            .font(theme.appFont(size: 12, weight: .medium))
+                        }
+                        .disabled(translation.isVerifying)
+
+                        if let status = translation.verificationStatus {
+                            switch status {
+                            case .success(let msg):
+                                Label(msg, systemImage: "checkmark.circle.fill")
+                                    .font(theme.appFont(size: 11.5))
+                                    .foregroundColor(Color(hex: "#00BA7C"))
+                                    .lineLimit(1)
+                            case .failure(let msg):
+                                Label(msg, systemImage: "exclamationmark.triangle.fill")
+                                    .font(theme.appFont(size: 11.5))
+                                    .foregroundColor(.orange)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+
+                    Text(loc.t("translation_byok_hint"))
+                        .font(theme.appFont(size: 11.5))
+                        .foregroundColor(ThemeManager.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground)
+    }
+
+    private var modelPickerPopover: some View {
+        let query = modelSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let presets = translation.activeRecommendedModels.filter {
+            query.isEmpty || $0.id.lowercased().contains(query) || $0.label.lowercased().contains(query)
+        }
+        let fetched = translation.fetchedModels.filter {
+            query.isEmpty || $0.lowercased().contains(query)
+        }
+
+        return VStack(spacing: 0) {
+            if translation.fetchedModels.count > 8 {
+                TextField("Filter…", text: $modelSearchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .font(theme.appFont(size: 12))
+                    .padding(8)
+                Divider()
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    if !presets.isEmpty {
+                        Text(loc.t("translation_recommended_models"))
+                            .font(theme.appFont(size: 11, weight: .semibold))
+                            .foregroundColor(ThemeManager.secondaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.top, 6)
+                            .padding(.bottom, 2)
+
+                        ForEach(presets) { preset in
+                            modelPickerRow(id: preset.id, title: preset.label)
+                        }
+                    }
+
+                    if !fetched.isEmpty {
+                        Text(loc.t("translation_fetched_models"))
+                            .font(theme.appFont(size: 11, weight: .semibold))
+                            .foregroundColor(ThemeManager.secondaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
+
+                        ForEach(fetched, id: \.self) { modelId in
+                            modelPickerRow(id: modelId, title: modelId)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .frame(width: 280, height: 260)
+    }
+
+    private func modelPickerRow(id: String, title: String) -> some View {
+        Button {
+            translation.modelName = id
+            showModelPicker = false
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundColor(ThemeManager.accent)
+                    .opacity(translation.modelName == id ? 1 : 0)
+                Text(title)
+                    .font(theme.appFont(size: 12))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     // Accounts: tap one to switch to it, or add another
     private var updatesSection: some View {
         @Bindable var updates = updates
@@ -608,6 +815,8 @@ struct SettingsView: View {
             .padding(14)
             .background(cardBackground)
             
+            translationSection
+
             // Updates, in a build that can verify them
             if updates.isAvailable {
                 updatesSection
