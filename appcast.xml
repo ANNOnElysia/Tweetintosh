@@ -8,5 +8,26 @@
         <description>Updates for Tweetintosh</description>
         <language>en</language>
         <!-- Releases, newest first -->
+        <item>
+            <title>Tweetintosh 0.1.1</title>
+            <pubDate>Fri, 13 Nov 2026 02:08:48 GMT</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:channel>preview</sparkle:channel>
+            <link>https://github.com/ANNOnElysia/Tweetintosh/releases/tag/v0.1.1</link>
+            <description sparkle:format="markdown"><![CDATA[### English
+
+- Updated multi-image support: increased the post photo attachment limit to 20, added an interactive bottom thumbnail scrubber in the image lightbox, and adjusted multi-image stream sizing and spacing to preserve aspect ratios without cropping.
+- Fixed various bugs and improved stability.
+
+### 中文
+
+- 主要更新了对多图的支持：将发帖图片上限提升至 20 张，为图片灯箱新增底部缩略图居中滑动条，并优化了多图横向流的按比例展示与间距。
+- 修复了一些 bug，提升了整体稳定性。
+]]></description>
+            <enclosure url="https://github.com/ANNOnElysia/Tweetintosh/releases/download/v0.1.1/Tweetintosh-v0.1.1.dmg" type="application/octet-stream" sparkle:edSignature="+08OsYkVBlJsvoWx0J8AUy/XJA3a9z1tabXplMIDjqwQrJpv4XR3P98MXG5qCkEdiUq1hSMoYPhZ3heyGlpuAA==" length="4162378" />
+        </item>
     </channel>
 </rss>
