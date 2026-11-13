@@ -513,6 +513,28 @@ private struct SidebarActiveBackground<S: Shape>: View {
     }
 }
 
+// Animating a width through animatableData re-lays-out the capsule every frame, so the dividers and the search
+// button travel with the glass instead of jumping to their final positions while the pill catches up.
+private struct CapsuleWidthMotion: AnimatableModifier {
+    var progress: CGFloat
+    let restingWidth: CGFloat?
+    let expandedWidth: CGFloat?
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let restingWidth, let expandedWidth {
+            content.frame(width: restingWidth + (expandedWidth - restingWidth) * progress)
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Top Floating Capsule (Horizontal Droplet)
 private struct LiquidGlassCapsule: View {
     @Binding var selection: AppTab
@@ -523,6 +545,29 @@ private struct LiquidGlassCapsule: View {
     @FocusState private var isSearchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var previewTab: PressDragPreview<AppTab>?
+    // The width the tab strip takes at rest. The bar grows from it to the search field's width and back, so that
+    // opening search pushes the capsule out rather than swapping its contents inside a fixed frame.
+    @State private var tabStripWidth: CGFloat = 0
+    @State private var buttonWidth: CGFloat = 0
+    private let searchFieldWidth: CGFloat = 280
+
+    // The capsule's width with the tabs showing, and with search open. Both add the chrome around the center
+    // lane: the leading inset and toggle placeholder, two dividers (1 pt plus 6 pt either side), the search
+    // button, and the trailing inset. Until the strip and the button have laid out once there is nothing to
+    // interpolate, so the capsule is left to size itself.
+    private var restingWidth: CGFloat? {
+        guard tabStripWidth > 0, buttonWidth > 0 else { return nil }
+        return chromeWidth + tabStripWidth
+    }
+
+    private var expandedWidth: CGFloat? {
+        guard tabStripWidth > 0, buttonWidth > 0 else { return nil }
+        return chromeWidth + searchFieldWidth
+    }
+
+    private var chromeWidth: CGFloat {
+        toggleWidth + buttonWidth + 38
+    }
     
     var body: some View {
         HStack(spacing: 0) {
@@ -536,134 +581,143 @@ private struct LiquidGlassCapsule: View {
                 .frame(width: 1, height: 16)
                 .padding(.horizontal, 6)
             
-            // 2. Center Content: Either the 3 Tabs OR the Inline Liquid Glass Search Field
+            // 2. Center Content: the tabs, or the search field laid over them. Both stay mounted so the strip
+            // and the field can animate into each other's width; the capsule then grows by exactly the width it
+            // gains or loses here, instead of jumping between the two.
             ZStack {
-                if !nav.isSearchActive {
-                    // Center Tabs: Home, Notifications, Messages (Dynamic Width, No Truncation)
-                    HStack(spacing: 3) {
-                        ForEach(AppTab.available) { tab in
-                            let isSelected = (previewTab?.id ?? selection) == tab
-                            let isCurrentTab = selection == tab
-                            Group {
-                                HStack(spacing: 5) {
-                                    Image(systemName: tab.iconName)
-                                        .font(.system(size: 12, weight: isCurrentTab ? .bold : .medium))
-                                    Text(tabTitle(tab))
-                                        .font(theme.appFont(size: 12.5, weight: isCurrentTab ? .bold : .medium))
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                        .layoutPriority(1)
-                                    
-                                    if nav.showShortcutBadges {
-                                        Text(tabShortcut(tab))
-                                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                                            .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.9) : (theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40)))
-                                            .padding(.horizontal, 3.5)
-                                            .padding(.vertical, 1.5)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 3.5)
-                                                    .fill(isSelected ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06)))
-                                            )
-                                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                                    }
+                // Center Tabs: Home, Notifications, Messages (Dynamic Width, No Truncation)
+                HStack(spacing: 3) {
+                    ForEach(AppTab.available) { tab in
+                        let isSelected = (previewTab?.id ?? selection) == tab
+                        let isCurrentTab = selection == tab
+                        Group {
+                            HStack(spacing: 5) {
+                                Image(systemName: tab.iconName)
+                                    .font(.system(size: 12, weight: isCurrentTab ? .bold : .medium))
+                                Text(tabTitle(tab))
+                                    .font(theme.appFont(size: 12.5, weight: isCurrentTab ? .bold : .medium))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .layoutPriority(1)
+                                
+                                if nav.showShortcutBadges {
+                                    Text(tabShortcut(tab))
+                                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                        .foregroundColor(isSelected ? ThemeManager.accent.opacity(0.9) : (theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40)))
+                                        .padding(.horizontal, 3.5)
+                                        .padding(.vertical, 1.5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 3.5)
+                                                .fill(isSelected ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.16) : (theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.06)))
+                                        )
+                                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                                 }
-                                .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.68) : Color.white.opacity(0.70)))
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 6)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .layoutPriority(isCurrentTab ? 2 : 1)
-                                .contentShape(Rectangle())
                             }
-                            .pressDragItem(tab)
-                            .accessibilityAddTraits(isCurrentTab ? [.isSelected] : [])
+                            .foregroundColor(isSelected ? ThemeManager.accent : (theme.isLight ? ThemeManager.primaryText.opacity(0.68) : Color.white.opacity(0.70)))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(isCurrentTab ? 2 : 1)
+                            .contentShape(Rectangle())
                         }
+                        .pressDragItem(tab)
+                        .accessibilityAddTraits(isCurrentTab ? [.isSelected] : [])
                     }
-                    .pressDragSelectionSurface(
-                        selection: selection, preview: previewTab
-                    ) {
-                        if previewTab != nil {
-                            DraggingSelectionBackground(shape: Capsule())
-                        } else {
-                            activeTabBackground
-                        }
-                    }
-                    // The whole height of the bar and the space around it picks the nearest tab
-                    .padding(.top, TopBarTarget.above + 4)
-                    .padding(.bottom, TopBarTarget.below + 4)
-                    .pressDragSelection(preview: $previewTab, axis: .horizontal) { (tab: AppTab) in
-                        nav.refreshSelectedTab(tab)
-                        withAnimation(reduceMotion ? nil : SidebarMotion.selection) {
-                            selection = tab
-                            nav.isSearchActive = false
-                        }
-                    }
-                    .animation(reduceMotion ? nil : SidebarMotion.selection, value: previewTab == nil)
-                    .animation(reduceMotion ? nil : SidebarMotion.selection, value: selection)
-                    .padding(.top, -(TopBarTarget.above + 4))
-                    .padding(.bottom, -(TopBarTarget.below + 4))
-                    .transition(.opacity)
-                } else {
-                    // Inline Liquid Glass Search Input Field
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(ThemeManager.accent)
-                            .padding(.leading, 10)
-                        
-                        TextField(loc.t("search_placeholder"), text: $nav.searchQuery)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .font(theme.appFont(size: 12.5))
-                            .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
-                            .focused($isSearchFocused)
-                            .onSubmit {
-                                // Return opens the highlighted suggestion, or searches for the typed text;
-                                // the field closes behind it
-                                SearchSuggestionsModel.shared.submit(typed: nav.searchQuery)
-                            }
-                            .onChange(of: nav.searchQuery) { _, text in
-                                SearchSuggestionsModel.shared.update(query: text)
-                            }
-                            .onKeyPress(.downArrow) {
-                                SearchSuggestionsModel.shared.move(1)
-                                return .handled
-                            }
-                            .onKeyPress(.upArrow) {
-                                SearchSuggestionsModel.shared.move(-1)
-                                return .handled
-                            }
-                            .onExitCommand {
-                                nav.toggleSearch()
-                            }
-                        
-                        if !nav.searchQuery.isEmpty {
-                            Button {
-                                nav.searchQuery = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
-                            }
-                            .buttonStyle(.target)
-                            .padding(.trailing, 8)
-                        } else {
-                            Text("esc")
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
-                                )
-                                .padding(.trailing, 8)
-                        }
-                    }
-                    .frame(width: 280, height: 30)
-                    .background(innerSearchGlassBackground)
-                    .transition(.opacity)
                 }
+                .pressDragSelectionSurface(
+                    selection: selection, preview: previewTab
+                ) {
+                    if previewTab != nil {
+                        DraggingSelectionBackground(shape: Capsule())
+                    } else {
+                        activeTabBackground
+                    }
+                }
+                // The whole height of the bar and the space around it picks the nearest tab
+                .padding(.top, TopBarTarget.above + 4)
+                .padding(.bottom, TopBarTarget.below + 4)
+                .pressDragSelection(preview: $previewTab, axis: .horizontal) { (tab: AppTab) in
+                    nav.refreshSelectedTab(tab)
+                    withAnimation(reduceMotion ? nil : SidebarMotion.selection) {
+                        selection = tab
+                        nav.isSearchActive = false
+                    }
+                }
+                .animation(reduceMotion ? nil : SidebarMotion.selection, value: previewTab == nil)
+                .animation(reduceMotion ? nil : SidebarMotion.selection, value: selection)
+                .padding(.top, -(TopBarTarget.above + 4))
+                .padding(.bottom, -(TopBarTarget.below + 4))
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabStripWidth = $0 }
+                .opacity(nav.isSearchActive ? 0 : 1)
+                .allowsHitTesting(!nav.isSearchActive)
+                .accessibilityHidden(nav.isSearchActive)
+                
+                // Inline Liquid Glass Search Input Field
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(ThemeManager.accent)
+                        .padding(.leading, 10)
+                    
+                    TextField(loc.t("search_placeholder"), text: $nav.searchQuery)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .disabled(!nav.isSearchActive)
+                        .font(theme.appFont(size: 12.5))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
+                        .focused($isSearchFocused)
+                        .onSubmit {
+                            // Return opens the highlighted suggestion, or searches for the typed text;
+                            // the field closes behind it
+                            SearchSuggestionsModel.shared.submit(typed: nav.searchQuery)
+                        }
+                        .onChange(of: nav.searchQuery) { _, text in
+                            SearchSuggestionsModel.shared.update(query: text)
+                        }
+                        .onKeyPress(.downArrow) {
+                            SearchSuggestionsModel.shared.move(1)
+                            return .handled
+                        }
+                        .onKeyPress(.upArrow) {
+                            SearchSuggestionsModel.shared.move(-1)
+                            return .handled
+                        }
+                        .onExitCommand {
+                            nav.toggleSearch()
+                        }
+                    
+                    if !nav.searchQuery.isEmpty {
+                        Button {
+                            nav.searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
+                        }
+                        .buttonStyle(.target)
+                        .padding(.trailing, 8)
+                    } else {
+                        Text("esc")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
+                            )
+                            .padding(.trailing, 8)
+                    }
+                }
+                .frame(
+                    minWidth: 0, maxWidth: restingWidth == nil ? 0 : .infinity,
+                    minHeight: 30, maxHeight: 30
+                )
+                .background(innerSearchGlassBackground)
+                .opacity(nav.isSearchActive ? 1 : 0)
+                .allowsHitTesting(nav.isSearchActive)
+                .accessibilityHidden(!nav.isSearchActive)
             }
-            .animation(.easeInOut(duration: 0.22), value: nav.isSearchActive)
+            .animation(reduceMotion ? nil : SidebarMotion.content, value: nav.isSearchActive)
             .onChange(of: nav.isSearchActive) { _, active in
                 if active {
                     SearchSuggestionsModel.shared.update(query: nav.searchQuery)
@@ -713,6 +767,7 @@ private struct LiquidGlassCapsule: View {
                         Capsule().fill(theme.isLight ? Color.black.opacity(0.05) : Color.white.opacity(0.08))
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { buttonWidth = $0 }
                 .topBarTarget()
             }
             .buttonStyle(.target)
@@ -721,8 +776,14 @@ private struct LiquidGlassCapsule: View {
             .help(nav.isSearchActive ? "Close Search (Esc / ⌥S)" : "Search (⌥S)")
         }
         .padding(.vertical, 4)
+        .modifier(
+            CapsuleWidthMotion(
+                progress: nav.isSearchActive ? 1 : 0,
+                restingWidth: restingWidth, expandedWidth: expandedWidth
+            )
+        )
         .animation(SidebarMotion.content, value: nav.showShortcutBadges)
-        .fixedSize()
+        .animation(reduceMotion ? nil : SidebarMotion.content, value: nav.isSearchActive)
     }
     
     @ViewBuilder
