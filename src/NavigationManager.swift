@@ -407,11 +407,30 @@ final class NavigationManager {
         }
     }
 
-    // ⌘F opens search and puts the cursor in the field, unlike ⌥S which closes a field that is already open. On the
-    // results page that page's own field is the one to focus.
+    // ⌘F opens search and puts the cursor in the field, unlike ⌥S which closes a field that is already open.
     func focusSearch() {
-        if case .search? = overlayStack.last?.page, let page = SearchViewModel.current {
-            page.focusField()
+        // With the sidebar open its field is on screen beside any page, so search can open without closing anything
+        if sidebarExpanded {
+            if !isSearchActive {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    isSearchActive = true
+                }
+            }
+            searchFocusTick += 1
+            return
+        }
+        // A page opened from a search (a post, a profile) sits over that search's results. ⌘F returns to those
+        // results and focuses the field rather than clearing the whole stack and landing on the timeline.
+        if let index = overlayStack.lastIndex(where: { entry in
+            if case .search = entry.page { return true }
+            return false
+        }) {
+            if index < overlayStack.count - 1 {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                    overlayStack.removeSubrange((index + 1)...)
+                }
+            }
+            SearchViewModel.current?.focusField()
             return
         }
         // The field lives in the top bar, which open pages cover
