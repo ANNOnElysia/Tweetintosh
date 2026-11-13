@@ -573,35 +573,7 @@ struct TweetDetailView: View {
             
             // Right column: Content
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 4) {
-                    Text(tweet.author.name)
-                        .font(theme.appFont(size: 13.5, weight: .bold))
-                        .foregroundColor(ThemeManager.primaryText)
-                        .peekable(.profile(tweet.author))
-                        .opensProfile(tweet.author)
-                    
-                    if tweet.author.isVerified {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 11.5))
-                            .foregroundColor(ThemeManager.accent)
-                    }
-                    
-                    Text(tweet.author.formattedHandle)
-                        .font(theme.appFont(size: 12))
-                        .foregroundColor(ThemeManager.secondaryText)
-                        .peekable(.profile(tweet.author))
-                        .opensProfile(tweet.author)
-                    
-                    Spacer()
-                    
-                    if tweet.isPromoted {
-                        AdBadgeView()
-                    }
-                    
-                    TweetOptionsMenuButton(tweet: tweet, onToggleBookmark: {
-                        viewModel.toggleBookmark(for: tweet)
-                    })
-                }
+                compactAuthorHeader(for: tweet)
                 
                 if let replyContext = tweet.replyContextText {
                     Text(replyContext)
@@ -710,6 +682,51 @@ struct TweetDetailView: View {
         }
     }
     
+    // MARK: - Compact Author Header (Ancestors & Replies)
+    @ViewBuilder
+    private func compactAuthorHeader(for tweet: Tweet) -> some View {
+        HStack(spacing: 4) {
+            Text(tweet.author.name)
+                .font(theme.appFont(size: 13.5, weight: .bold))
+                .foregroundColor(ThemeManager.primaryText)
+                .lineLimit(1)
+                .peekable(.profile(tweet.author))
+                .opensProfile(tweet.author)
+
+            if tweet.author.isVerified {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(ThemeManager.accent)
+            }
+
+            Text(tweet.author.formattedHandle)
+                .font(theme.appFont(size: 12))
+                .foregroundColor(ThemeManager.secondaryText)
+                .lineLimit(1)
+                .peekable(.profile(tweet.author))
+                .opensProfile(tweet.author)
+
+            Text("·")
+                .font(theme.appFont(size: 12))
+                .foregroundColor(ThemeManager.secondaryText)
+
+            Text(tweet.relativeTime)
+                .font(theme.appFont(size: 12))
+                .foregroundColor(ThemeManager.secondaryText)
+                .lineLimit(1)
+
+            Spacer()
+
+            if tweet.isPromoted {
+                AdBadgeView()
+            }
+
+            TweetOptionsMenuButton(tweet: tweet, onToggleBookmark: {
+                viewModel.toggleBookmark(for: tweet)
+            })
+        }
+    }
+
     // MARK: - Reply Tweet Row
     @ViewBuilder
     private func replyTweetRow(_ tweet: Tweet, depth: Int = 0, linkAbove: Bool = false, linkBelow: Bool = false, parentDepth: Int = 0) -> some View {
@@ -721,35 +738,7 @@ struct TweetDetailView: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     // Author Header
-                    HStack(spacing: 4) {
-                        Text(tweet.author.name)
-                            .font(theme.appFont(size: 13.5, weight: .bold))
-                            .foregroundColor(ThemeManager.primaryText)
-                            .peekable(.profile(tweet.author))
-                            .opensProfile(tweet.author)
-                        
-                        if tweet.author.isVerified {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 11.5))
-                                .foregroundColor(ThemeManager.accent)
-                        }
-                        
-                        Text(tweet.author.formattedHandle)
-                            .font(theme.appFont(size: 12))
-                            .foregroundColor(ThemeManager.secondaryText)
-                            .peekable(.profile(tweet.author))
-                            .opensProfile(tweet.author)
-                        
-                        Spacer()
-                        
-                        if tweet.isPromoted {
-                            AdBadgeView()
-                        }
-                        
-                        TweetOptionsMenuButton(tweet: tweet, onToggleBookmark: {
-                            viewModel.toggleBookmark(for: tweet)
-                        })
-                    }
+                    compactAuthorHeader(for: tweet)
                     
                     // Reply Context Subheader (Consistent with official X logic)
                     if let replyContext = tweet.replyContextText {
