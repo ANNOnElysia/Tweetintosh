@@ -20,14 +20,16 @@
             <description sparkle:format="markdown"><![CDATA[### English
 
 - Updated multi-image support: increased the post photo attachment limit to 20, added an interactive bottom thumbnail scrubber in the image lightbox, and adjusted multi-image stream sizing and spacing to preserve aspect ratios without cropping.
-- Fixed various bugs and improved stability.
+- Added post translation support: inline "Translate post" / "Show original" under non-target-language posts, supporting both Apple on-device Translation and custom OpenAI-compatible AI (BYOK) endpoints with model verification and dynamic Flash-tier model recommendations.
+- Fixed various bugs and improved stability (including restoring click-to-open detail on selectable timeline post text).
 
 ### 中文
 
 - 主要更新了对多图的支持：将发帖图片上限提升至 20 张，为图片灯箱新增底部缩略图居中滑动条，并优化了多图横向流的按比例展示与间距。
-- 修复了一些 bug，提升了整体稳定性。
+- 新增推文翻译功能：在非目标语言的帖子正文下方提供「翻译帖子 / 显示原文」切换，支持 Apple 本地离线翻译与自定义 AI（BYOK）接口（支持配置目标语言、验证并拉取模型、自动推荐各家最新 Flash 轻量模型）。
+- 修复了一些 bug，提升了整体稳定性（包括修复时间线正文开启划选后点击进入详情页的问题）。
 ]]></description>
-            <enclosure url="https://github.com/ANNOnElysia/Tweetintosh/releases/download/v0.1.1/Tweetintosh-v0.1.1.dmg" type="application/octet-stream" sparkle:edSignature="+08OsYkVBlJsvoWx0J8AUy/XJA3a9z1tabXplMIDjqwQrJpv4XR3P98MXG5qCkEdiUq1hSMoYPhZ3heyGlpuAA==" length="4162378" />
+            <enclosure url="https://github.com/ANNOnElysia/Tweetintosh/releases/download/v0.1.1/Tweetintosh-v0.1.1.dmg" type="application/octet-stream" sparkle:edSignature="Due8B56umcxQuXRW71g4zvx1p9gP1xUnccaCRvloLEERvmhIZ7oQ8QT0P1tu3LeTFAU/B/djEintPMFh4ZPqCA==" length="4234353" />
         </item>
     </channel>
 </rss>
