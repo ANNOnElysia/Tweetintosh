@@ -553,6 +553,7 @@ private struct LiquidGlassCapsule: View {
     @ObservedObject var theme = ThemeManager.shared
     @FocusState private var isSearchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var searchPillNamespace
     @State private var previewTab: PressDragPreview<AppTab>?
     // The width the tab strip takes at rest. The bar grows from it to the search field's width and back, so that
     // opening search pushes the capsule out rather than swapping its contents inside a fixed frame.
@@ -571,7 +572,8 @@ private struct LiquidGlassCapsule: View {
 
     private var expandedWidth: CGFloat? {
         guard tabStripWidth > 0, buttonWidth > 0 else { return nil }
-        return chromeWidth + searchFieldWidth
+        // Grow slightly beyond the tab strip (and never below it, even when Option badges show)
+        return chromeWidth + max(tabStripWidth + 36, searchFieldWidth)
     }
 
     private var chromeWidth: CGFloat {
@@ -638,8 +640,9 @@ private struct LiquidGlassCapsule: View {
                 ) {
                     if previewTab != nil {
                         DraggingSelectionBackground(shape: Capsule())
-                    } else {
+                    } else if !nav.isSearchActive {
                         activeTabBackground
+                            .matchedGeometryEffect(id: "capsuleSearchPill", in: searchPillNamespace)
                     }
                 }
                 // The whole height of the bar and the space around it picks the nearest tab
@@ -694,15 +697,22 @@ private struct LiquidGlassCapsule: View {
                     }
                 }
                 .padding(.trailing, 8)
+                .opacity(nav.isSearchActive ? 1 : 0)
                 .frame(
                     minWidth: 0, maxWidth: restingWidth == nil ? 0 : .infinity,
                     minHeight: 30, maxHeight: 30
                 )
-                .background(innerSearchGlassBackground)
-                .opacity(nav.isSearchActive ? 1 : 0)
+                .background {
+                    if nav.isSearchActive {
+                        innerSearchGlassBackground
+                            .matchedGeometryEffect(id: "capsuleSearchPill", in: searchPillNamespace)
+                    }
+                }
                 .allowsHitTesting(nav.isSearchActive)
                 .accessibilityHidden(!nav.isSearchActive)
             }
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .clipped()
             .animation(reduceMotion ? nil : SidebarMotion.content, value: nav.isSearchActive)
             .onChange(of: nav.isSearchActive) { _, active in
                 if active {
