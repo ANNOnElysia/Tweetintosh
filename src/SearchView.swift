@@ -23,6 +23,8 @@ final class SearchViewModel: ObservableObject, TweetMutationTarget {
     @Published private(set) var users: [TweetUser] = []
     @Published private(set) var loadingTabs: Set<SearchTab> = []
     @Published private(set) var failedTabs: Set<SearchTab> = []
+    // Bumped when ⌘F should put the cursor back in this page's field
+    @Published private(set) var focusTick = 0
 
     private var cursors: [SearchTab: String] = [:]
     private var exhausted: Set<SearchTab> = []
@@ -38,6 +40,10 @@ final class SearchViewModel: ObservableObject, TweetMutationTarget {
 
     func isLoaded(_ tab: SearchTab) -> Bool { loaded.contains(tab) }
     func hasMore(_ tab: SearchTab) -> Bool { loaded.contains(tab) && !exhausted.contains(tab) }
+
+    func focusField() {
+        focusTick += 1
+    }
 
     func start() {
         loadTab(selectedTab)
@@ -141,6 +147,7 @@ struct SearchView: View {
     @StateObject private var vm: SearchViewModel
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var suggestions = SearchSuggestionsModel.shared
     private let nav = NavigationManager.shared
     @Namespace private var tabNamespace
     @FocusState private var isFieldFocused: Bool
@@ -165,13 +172,47 @@ struct SearchView: View {
                 tabBar
             }
             .padding(.top, 10)
+
+            // The same suggestions as the top bar's field, in place of opening a second search page
+            if isFieldFocused && !suggestions.items.isEmpty {
+                SearchSuggestionsPanel(onChoose: choose)
+                    .padding(.top, 52)
+                    .padding(.leading, 46)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .zIndex(2)
+            }
         }
         .onAppear {
             SearchViewModel.current = vm
             vm.start()
+            focusField()
         }
         .onDisappear {
             if SearchViewModel.current === vm { SearchViewModel.current = nil }
+            suggestions.reset()
+        }
+        .onChange(of: vm.focusTick) { _, _ in
+            focusField()
+        }
+    }
+
+    // Puts the cursor in the field and selects what is there, as ⌘F does everywhere else
+    private func focusField() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            isFieldFocused = true
+            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+        }
+    }
+
+    // A suggestion on this page is answered here; a person still has a page of their own
+    private func choose(_ item: SearchSuggestion) {
+        if let text = item.queryText {
+            vm.draft = text
+            vm.submit(text)
+            suggestions.reset()
+            focusField()
+        } else {
+            NavigationManager.shared.activate(item)
         }
     }
 
@@ -199,8 +240,17 @@ struct SearchView: View {
                     .font(theme.appFont(size: 13.5))
                     .foregroundColor(ThemeManager.primaryText)
                     .focused($isFieldFocused)
-                    .onSubmit {
-                        vm.submit(vm.draft)
+                    .searchFieldBehavior($vm.draft, onChange: { typed in
+                        // The draft also changes when a suggestion fills it; that is not a new thing to suggest for
+                        if typed != vm.query { SearchSuggestionsModel.shared.update(query: typed) }
+                    }) { typed in
+                        // Return takes the highlighted suggestion, or searches for what was typed
+                        if let index = suggestions.highlighted, suggestions.items.indices.contains(index) {
+                            choose(suggestions.items[index])
+                        } else {
+                            vm.submit(typed)
+                            suggestions.reset()
+                        }
                     }
 
                 if !vm.draft.isEmpty {
@@ -213,6 +263,8 @@ struct SearchView: View {
                             .foregroundColor(ThemeManager.secondaryText)
                     }
                     .buttonStyle(.target)
+                    .help(loc.t("search_clear"))
+                    .accessibilityLabel(loc.t("search_clear"))
                 }
             }
             .padding(.horizontal, 14)
@@ -258,6 +310,7 @@ struct SearchView: View {
                             }
                         }
                         .contentShape(Rectangle())
+                        .accessibilityAddTraits(selected ? [.isSelected] : [])
                 }
                 .pressDragItem(tab)
             }

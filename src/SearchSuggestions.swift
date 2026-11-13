@@ -33,6 +33,10 @@ final class SearchRecents {
     func remove(_ query: String) {
         UserDefaults.standard.set(all.filter { $0 != query }, forKey: key)
     }
+
+    func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }
 
 // MARK: - Typeahead API
@@ -102,6 +106,14 @@ enum SearchSuggestion: Identifiable {
         case .topic(let t): return "t-" + t
         case .user(let u): return "u-" + u.id
         case .recent(let r): return "r-" + r
+        }
+    }
+
+    // The text this suggestion searches for; a person has a page of their own instead
+    var queryText: String? {
+        switch self {
+        case .query(let q), .topic(let q), .recent(let q): return q
+        case .user: return nil
         }
     }
 }
@@ -189,36 +201,102 @@ extension NavigationManager {
     }
 }
 
+// What a key does inside a search field is the same wherever the field is: typing feeds the shared suggestion model,
+// the arrow keys move through it, and Return submits. Only what Return submits to differs.
+private struct SearchFieldBehavior: ViewModifier {
+    @Binding var text: String
+    let onChange: (String) -> Void
+    let onSubmit: (String) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onSubmit { onSubmit(text) }
+            .onChange(of: text) { _, typed in onChange(typed) }
+            .onKeyPress(.downArrow) {
+                SearchSuggestionsModel.shared.move(1)
+                return .handled
+            }
+            .onKeyPress(.upArrow) {
+                SearchSuggestionsModel.shared.move(-1)
+                return .handled
+            }
+    }
+}
+
+extension View {
+    // The search page passes its own `onChange`, because filling the field with a suggestion it just took must not
+    // reopen the panel for that same query.
+    func searchFieldBehavior(
+        _ text: Binding<String>,
+        onChange: @escaping (String) -> Void = { SearchSuggestionsModel.shared.update(query: $0) },
+        onSubmit: @escaping (String) -> Void
+    ) -> some View {
+        modifier(SearchFieldBehavior(text: text, onChange: onChange, onSubmit: onSubmit))
+    }
+}
+
 // MARK: - Panel
 
 struct SearchSuggestionsPanel: View {
+    // The search results page answers in place; every other field opens a page of its own
+    var onChoose: ((SearchSuggestion) -> Void)?
+
     @ObservedObject private var model = SearchSuggestionsModel.shared
     @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var loc = LocalizationManager.shared
+    @State private var hovered: String?
 
     var body: some View {
         if !model.items.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
-                    if let header = sectionHeader(before: index) {
-                        Text(header)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(ThemeManager.tertiaryText)
-                            .padding(.horizontal, 12)
-                            .padding(.top, index == 0 ? 2 : 8)
-                            .padding(.bottom, 2)
-                    }
-                    row(for: item, highlighted: model.highlighted == index)
+            Group {
+                // Ten suggestions do not fit under a short window; past eight rows the list scrolls instead
+                if model.items.count > 8 {
+                    ScrollView(.vertical, showsIndicators: false) { rows }
+                        .frame(maxHeight: 420)
+                } else {
+                    rows
                 }
             }
-            .padding(8)
             .frame(maxWidth: 440)
             .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: RoundedRectangle(cornerRadius: 20, style: .continuous), isInteractive: false))
             .padding(.horizontal, 16)
         }
     }
 
-    private func sectionHeader(before index: Int) -> String? {
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
+                header(before: index)
+                row(for: item, highlighted: model.highlighted == index)
+            }
+        }
+        .padding(8)
+    }
+
+    @ViewBuilder private func header(before index: Int) -> some View {
+        if let title = sectionTitle(before: index) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(ThemeManager.tertiaryText)
+                Spacer(minLength: 0)
+                if case .recent = model.items[index] {
+                    Button(loc.t("search_clear_recents")) {
+                        SearchRecents.shared.clear()
+                        SearchSuggestionsModel.shared.update(query: "")
+                    }
+                    .buttonStyle(.target)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(ThemeManager.accent)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, index == 0 ? 2 : 8)
+            .padding(.bottom, 2)
+        }
+    }
+
+    private func sectionTitle(before index: Int) -> String? {
         let item = model.items[index]
         let previous = index > 0 ? model.items[index - 1] : nil
         switch item {
@@ -233,76 +311,98 @@ struct SearchSuggestionsPanel: View {
         }
     }
 
-    @ViewBuilder private func row(for item: SearchSuggestion, highlighted: Bool) -> some View {
-        Button {
-            NavigationManager.shared.activate(item)
-        } label: {
-            HStack(spacing: 10) {
-                switch item {
-                case .query(let text):
-                    icon("magnifyingglass")
-                    Text(loc.format("search_for_query", ["query": text]))
-                        .font(.system(size: 13.5))
-                        .foregroundColor(ThemeManager.primaryText)
-                        .lineLimit(1)
-                case .topic(let text):
-                    icon(text.hasPrefix("#") ? "number" : "magnifyingglass")
-                    Text(text)
-                        .font(.system(size: 13.5))
-                        .foregroundColor(ThemeManager.primaryText)
-                        .lineLimit(1)
-                case .recent(let text):
-                    icon("clock")
-                    Text(text)
-                        .font(.system(size: 13.5))
-                        .foregroundColor(ThemeManager.primaryText)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Button {
-                        SearchRecents.shared.remove(text)
-                        SearchSuggestionsModel.shared.update(query: "")
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(ThemeManager.tertiaryText)
-                            .frame(width: 22, height: 22)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.target)
-                case .user(let user):
-                    CachedAsyncImage(urlString: user.avatarUrl, targetSize: CGSize(width: 28, height: 28))
-                        .frame(width: 28, height: 28)
-                        .clipShape(Circle())
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: 4) {
-                            Text(user.name)
-                                .font(.system(size: 13.5, weight: .semibold))
-                                .foregroundColor(ThemeManager.primaryText)
-                                .lineLimit(1)
-                            if user.isVerified {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeManager.accent)
-                            }
-                        }
-                        Text(user.formattedHandle)
-                            .font(.system(size: 12))
-                            .foregroundColor(ThemeManager.secondaryText)
-                            .lineLimit(1)
-                    }
-                }
-                if case .recent = item {} else { Spacer(minLength: 0) }
+    private func row(for item: SearchSuggestion, highlighted: Bool) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                choose(item)
+            } label: {
+                label(for: item)
+                    .padding(.leading, 12)
+                    .frame(height: 38)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .frame(height: 38)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(highlighted ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.2) : Color.clear)
-            )
-            .contentShape(Rectangle())
+            .buttonStyle(.target)
+
+            // Removing a recent search is a button of its own: nested inside the row's button, VoiceOver could not
+            // reach it and the mouse could not tell the two apart
+            if case .recent(let text) = item {
+                Button {
+                    SearchRecents.shared.remove(text)
+                    SearchSuggestionsModel.shared.update(query: "")
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(ThemeManager.tertiaryText)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.target)
+                .help(loc.t("search_clear"))
+                .accessibilityLabel(loc.t("search_clear"))
+                .padding(.trailing, 4)
+            }
         }
-        .buttonStyle(.target)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(highlighted || hovered == item.id ? ThemeManager.accent.opacity(theme.isLight ? 0.14 : 0.2) : Color.clear)
+        )
+        .onHover { hovered = $0 ? item.id : nil }
+    }
+
+    @ViewBuilder private func label(for item: SearchSuggestion) -> some View {
+        HStack(spacing: 10) {
+            switch item {
+            case .query(let text):
+                icon("magnifyingglass")
+                Text(loc.format("search_for_query", ["query": text]))
+                    .font(.system(size: 13.5))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .lineLimit(1)
+            case .topic(let text):
+                icon(text.hasPrefix("#") ? "number" : "magnifyingglass")
+                Text(text)
+                    .font(.system(size: 13.5))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .lineLimit(1)
+            case .recent(let text):
+                icon("clock")
+                Text(text)
+                    .font(.system(size: 13.5))
+                    .foregroundColor(ThemeManager.primaryText)
+                    .lineLimit(1)
+            case .user(let user):
+                CachedAsyncImage(urlString: user.avatarUrl, targetSize: CGSize(width: 28, height: 28))
+                    .frame(width: 28, height: 28)
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 4) {
+                        Text(user.name)
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundColor(ThemeManager.primaryText)
+                            .lineLimit(1)
+                        if user.isVerified {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeManager.accent)
+                        }
+                    }
+                    Text(user.formattedHandle)
+                        .font(.system(size: 12))
+                        .foregroundColor(ThemeManager.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func choose(_ item: SearchSuggestion) {
+        if let onChoose = onChoose {
+            onChoose(item)
+        } else {
+            NavigationManager.shared.activate(item)
+        }
     }
 
     private func icon(_ name: String) -> some View {

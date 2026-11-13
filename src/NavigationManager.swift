@@ -121,6 +121,8 @@ final class NavigationManager {
     }
     var isSearchActive: Bool = false
     var searchQuery: String = ""
+    // Bumped by ⌘F so the field takes focus again even when search was already open
+    var searchFocusTick = 0
     // Full-pane pages pushed over the tabs (tweet detail, profiles), newest last. Each entry keeps its own
     // identity so a page's state survives while others are pushed on top of it.
     private(set) var overlayStack: [OverlayEntry] = []
@@ -404,6 +406,23 @@ final class NavigationManager {
             }
         }
     }
+
+    // ⌘F opens search and puts the cursor in the field, unlike ⌥S which closes a field that is already open. On the
+    // results page that page's own field is the one to focus.
+    func focusSearch() {
+        if case .search? = overlayStack.last?.page, let page = SearchViewModel.current {
+            page.focusField()
+            return
+        }
+        // The field lives in the top bar, which open pages cover
+        overlayStack = []
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                self.isSearchActive = true
+            }
+            self.searchFocusTick += 1
+        }
+    }
     
     // MARK: - Global Shortcut & Command Long-Press Engine
     private func setupKeyboardMonitoring() {
@@ -488,7 +507,20 @@ final class NavigationManager {
                     }
                     // First, because a search opened from the sidebar sits over any page beside it
                     if self.isSearchActive {
+                        // A search field clears before it closes, so a stray Esc never throws away a typed query
+                        if self.isTextInputActive() && !self.searchQuery.isEmpty {
+                            self.searchQuery = ""
+                            SearchSuggestionsModel.shared.update(query: "")
+                            return nil
+                        }
                         self.toggleSearch()
+                        return nil
+                    }
+                    // The same rule on the search results page: clear the field, then leave the page
+                    if self.isTextInputActive(), case .search? = self.overlayStack.last?.page,
+                       let page = SearchViewModel.current, !page.draft.isEmpty {
+                        page.draft = ""
+                        SearchSuggestionsModel.shared.update(query: "")
                         return nil
                     }
                     if self.hasOverlay {

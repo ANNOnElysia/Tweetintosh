@@ -225,6 +225,7 @@ struct AppRootView: View {
     @ObservedObject private var loc = LocalizationManager.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var capsuleSize: CGSize = .zero
+    @State private var windowWidth: CGFloat = 0
     @State private var toggleWidth: CGFloat = 0
     var onOpenSettings: () -> Void = {}
     var onLoginRequest: () -> Void = {}
@@ -346,16 +347,19 @@ struct AppRootView: View {
                         .zIndex(2)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
                 .animation(reduceMotion ? nil : SidebarMotion.toggle, value: nav.sidebarExpanded)
             }
             
             // Suggestions under the search field (typeahead, or recent searches when it is empty)
             if nav.isSearchActive && (nav.sidebarExpanded || !nav.hasOverlay) {
-                // Beside the sidebar's field when it is open, under the top bar's otherwise
+                // Beside the sidebar's field when it is open, under the top bar's otherwise. The capsule is centred in
+                // its column, not in the window, so the panel follows the same column rather than the window centre.
                 SearchSuggestionsPanel()
                     .padding(.top, nav.sidebarExpanded ? 70 : 66)
+                    .frame(width: nav.sidebarExpanded ? nil : capsuleColumnWidth(in: windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, nav.sidebarExpanded ? 222 : 0)
-                    .frame(maxWidth: .infinity, alignment: nav.sidebarExpanded ? .topLeading : .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                     // Above any page open beside the sidebar
                     .zIndex(950)
@@ -665,26 +669,12 @@ private struct LiquidGlassCapsule: View {
                         .font(theme.appFont(size: 12.5))
                         .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
                         .focused($isSearchFocused)
-                        .onSubmit {
-                            // Return opens the highlighted suggestion, or searches for the typed text;
-                            // the field closes behind it
-                            SearchSuggestionsModel.shared.submit(typed: nav.searchQuery)
+                        .searchFieldBehavior($nav.searchQuery) { typed in
+                            // Return opens the highlighted suggestion, or searches for the typed text; the field
+                            // closes behind it
+                            SearchSuggestionsModel.shared.submit(typed: typed)
                         }
-                        .onChange(of: nav.searchQuery) { _, text in
-                            SearchSuggestionsModel.shared.update(query: text)
-                        }
-                        .onKeyPress(.downArrow) {
-                            SearchSuggestionsModel.shared.move(1)
-                            return .handled
-                        }
-                        .onKeyPress(.upArrow) {
-                            SearchSuggestionsModel.shared.move(-1)
-                            return .handled
-                        }
-                        .onExitCommand {
-                            nav.toggleSearch()
-                        }
-                    
+
                     if !nav.searchQuery.isEmpty {
                         Button {
                             nav.searchQuery = ""
@@ -694,20 +684,11 @@ private struct LiquidGlassCapsule: View {
                                 .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
                         }
                         .buttonStyle(.target)
-                        .padding(.trailing, 8)
-                    } else {
-                        Text("esc")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(theme.isLight ? ThemeManager.tertiaryText : Color.white.opacity(0.40))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(theme.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
-                            )
-                            .padding(.trailing, 8)
+                        .help(loc.t("search_clear"))
+                        .accessibilityLabel(loc.t("search_clear"))
                     }
                 }
+                .padding(.trailing, 8)
                 .frame(
                     minWidth: 0, maxWidth: restingWidth == nil ? 0 : .infinity,
                     minHeight: 30, maxHeight: 30
@@ -721,13 +702,15 @@ private struct LiquidGlassCapsule: View {
             .onChange(of: nav.isSearchActive) { _, active in
                 if active {
                     SearchSuggestionsModel.shared.update(query: nav.searchQuery)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                        isSearchFocused = true
-                    }
+                    // The sidebar has its own field when it is open
+                    if !nav.sidebarExpanded { focusSearchField() }
                 } else {
                     isSearchFocused = false
                     SearchSuggestionsModel.shared.reset()
                 }
+            }
+            .onChange(of: nav.searchFocusTick) { _, _ in
+                if nav.isSearchActive && !nav.sidebarExpanded { focusSearchField() }
             }
             
             // Subtle vertical divider
@@ -786,6 +769,15 @@ private struct LiquidGlassCapsule: View {
         .animation(reduceMotion ? nil : SidebarMotion.content, value: nav.isSearchActive)
     }
     
+    // The field is focused once the capsule has grown into its width; ⌘F lands here too, and selects what is already
+    // typed so the next keystroke replaces it, as in any Mac find field.
+    private func focusSearchField() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            isSearchFocused = true
+            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+        }
+    }
+
     @ViewBuilder
     private var innerSearchGlassBackground: some View {
         if theme.useLiquidGlass {
@@ -1155,11 +1147,21 @@ private struct SidebarSearchRow: View {
         .onChange(of: nav.isSearchActive) { _, active in
             if active {
                 SearchSuggestionsModel.shared.update(query: nav.searchQuery)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { isFocused = true }
+                focusSearchField()
             } else {
                 isFocused = false
                 SearchSuggestionsModel.shared.reset()
             }
+        }
+        .onChange(of: nav.searchFocusTick) { _, _ in
+            if nav.isSearchActive { focusSearchField() }
+        }
+    }
+
+    private func focusSearchField() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            isFocused = true
+            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
         }
     }
     
@@ -1173,17 +1175,9 @@ private struct SidebarSearchRow: View {
                 .font(theme.appFont(size: 12.5))
                 .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
                 .focused($isFocused)
-                .onSubmit { SearchSuggestionsModel.shared.submit(typed: nav.searchQuery) }
-                .onChange(of: nav.searchQuery) { _, text in SearchSuggestionsModel.shared.update(query: text) }
-                .onKeyPress(.downArrow) {
-                    SearchSuggestionsModel.shared.move(1)
-                    return .handled
+                .searchFieldBehavior($nav.searchQuery) { typed in
+                    SearchSuggestionsModel.shared.submit(typed: typed)
                 }
-                .onKeyPress(.upArrow) {
-                    SearchSuggestionsModel.shared.move(-1)
-                    return .handled
-                }
-                .onExitCommand { nav.toggleSearch() }
             if !nav.searchQuery.isEmpty {
                 Button { nav.searchQuery = "" } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -1191,6 +1185,8 @@ private struct SidebarSearchRow: View {
                         .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.55))
                 }
                 .buttonStyle(.target)
+                .help(loc.t("search_clear"))
+                .accessibilityLabel(loc.t("search_clear"))
             }
         }
         .padding(.horizontal, 11)

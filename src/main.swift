@@ -519,6 +519,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleSearchAction() {
         NavigationManager.shared.toggleSearch()
     }
+    @objc func focusSearchAction() {
+        NavigationManager.shared.focusSearch()
+    }
 
 // MARK: - Custom Settings Window (Frameless with Esc Dismiss)
 final class SettingsWindow: NSWindow {
@@ -674,6 +677,12 @@ final class SettingsWindow: NSWindow {
         editMenu.addItem(withTitle: loc.t("menu_copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: loc.t("menu_paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: loc.t("menu_select_all"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(NSMenuItem.separator())
+        // ⌘F is where a Mac user looks for search, whatever the app calls it
+        let findItem = NSMenuItem(title: loc.t("menu_search"), action: #selector(focusSearchAction), keyEquivalent: "f")
+        findItem.keyEquivalentModifierMask = .command
+        findItem.target = self
+        editMenu.addItem(findItem)
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
         

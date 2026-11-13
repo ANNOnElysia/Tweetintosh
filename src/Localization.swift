@@ -821,11 +821,32 @@ final class LocalizationManager: ObservableObject {
             .traditionalChinese: "無法載入通知。"
         ],
         "search_placeholder": [
+            .english: "Search posts and people",
+            .japanese: "ポストとユーザーを検索",
+            .korean: "게시물과 사용자 검색",
+            .simplifiedChinese: "搜索帖子和用户",
+            .traditionalChinese: "搜尋貼文和使用者"
+        ],
+        "menu_search": [
             .english: "Search…",
             .japanese: "検索…",
             .korean: "검색…",
             .simplifiedChinese: "搜索…",
             .traditionalChinese: "搜尋…"
+        ],
+        "search_clear": [
+            .english: "Clear Search",
+            .japanese: "検索を消去",
+            .korean: "검색 지우기",
+            .simplifiedChinese: "清除搜索",
+            .traditionalChinese: "清除搜尋"
+        ],
+        "search_clear_recents": [
+            .english: "Clear",
+            .japanese: "消去",
+            .korean: "지우기",
+            .simplifiedChinese: "清除",
+            .traditionalChinese: "清除"
         ],
         "new_posts_capsule": [
             .english: "↑ %@ new posts",
