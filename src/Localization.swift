@@ -1192,18 +1192,18 @@ final class LocalizationManager: ObservableObject {
             .traditionalChinese: "{name} 太大了（上限 {limit}）。"
         ],
         "media_too_many": [
-            .english: "A post can have up to 4 photos.",
-            .japanese: "1つのポストに添付できる写真は最大4枚です。",
-            .korean: "게시물에는 사진을 최대 4장까지 첨부할 수 있습니다.",
-            .simplifiedChinese: "一条帖子最多可添加 4 张照片。",
-            .traditionalChinese: "一則貼文最多可新增 4 張照片。"
+            .english: "A post can have up to {max} photos.",
+            .japanese: "1つのポストに添付できる写真は最大{max}枚です。",
+            .korean: "게시물에는 사진을 최대 {max}장까지 첨부할 수 있습니다.",
+            .simplifiedChinese: "一条帖子最多可添加 {max} 张照片。",
+            .traditionalChinese: "一則貼文最多可新增 {max} 張照片。"
         ],
         "media_mixed": [
-            .english: "A post can have up to 4 photos, or one GIF, or one video — not a mix.",
-            .japanese: "1つのポストに添付できるのは、写真（最大4枚）、GIF 1つ、動画 1つのいずれかです。",
-            .korean: "게시물에는 사진(최대 4장), GIF 1개, 동영상 1개 중 하나만 첨부할 수 있습니다.",
-            .simplifiedChinese: "一条帖子可添加最多 4 张照片、1 个 GIF 或 1 个视频，不能混合。",
-            .traditionalChinese: "一則貼文可新增最多 4 張照片、1 個 GIF 或 1 個影片，不能混合。"
+            .english: "A post can have up to {max} photos, or one GIF, or one video — not a mix.",
+            .japanese: "1つのポストに添付できるのは、写真（最大{max}枚）、GIF 1つ、動画 1つのいずれかです。",
+            .korean: "게시물에는 사진(최대 {max}장), GIF 1개, 동영상 1개 중 하나만 첨부할 수 있습니다.",
+            .simplifiedChinese: "一条帖子可添加最多 {max} 张照片、1 个 GIF 或 1 个视频，不能混合。",
+            .traditionalChinese: "一則貼文可新增最多 {max} 張照片、1 個 GIF 或 1 個影片，不能混合。"
         ],
         "media_unreadable": [
             .english: "Couldn't read {name}.",

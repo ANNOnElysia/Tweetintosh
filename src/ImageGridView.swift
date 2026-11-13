@@ -440,18 +440,20 @@ struct ImageGridView: View {
     // MARK: - 3. Modern Stream / Horizontal Card Stream
     private func carouselStreamView(_ items: [TweetMedia]) -> some View {
         let height = Self.stripHeight(isQuoted: isQuoted)
-        let cardWidth: CGFloat = isQuoted ? 160 : 220
         let corner: CGFloat = isQuoted ? 10 : 16
         
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: isQuoted ? 8 : 10) {
+            HStack(spacing: 2) {
                 ForEach(0..<items.count, id: \.self) { idx in
+                    let media = items[idx]
+                    let ratio = media.aspectRatio > 0 ? media.aspectRatio : 1.0
+                    let cardWidth = max(8, height * ratio)
                     let isFirst = idx == 0
                     let isLast = idx == items.count - 1
                     
                     MediaTile(
-                        media: items[idx],
-                        url: thumbUrl(items[idx].mediaUrl),
+                        media: media,
+                        url: thumbUrl(media.mediaUrl),
                         size: CGSize(width: cardWidth, height: height),
                         shape: RoundedCorner(tl: isFirst ? corner : 0, tr: isLast ? corner : 0, bl: isFirst ? corner : 0, br: isLast ? corner : 0),
                         lightboxItems: items,

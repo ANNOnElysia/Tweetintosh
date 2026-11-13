@@ -217,18 +217,25 @@ final class LightboxManager: ObservableObject {
     }
     
     func next() {
-        guard currentIndex < mediaList.count - 1 else { return }
-        withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
-            self.resetTransforms()
-            self.currentIndex += 1
-        }
+        select(index: currentIndex + 1)
     }
     
     func prev() {
-        guard currentIndex > 0 else { return }
-        withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+        select(index: currentIndex - 1)
+    }
+
+    func select(index: Int, animated: Bool = true) {
+        guard index >= 0, index < mediaList.count, index != currentIndex else { return }
+        let apply = {
             self.resetTransforms()
-            self.currentIndex -= 1
+            self.currentIndex = index
+        }
+        if animated {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+                apply()
+            }
+        } else {
+            apply()
         }
     }
     
@@ -554,6 +561,22 @@ struct ImageLightboxOverlay: View {
                         }
                         .opacity(manager.isZoomExpanded ? headerOpacity : 0.0)
                     }
+
+                    // 5. Bottom Thumbnail Scrubber (matches X's centered, expandable active thumbnail bar)
+                    if manager.mediaList.count > 1 && manager.zoomScale <= 1.05 {
+                        VStack {
+                            Spacer()
+                            LightboxThumbnailScrubber(
+                                mediaList: manager.mediaList,
+                                currentIndex: manager.currentIndex,
+                                onSelect: { idx, animated in
+                                    manager.select(index: idx, animated: animated)
+                                }
+                            )
+                            .padding(.bottom, 22)
+                        }
+                        .opacity(manager.isZoomExpanded ? headerOpacity : 0.0)
+                    }
                 }
                 .frame(width: windowSize.width, height: windowSize.height)
                 .simultaneousGesture(
@@ -744,5 +767,101 @@ struct ImageLightboxOverlay: View {
             return "\(base)?format=jpg&name=orig"
         }
         return url
+    }
+}
+
+// MARK: - Bottom Thumbnail Scrubber
+/// Centered horizontal thumbnail strip matching X's photo viewer: the active thumbnail expands with a crisp white
+/// border and extra breathing room, and dragging the strip scrubs through photos in real time.
+private struct LightboxThumbnailScrubber: View {
+    let mediaList: [TweetMedia]
+    let currentIndex: Int
+    let onSelect: (Int, Bool) -> Void
+
+    @State private var scrubStartIndex: Int?
+    @State private var scrubDragX: CGFloat = 0
+
+    private let inactiveSize: CGFloat = 32
+    private let activeSize: CGFloat = 38
+    private let spacing: CGFloat = 4
+    private let activeSideGap: CGFloat = 5
+
+    private var step: CGFloat { inactiveSize + spacing }
+
+    /// Horizontal offset that places `currentIndex`'s center at `x = 0` (screen center).
+    private var centerOffset: CGFloat {
+        let count = mediaList.count
+        let activeTotal = activeSize + activeSideGap * 2
+        let totalWidth = CGFloat(max(0, count - 1)) * inactiveSize + activeTotal + CGFloat(max(0, count - 1)) * spacing
+        let selectedCenter = CGFloat(currentIndex) * step + activeTotal / 2
+        return (totalWidth / 2) - selectedCenter
+    }
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            ForEach(Array(mediaList.enumerated()), id: \.offset) { index, media in
+                let isSelected = index == currentIndex
+                let size = isSelected ? activeSize : inactiveSize
+                let corner: CGFloat = isSelected ? 7 : 5
+
+                CachedAsyncImage(
+                    urlString: thumbUrl(media.mediaUrl),
+                    placeholderColor: Color(white: 0.14),
+                    contentMode: .fill,
+                    targetSize: CGSize(width: activeSize * 2, height: activeSize * 2)
+                )
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .stroke(Color.white, lineWidth: isSelected ? 1.75 : 0)
+                )
+                .opacity(isSelected ? 1.0 : 0.45)
+                .padding(.horizontal, isSelected ? activeSideGap : 0)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onSelect(index, true)
+                }
+            }
+        }
+        .frame(height: activeSize + 4)
+        .offset(x: centerOffset + scrubDragX)
+        .animation(.spring(response: 0.30, dampingFraction: 0.86), value: currentIndex)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 2)
+                .onChanged { value in
+                    if scrubStartIndex == nil {
+                        scrubStartIndex = currentIndex
+                    }
+                    let start = scrubStartIndex ?? currentIndex
+                    let deltaSteps = Int((-value.translation.width / step).rounded())
+                    let target = min(mediaList.count - 1, max(0, start + deltaSteps))
+                    if target != currentIndex {
+                        onSelect(target, true)
+                    }
+                    // Keep 1:1 finger tracking relative to the newly centered index, with rubber-band resistance at ends
+                    let remainder = value.translation.width - CGFloat(start - target) * step
+                    if (target == 0 && remainder > 0) || (target == mediaList.count - 1 && remainder < 0) {
+                        scrubDragX = remainder * 0.35
+                    } else {
+                        scrubDragX = remainder
+                    }
+                }
+                .onEnded { _ in
+                    scrubStartIndex = nil
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        scrubDragX = 0
+                    }
+                }
+        )
+    }
+
+    private func thumbUrl(_ original: String) -> String {
+        if original.contains("pbs.twimg.com/media"), !original.contains("?") {
+            return "\(original)?format=jpg&name=medium"
+        }
+        return original
     }
 }

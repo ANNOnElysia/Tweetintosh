@@ -3,7 +3,7 @@
 //  Tweetintosh - Headless Data-driven Client
 //
 //  Picking photos, GIFs and videos for a post: the file picker only offers formats X accepts, and the limits X
-//  applies to a post (up to 4 photos, or one GIF, or one video) are checked before anything is uploaded.
+//  applies to a post (up to 20 photos, or one GIF, or one video) are checked before anything is uploaded.
 //
 
 import AppKit
@@ -65,9 +65,9 @@ enum MediaAttachmentError: LocalizedError {
             let mb = ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file)
             return loc.format("media_too_large", ["name": name, "limit": mb])
         case .tooManyImages:
-            return loc.t("media_too_many")
+            return loc.format("media_too_many", ["max": String(MediaAttachments.maxImages)])
         case .mixedKinds:
-            return loc.t("media_mixed")
+            return loc.format("media_mixed", ["max": String(MediaAttachments.maxImages)])
         case .unreadable(let name):
             return loc.format("media_unreadable", ["name": name])
         }
@@ -77,7 +77,7 @@ enum MediaAttachmentError: LocalizedError {
 enum MediaAttachments {
     // The formats X takes for a post. HEIC photos are accepted too and converted to JPEG on the way in.
     static let pickerTypes: [UTType] = [.jpeg, .png, .gif, .webP, .mpeg4Movie, .quickTimeMovie, .heic]
-    static let maxImages = 4
+    static let maxImages = 20
 
     // Shows the file picker (formats limited to the supported ones) and hands back what was chosen
     @MainActor
@@ -183,7 +183,7 @@ enum MediaAttachments {
         throw MediaAttachmentError.unsupported(name)
     }
 
-    // A post takes up to four photos, or a single GIF, or a single video: never a mixture
+    // A post takes up to 20 photos, or a single GIF, or a single video: never a mixture
     static func validateAdding(_ new: ComposerAttachment, to current: [ComposerAttachment]) throws {
         guard let first = current.first else { return }
         guard first.kind == .image, new.kind == .image else { throw MediaAttachmentError.mixedKinds }
