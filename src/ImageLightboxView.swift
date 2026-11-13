@@ -522,10 +522,6 @@ struct ImageLightboxOverlay: View {
                         .onTapGesture(count: 2) {
                             manager.toggleZoom()
                         }
-                        // Double-click magnifies the artwork; once magnified the drag to hand pans it
-                        .pointerStyle(manager.zoomScale > 1.05
-                                      ? (manager.isPanningZoom ? .grabActive : .grabIdle)
-                                      : .zoomIn)
                         .mediaContextMenu(media: currentMedia, tweet: manager.currentTweet)
                     }
                     

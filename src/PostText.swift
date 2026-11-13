@@ -147,19 +147,19 @@ final class PostTextLabelView: NSTextView, NSTextViewDelegate {
         let rect = bounds.intersection(visibleRect)
         guard rect.origin.x.isFinite, rect.origin.y.isFinite,
               rect.width.isFinite, rect.height.isFinite, !rect.isEmpty else { return }
-        addCursorRect(rect, cursor: .pointingHand)
+        addCursorRect(rect, cursor: .arrow)
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        NSCursor.pointingHand.set()
+        NSCursor.arrow.set()
     }
 
     override func mouseMoved(with event: NSEvent) {
-        NSCursor.pointingHand.set()
+        NSCursor.arrow.set()
     }
 
     override func mouseEntered(with event: NSEvent) {
-        NSCursor.pointingHand.set()
+        NSCursor.arrow.set()
     }
 
     private func openLink(_ url: URL) {
