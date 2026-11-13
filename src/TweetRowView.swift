@@ -109,6 +109,16 @@ struct TweetRowView: View {
                                 // Selectable in the timeline itself, as on the post's page, without losing the
                                 // click that opens it or the pointer that marks its links.
                                 .textSelection(.enabled)
+                                .simultaneousGesture(
+                                    TapGesture().onEnded {
+                                        // Defer one runloop tick so OpenURLAction on links/mentions takes precedence
+                                        DispatchQueue.main.async {
+                                            guard !PeekCoordinator.shared.suppressesActivation,
+                                                  ProcessInfo.processInfo.systemUptime - TweetText.lastLinkOpenUptime > 0.15 else { return }
+                                            NavigationManager.shared.openTweetDetail(tweet)
+                                        }
+                                    }
+                                )
                                 .peeksText(of: tweet, fontSize: theme.postSize(14.5), lineSpacing: theme.lineSpacing(), selectable: true)
                             LongTextToggle(tweet: tweet)
                         }

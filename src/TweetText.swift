@@ -59,9 +59,12 @@ enum TweetText {
     }
 
     // What clicking a link in a post does
+    static var lastLinkOpenUptime: TimeInterval = 0
+
     static func open(_ url: URL) -> OpenURLAction.Result {
         // A deep press that previewed something must not also activate it when released
         if PeekCoordinator.shared.suppressesActivation { return .handled }
+        lastLinkOpenUptime = ProcessInfo.processInfo.systemUptime
         // tweetintosh://users/<likes|reposts>/<post id>: the people who liked or reposted a post
         if url.scheme == profileScheme, url.host == "users", url.pathComponents.count >= 3,
            let kind = TweetUsersKind(rawValue: url.pathComponents[1]) {
