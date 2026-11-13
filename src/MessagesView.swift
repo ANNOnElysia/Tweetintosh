@@ -80,15 +80,7 @@ struct MessagesView: View {
                 .transition(.move(edge: .leading))
                 .zIndex(11)
             }
-            
-            // X Chat 4-Digit Passcode Modal Overlay
-            if vm.showPasscodeSheet {
-                DMPasscodeModalOverlay()
-                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                    .zIndex(999)
-            }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: vm.showPasscodeSheet)
         .onAppear {
             vm.loadInbox()
         }
@@ -1424,6 +1416,22 @@ private struct DMInputDock: View {
 }
 
 // MARK: - X Chat 4-Digit Passcode Modal Overlay
+
+// Presented from AppRootView rather than from MessagesView: the sheet is window-modal, and its scrim dims the app's
+// sidebar as much as the conversation beside it. Inside MessagesView the scrim stopped at the sidebar's edge.
+struct DMPasscodeOverlay: View {
+    @ObservedObject private var vm = DMViewModel.shared
+
+    var body: some View {
+        ZStack {
+            if vm.showPasscodeSheet {
+                DMPasscodeModalOverlay()
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            }
+        }
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: vm.showPasscodeSheet)
+    }
+}
 
 private final class PasscodeState: ObservableObject {
     @Published var code: String = ""

@@ -426,6 +426,11 @@ struct AppRootView: View {
             PeekOverlay()
                 .zIndex(9000)
             
+            // X Chat 4-Digit Passcode Sheet: window-modal, so its scrim dims the sidebar as well as the messages page
+            DMPasscodeOverlay()
+                .ignoresSafeArea()
+                .zIndex(9100)
+            
             // Global App Toast Overlay (Action Feedback: Copy, Save, Retweet)
             AppToastOverlay()
                 .zIndex(9999)
