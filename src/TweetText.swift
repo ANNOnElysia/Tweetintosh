@@ -19,6 +19,16 @@ enum TweetText {
         return Text(attributed(tweet))
     }
 
+    // The in-app URL an @mention opens, shared with the AppKit text view that draws a post's body on the timeline
+    static func mentionURL(_ name: String) -> URL? {
+        URL(string: "\(profileScheme)://profile/\(name)")
+    }
+
+    // Whether a link opens inside the app (a profile or a list of people) rather than in the system
+    static func isInternal(_ url: URL) -> Bool {
+        url.scheme == profileScheme
+    }
+
     static func attributed(_ tweet: Tweet) -> AttributedString {
         let body = tweet.displayBodyText
         var attributed = AttributedString(body)
@@ -39,7 +49,7 @@ enum TweetText {
                   let nameRange = Range(match.range(at: 1), in: body),
                   let range = Range(match.range, in: body),
                   let attrRange = Range(range, in: attributed),
-                  let url = URL(string: "\(profileScheme)://profile/\(body[nameRange])") else { continue }
+                  let url = mentionURL(String(body[nameRange])) else { continue }
             attributed[attrRange].foregroundColor = ThemeManager.accent
             attributed[attrRange].link = url
         }
@@ -59,12 +69,9 @@ enum TweetText {
     }
 
     // What clicking a link in a post does
-    static var lastLinkOpenUptime: TimeInterval = 0
-
     static func open(_ url: URL) -> OpenURLAction.Result {
         // A deep press that previewed something must not also activate it when released
         if PeekCoordinator.shared.suppressesActivation { return .handled }
-        lastLinkOpenUptime = ProcessInfo.processInfo.systemUptime
         // tweetintosh://users/<likes|reposts>/<post id>: the people who liked or reposted a post
         if url.scheme == profileScheme, url.host == "users", url.pathComponents.count >= 3,
            let kind = TweetUsersKind(rawValue: url.pathComponents[1]) {
@@ -131,6 +138,11 @@ extension EnvironmentValues {
     }
 }
 
+// Where the pointer last was over a post's text, shared with the layout without asking SwiftUI to redraw for it
+private final class HoverPosition {
+    var point: CGPoint?
+}
+
 private struct TweetLinkPointer: ViewModifier {
     let tweet: Tweet
     let fontSize: CGFloat
@@ -141,6 +153,9 @@ private struct TweetLinkPointer: ViewModifier {
     @Environment(\.textLinkPointerEnabled) private var textLinkPointerEnabled
     @State private var size: CGSize = .zero
     @State private var isOverLink = false
+    // The last hover position. The box is what is stored; its point changes on every move without a redraw, and a
+    // reflow reads it again.
+    @State private var hoverPosition = HoverPosition()
     @State private var layout: PeekTextLinks.Layout?
     @State private var layoutKey: LayoutKey?
 
@@ -167,20 +182,35 @@ private struct TweetLinkPointer: ViewModifier {
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
             .onContinuousHover { phase in
                 switch phase {
-                case .active(let point):
-                    let overLink = self.isOverLink(at: point)
-                    if overLink != isOverLink { isOverLink = overLink }
-                case .ended:
-                    if isOverLink { isOverLink = false }
+                case .active(let point): updateHover(at: point)
+                case .ended: updateHover(at: nil)
                 }
             }
-            // A reused cell or a reflow must not reuse the previous text's hover result while the pointer is still.
-            // Selectable text names its own I-beam so this layer and AppKit's text view don't fight over the cursor;
-            // a plain post leaves the pointer to the row or inherited style.
+            // Selectable text is an AppKit text view, which claims the I-beam over its whole frame. Matching that
+            // here leaves one answer; a second style for the gaps between lines makes the two ask for the cursor in
+            // turn, which is what the pointer flicker was.
             .pointerStyle(pointerStyle)
-            .onChange(of: currentLayoutKey) { isOverLink = false }
-            .onChange(of: isEnabled && textLinkPointerEnabled) { isOverLink = false }
-            .onDisappear { isOverLink = false }
+            // A reused cell, reflowed text or the end of a scroll must not keep an answer about text that has moved,
+            // and a pointer resting still gets no new hover event to correct it.
+            .onChange(of: currentLayoutKey) { refreshHover() }
+            .onChange(of: isEnabled && textLinkPointerEnabled) { refreshHover() }
+            .onDisappear { updateHover(at: nil) }
+    }
+
+    // A nil point means the pointer left
+    private func updateHover(at point: CGPoint?) {
+        hoverPosition.point = point
+        refreshHover()
+    }
+
+    private func refreshHover() {
+        // Only the text under the pointer needs an answer; a reflow elsewhere must not lay out a TextKit copy
+        guard let point = hoverPosition.point else {
+            if isOverLink { isOverLink = false }
+            return
+        }
+        let overLink = currentLayout()?.isLink(at: point) ?? false
+        if overLink != isOverLink { isOverLink = overLink }
     }
 
     private var pointerStyle: PointerStyle? {
@@ -191,18 +221,14 @@ private struct TweetLinkPointer: ViewModifier {
         return .default
     }
 
-    private func isOverLink(at point: CGPoint) -> Bool {
-        guard isEnabled && textLinkPointerEnabled, size.width > 0 else { return false }
+    private func currentLayout() -> PeekTextLinks.Layout? {
+        guard isEnabled && textLinkPointerEnabled, size.width > 0 else { return nil }
         let key = currentLayoutKey
-        let layout: PeekTextLinks.Layout
-        if let cached = self.layout, layoutKey == key {
-            layout = cached
-        } else {
-            layout = PeekTextLinks.Layout(text: tweet.displayBodyText, links: tweet.displayLinks,
-                                          fontSize: fontSize, lineSpacing: lineSpacing, width: size.width)
-            self.layout = layout
-            layoutKey = key
-        }
-        return layout.isLink(at: point)
+        if let cached = layout, layoutKey == key { return cached }
+        let newLayout = PeekTextLinks.Layout(text: tweet.displayBodyText, links: tweet.displayLinks,
+                                             fontSize: fontSize, lineSpacing: lineSpacing, width: size.width)
+        layout = newLayout
+        layoutKey = key
+        return newLayout
     }
 }

@@ -178,6 +178,9 @@ final class NavigationManager {
         if DetailPane.shared.isAvailable && currentTab == .home && !hasOverlay {
             DetailPane.shared.open(tweet, fromPane: fromPane)
         } else {
+            // The same post already in front must not be stacked again: a click inside a row can arrive from both
+            // the row and its text view
+            if case .tweet(let shown)? = overlayStack.last?.page, shown.isCopy(ofPost: tweet.id) { return }
             push(.tweet(tweet))
         }
     }

@@ -821,6 +821,8 @@ private struct DMContactHeader: View {
                     )
                 }
                 .buttonStyle(.target)
+                // The name and avatar open the person's profile, as the same identity does on a post
+                .navigationPointer()
                 .modifier(DMGlassControl(shape: Capsule()))
                 .onHover { hover.isHovered = $0 }
                 .peekable(.profile(other.asTweetUser)) // Deep-press / Force Click Peek card!
