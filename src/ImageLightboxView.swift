@@ -71,7 +71,7 @@ final class LightboxManager: ObservableObject {
     @Published var panOffset: CGSize = .zero
     @Published var maxPanLimit: CGSize = .zero
     var startPanOffset: CGSize = .zero
-    var isPanningZoom: Bool = false
+    @Published var isPanningZoom: Bool = false
     
     // Dismiss / Swipe Drag State
     @Published var dragOffset: CGSize = .zero
@@ -522,6 +522,10 @@ struct ImageLightboxOverlay: View {
                         .onTapGesture(count: 2) {
                             manager.toggleZoom()
                         }
+                        // Double-click magnifies the artwork; once magnified the drag to hand pans it
+                        .pointerStyle(manager.zoomScale > 1.05
+                                      ? (manager.isPanningZoom ? .grabActive : .grabIdle)
+                                      : .zoomIn)
                         .mediaContextMenu(media: currentMedia, tweet: manager.currentTweet)
                     }
                     

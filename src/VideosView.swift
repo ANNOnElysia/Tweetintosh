@@ -263,6 +263,7 @@ private struct VideoPage: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.target)
+            .navigationPointer()
             .help(loc.t("videos_open_profile"))
 
             if !post.displayBodyText.isEmpty {
@@ -326,7 +327,8 @@ private struct VideoActionRail: View {
                 title: loc.t("videos_open_post"),
                 systemImage: "text.bubble",
                 count: post.replyCount,
-                effectTrigger: false
+                effectTrigger: false,
+                opensPage: true
             ) { nav.openTweetDetail(post) }
 
             RailButton(
@@ -344,6 +346,8 @@ private struct RailButton: View {
     var count: Int?
     var tint: Color = .white
     var effectTrigger: Bool
+    // Opens a page rather than acting in place, so it gets the hand; the count below is not part of the button
+    var opensPage = false
     let action: () -> Void
 
     @ObservedObject private var theme = ThemeManager.shared
@@ -354,6 +358,7 @@ private struct RailButton: View {
                 RailIcon(systemImage: systemImage, tint: tint, effectTrigger: effectTrigger)
             }
             .buttonStyle(.target)
+            .navigationPointer(opensPage)
             .help(title)
             .accessibilityLabel(title)
             .accessibilityValue(count.map { $0.formatted() } ?? "")

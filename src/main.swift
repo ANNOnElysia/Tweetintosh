@@ -34,12 +34,34 @@ final class FocusCachingHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+// After AppKit's own cursor handling, a timeline card's text keeps the hand. AppKit's text view puts its I-beam
+// back whenever the pointer moves; this runs after it on every move, and only for the text view the timeline uses.
+enum TimelineCardCursor {
+    static func keepHand(at point: NSPoint, in window: NSWindow) {
+        guard let hit = window.contentView?.hitTest(point) else { return }
+        var view: NSView? = hit
+        while let current = view {
+            if current is PostTextLabelView {
+                NSCursor.pointingHand.set()
+                return
+            }
+            view = current.superview
+        }
+    }
+}
+
 private final class MainWindow: NSWindow {
     private var frameBeforeTitlebarFill: NSRect?
 
     override func sendEvent(_ event: NSEvent) {
         if handleTitlebarDoubleClick(event) { return }
         super.sendEvent(event)
+        switch event.type {
+        case .mouseMoved, .leftMouseDragged:
+            TimelineCardCursor.keepHand(at: event.locationInWindow, in: self)
+        default:
+            break
+        }
     }
 
     private func handleTitlebarDoubleClick(_ event: NSEvent) -> Bool {

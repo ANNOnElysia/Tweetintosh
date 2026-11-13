@@ -271,6 +271,7 @@ enum PeekTextLinks {
     final class Layout {
         private let text: String
         private let links: [DisplayLink]
+        private let mentions: [(range: NSRange, name: String)]
         private let storage: NSTextStorage
         private let layoutManager: NSLayoutManager
         private let container: NSTextContainer
@@ -278,6 +279,8 @@ enum PeekTextLinks {
         init(text: String, links: [DisplayLink], fontSize: CGFloat, lineSpacing: CGFloat, width: CGFloat) {
             self.text = text
             self.links = links
+            // Found once per layout: the pointer asks this on every move, and the pattern scan is the pricey part
+            mentions = TweetText.mentionRanges(in: text, excluding: links)
             let theme = ThemeManager.shared
             let font: NSFont = theme.fontType == .mincho
                 ? (NSFont(name: theme.activeSerifFontName, size: fontSize + 0.5) ?? .systemFont(ofSize: fontSize))
@@ -293,9 +296,30 @@ enum PeekTextLinks {
             storage.addLayoutManager(layoutManager)
         }
 
+        // True over a line's glyphs, not the blank space between lines. The line fragment rect includes the paragraph
+        // line spacing, so the font's ascent and descent around the baseline mark the part that is actually text.
+        func isOverText(at point: CGPoint) -> Bool {
+            var fraction: CGFloat = 0
+            let glyph = layoutManager.glyphIndex(for: point, in: container, fractionOfDistanceThroughGlyph: &fraction)
+            let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+            guard point.x >= glyphRect.minX, point.x <= glyphRect.maxX else { return false }
+            let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let baseline = fragment.minY + layoutManager.location(forGlyphAt: glyph).y
+            let index = layoutManager.characterIndexForGlyph(at: glyph)
+            // An empty line has no glyphs of its own; the nearest one is a newline, whose fragment covers the
+            // whole blank row. It is not text, so it keeps the arrow.
+            let text = storage.string as NSString
+            guard index < text.length,
+                  text.substring(with: NSRange(location: index, length: 1)).rangeOfCharacter(from: .newlines) == nil
+            else { return false }
+            let font = (storage.attribute(.font, at: index, effectiveRange: nil) as? NSFont)
+                ?? .systemFont(ofSize: 13)
+            return point.y >= baseline - font.ascender && point.y <= baseline - font.descender
+        }
+
         // True over a link or @mention, where the pointer should be a hand
         func isLink(at point: CGPoint) -> Bool {
-            guard let index = index(at: point) else { return false }
+            guard isOverText(at: point), let index = index(at: point) else { return false }
             return link(at: index) != nil
         }
 
@@ -330,7 +354,6 @@ enum PeekTextLinks {
             if let hit = links.first(where: { index >= $0.location && index < $0.location + $0.length }) {
                 return URL(string: hit.url).map(PeekTarget.link)
             }
-            let mentions = TweetText.mentionRanges(in: text, excluding: links)
             if let mention = mentions.first(where: { NSLocationInRange(index, $0.range) }) {
                 return .profile(TweetUser(id: "", name: mention.name, screenName: mention.name, avatarUrl: nil, isVerified: false))
             }

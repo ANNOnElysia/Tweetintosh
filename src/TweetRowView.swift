@@ -99,27 +99,17 @@ struct TweetRowView: View {
                         
                         // Tweet Body Text (Clean text with leading reply mentions & trailing media t.co URLs stripped)
                         if !tweet.displayBodyText.isEmpty {
-                            bodyText
-                                .font(theme.tweetFont(size: theme.postSize(14.5)))
-                                .lineSpacing(theme.lineSpacing())
-                                .foregroundColor(ThemeManager.primaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                                // A deep press on a link previews it; its release must not also open the browser
-                                .handlesTweetLinks()
-                                // Selectable in the timeline itself, as on the post's page, without losing the
-                                // click that opens it or the pointer that marks its links.
-                                .textSelection(.enabled)
-                                .simultaneousGesture(
-                                    TapGesture().onEnded {
-                                        // Defer one runloop tick so OpenURLAction on links/mentions takes precedence
-                                        DispatchQueue.main.async {
-                                            guard !PeekCoordinator.shared.suppressesActivation,
-                                                  ProcessInfo.processInfo.systemUptime - TweetText.lastLinkOpenUptime > 0.15 else { return }
-                                            NavigationManager.shared.openTweetDetail(tweet)
-                                        }
-                                    }
-                                )
-                                .peeksText(of: tweet, fontSize: theme.postSize(14.5), lineSpacing: theme.lineSpacing(), selectable: true)
+                            // A real text view, as X's web client has: a click opens the post, a drag selects the text,
+                            // and the click that clears a selection only clears it. A deep press previews a link.
+                            PostText(tweet: tweet, fontSize: theme.postSize(14.5), lineSpacing: theme.lineSpacing()) {
+                                NavigationManager.shared.openTweetDetail(tweet)
+                            }
+                            .peekable { [tweet] point, size in
+                                PeekTextLinks.target(at: point, size: size, text: tweet.displayBodyText,
+                                                     links: tweet.displayLinks, fontSize: theme.postSize(14.5),
+                                                     lineSpacing: theme.lineSpacing())
+                            }
+
                             LongTextToggle(tweet: tweet)
                         }
                         
@@ -145,6 +135,8 @@ struct TweetRowView: View {
                 .padding(.horizontal, 16)
             }
             .contentShape(Rectangle())
+            // The whole card is a click target, so the hand covers it, its text included, as on X's web client.
+            .navigationPointer()
             .onTapGesture {
                 NavigationManager.shared.openTweetDetail(tweet)
             }
@@ -191,12 +183,6 @@ struct TweetRowView: View {
             .padding(.leading, 35)
             .allowsHitTesting(false)
         }
-    }
-    
-    // Body text with links shown by their display URL in the accent colour; clicking one opens it in the browser,
-    // and clicking an @mention opens that profile
-    private var bodyText: Text {
-        TweetText.text(tweet)
     }
     
     private func metricItem(icon: String, count: Int) -> some View {

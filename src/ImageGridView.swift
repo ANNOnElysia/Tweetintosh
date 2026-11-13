@@ -628,6 +628,9 @@ private struct MediaTile: View {
         )
         .contentShape(Rectangle())
         .modifier(LocatesFrame(box: frameBox))
+        // A tile opens the photo viewer or the video player, which is navigation, so it shows the hand; a quoted
+        // card's media opens nothing and keeps the arrow.
+        .navigationPointer(isInteractive)
         .overlay(
             Button(action: open) {
                 Color.clear
