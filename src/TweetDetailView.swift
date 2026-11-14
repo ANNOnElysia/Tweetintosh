@@ -525,7 +525,7 @@ struct TweetDetailView: View {
         var line = Text(formattedExactDate(viewModel.focalTweet.createdAt))
             .foregroundColor(ThemeManager.secondaryText)
         if let views = viewModel.focalTweet.viewCount, views > 0 {
-            let count = NumberFormatter.localizedString(from: NSNumber(value: views), number: .decimal)
+            let count = ThemeManager.formatCount(views, abbreviated: theme.abbreviateCounts)
             line = line
                 + Text(" · ").foregroundColor(ThemeManager.secondaryText)
                 + Text(count).foregroundColor(ThemeManager.primaryText).bold()

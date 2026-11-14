@@ -2564,6 +2564,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "自动播放视频和 GIF",
             .traditionalChinese: "自動播放影片和 GIF"
         ],
+        "abbreviate_counts": [
+            .english: "Abbreviate View Counts (K / M / B)",
+            .japanese: "表示回数を省略表示 (K / M / B)",
+            .korean: "조회수 축약 표시 (K / M / B)",
+            .simplifiedChinese: "简化显示浏览量 (K / M / B)",
+            .traditionalChinese: "簡化顯示瀏覽量 (K / M / B)"
+        ],
         "show_videos_tab": [
             .english: "Video Feed",
             .japanese: "動画フィード",

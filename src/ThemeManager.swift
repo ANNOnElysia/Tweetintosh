@@ -221,6 +221,12 @@ final class ThemeManager: ObservableObject {
         }
     }
 
+    @Published var abbreviateCounts: Bool {
+        didSet {
+            UserDefaults.standard.set(abbreviateCounts, forKey: "Tweetintosh_AbbreviateCounts")
+        }
+    }
+
     // The Videos tab, X's full-screen video feed. Off until the reader turns it on: it plays video continuously and
     // downloads ahead, which not everyone wants from a timeline app.
     @Published var showVideosTab: Bool {
@@ -248,6 +254,15 @@ final class ThemeManager: ObservableObject {
     // A post's text size at the chosen scale, on the half point
     func postSize(_ base: CGFloat) -> CGFloat {
         (base * postTextScale * 2).rounded() / 2
+    }
+
+    static func formatCount(_ n: Int, abbreviated: Bool) -> String {
+        if abbreviated {
+            if n >= 1_000_000_000 { return String(format: "%.1fB", Double(n) / 1_000_000_000.0) }
+            if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000.0) }
+            if n >= 1_000 { return String(format: "%.1fK", Double(n) / 1_000.0) }
+        }
+        return NumberFormatter.localizedString(from: NSNumber(value: n), number: .decimal)
     }
 
     var refreshColor: AppThemeColor {
@@ -355,6 +370,7 @@ final class ThemeManager: ObservableObject {
         }
         
         self.autoplayMedia = UserDefaults.standard.object(forKey: "Tweetintosh_AutoplayMedia") as? Bool ?? true
+        self.abbreviateCounts = UserDefaults.standard.object(forKey: "Tweetintosh_AbbreviateCounts") as? Bool ?? true
         self.showVideosTab = UserDefaults.standard.object(forKey: "Tweetintosh_ShowVideosTab") as? Bool ?? false
         let savedStep = UserDefaults.standard.object(forKey: "Tweetintosh_PostTextSize") as? Int ?? Self.actualPostTextStep
         self.postTextStep = Self.postTextScales.indices.contains(savedStep) ? savedStep : Self.actualPostTextStep
