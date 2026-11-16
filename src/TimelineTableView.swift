@@ -103,6 +103,10 @@ final class TimelineRowHeights {
     }
 
     private var entries: [String: Entry] = [:]
+    // The order rows were first seen, so a long session drops the coldest measurements instead of growing for ever.
+    private var order: [String] = []
+    private static let entryLimit = 3000
+    private static let entriesAfterTrim = 2400
     private(set) var context = Context(rowWidth: 0, contentWidth: 0, readingLeadingGutter: 0, readingTrailingGutter: 0,
                                        mediaColumnWidth: nil, fontType: .system, language: .english, textScale: 1)
     private lazy var sizer = NSHostingController(
@@ -120,13 +124,14 @@ final class TimelineRowHeights {
         context = newValue
         // Estimates for the new width are worked out as rows are asked for; the old measurements no longer apply
         entries.removeAll(keepingCapacity: true)
+        order.removeAll(keepingCapacity: true)
     }
 
     func height(for tweet: Tweet) -> CGFloat {
         let signature = Self.signature(of: tweet)
         if let entry = entries[tweet.id], entry.signature == signature { return entry.height }
         let estimate = TimelineRowEstimator.height(of: tweet, context: context)
-        entries[tweet.id] = Entry(signature: signature, height: estimate, isExact: false)
+        store(Entry(signature: signature, height: estimate, isExact: false), for: tweet.id)
         return estimate
     }
 
@@ -143,8 +148,21 @@ final class TimelineRowHeights {
         let size = sizer.sizeThatFits(in: CGSize(width: context.rowWidth, height: .greatestFiniteMagnitude))
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         let height = max(1, ceil(size.height * scale) / scale)
-        entries[tweet.id] = Entry(signature: Self.signature(of: tweet), height: height, isExact: true)
+        store(Entry(signature: Self.signature(of: tweet), height: height, isExact: true), for: tweet.id)
         return height
+    }
+
+    // Keeps the working set of rows. Measuring again is cheap next to holding every row of every page ever loaded.
+    private func store(_ entry: Entry, for id: String) {
+        if entries[id] == nil {
+            order.append(id)
+            if order.count > Self.entryLimit {
+                let excess = order.count - Self.entriesAfterTrim
+                for old in order.prefix(excess) { entries[old] = nil }
+                order.removeFirst(excess)
+            }
+        }
+        entries[id] = entry
     }
 
     private static func signature(of tweet: Tweet) -> Int {
@@ -641,6 +659,7 @@ struct TimelineTableView: NSViewRepresentable {
             let changeCount = difference.insertions.count + difference.removals.count
             let wasEmpty = tweets.isEmpty
             let replacesMost = changeCount > max(40, ids.count)
+            let trimsHead = Self.removesFromTop(difference)
 
             tweets = newTweets
             ids = newIds
@@ -654,7 +673,8 @@ struct TimelineTableView: NSViewRepresentable {
                 for change in difference {
                     switch change {
                     case .remove(let offset, _, _):
-                        tableView.removeRows(at: IndexSet(integer: offset + 1), withAnimation: .effectFade)
+                        tableView.removeRows(at: IndexSet(integer: offset + 1),
+                                             withAnimation: trimsHead ? [] : .effectFade)
                     case .insert(let offset, _, _):
                         tableView.insertRows(at: IndexSet(integer: offset + 1), withAnimation: [])
                     }
@@ -673,6 +693,17 @@ struct TimelineTableView: NSViewRepresentable {
             tableView.insertRows(at: IndexSet(integersIn: (oldCount + 1)..<(newIds.count + 1)), withAnimation: [])
             tableView.endUpdates()
             scheduleMeasuring()
+        }
+
+        // A window trim drops a run of rows from the top, where the reader is not looking: fading them out one by one
+        // would only cost frames. The page that triggered it is inserted below, which doesn't change the removals.
+        private static func removesFromTop(_ difference: CollectionDifference<String>) -> Bool {
+            guard !difference.removals.isEmpty else { return false }
+            let offsets = difference.removals.compactMap { change -> Int? in
+                if case .remove(let offset, _, _) = change { return offset }
+                return nil
+            }
+            return Set(offsets) == Set(0..<offsets.count)
         }
 
         // The same posts with new contents (a like, a repost): only what's on screen has anything to redraw
