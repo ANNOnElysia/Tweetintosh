@@ -1,0 +1,201 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build and package (arm64)
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      build: ${{ steps.metadata.outputs.build }}
+      channel: ${{ steps.metadata.outputs.channel }}
+      artifact: ${{ steps.metadata.outputs.artifact }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Assert arm64 and Xcode 26.6
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          xcode_version="$(xcodebuild -version)"
+          printf '%s\n' "$xcode_version"
+          test "$(printf '%s\n' "$xcode_version" | head -n 1)" = 'Xcode 26.6'
+
+      - name: Read and validate release metadata
+        id: metadata
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' src/Info.plist)"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' src/Info.plist)"
+          channel="$(/usr/libexec/PlistBuddy -c 'Print :TweetintoshUpdateChannel' src/Info.plist 2>/dev/null || true)"
+          channel="${channel:-stable}"
+          if [[ ! "$version" =~ ^[0-9]+([.][0-9]+)*(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]]; then
+            echo '::error::Version is not safe for release filenames.'
+            exit 1
+          fi
+          if [[ ! "$build" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
+            echo '::error::Build must be a numeric dotted version.'
+            exit 1
+          fi
+          case "$channel" in
+            stable|preview) ;;
+            *) echo '::error::Update channel must be stable or preview.'; exit 1 ;;
+          esac
+          if [[ "$REF_TYPE" == tag && "$REF_NAME" != "v${version}" ]]; then
+            echo '::error::Release tag must equal v followed by the Info.plist version.'
+            exit 1
+          fi
+          {
+            printf 'version=%s\n' "$version"
+            printf 'build=%s\n' "$build"
+            printf 'channel=%s\n' "$channel"
+            printf 'artifact=Tweetintosh-v%s-macOS-arm64-adhoc-%s\n' "$version" "${GITHUB_SHA:0:7}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cache SwiftPM build directory
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: .build
+          key: ${{ runner.os }}-${{ runner.arch }}-Xcode26.6-swiftpm-${{ hashFiles('Package.swift', 'Package.resolved', 'src/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-Xcode26.6-swiftpm-
+
+      - name: Compile and assemble release app
+        run: KEEP_BUILD_DIR=1 ./build.sh
+
+      - name: Run release tests when present
+        run: |
+          set -euo pipefail
+          swift package describe --type json > "$RUNNER_TEMP/package-description.json"
+          test_targets="$(jq '[.targets[] | select(.type == "test")] | length' "$RUNNER_TEMP/package-description.json")"
+          if (( test_targets > 0 )); then
+            swift test -c release
+          else
+            echo 'No SwiftPM test targets are declared.'
+          fi
+
+      - name: Package and validate release artifacts
+        run: bash tools/ci_package.sh
+
+      - name: Upload validated artifacts
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ steps.metadata.outputs.artifact }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize validated packages
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+          BUILD: ${{ steps.metadata.outputs.build }}
+          CHANNEL: ${{ steps.metadata.outputs.channel }}
+          ARTIFACT: ${{ steps.metadata.outputs.artifact }}
+          UPLOADED: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) }}
+        run: |
+          {
+            printf '### Tweetintosh %s (build %s)\n\n' "$VERSION" "$BUILD"
+            printf 'Channel: %s. Architecture: arm64. Minimum OS: macOS 15.\n\n' "$CHANNEL"
+            printf 'Validated app and DMG use ad-hoc signing and are not notarized.\n\n'
+            if [[ "$UPLOADED" == true ]]; then
+              printf 'Artifact: %s (retained for 14 days).\n\n' "$ARTIFACT"
+            else
+              printf 'Packages validated; this event does not upload artifacts.\n\n'
+            fi
+            printf '```text\n'
+            cat dist/SHA256SUMS.txt
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Create draft release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download validated artifacts from this run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: dist
+
+      - name: Verify downloaded checksums
+        working-directory: dist
+        run: sha256sum --check --strict SHA256SUMS.txt
+
+      - name: Create draft release for maintainer approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+          BUILD: ${{ needs.build.outputs.build }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/existing-release.txt"
+          if gh api --include "repos/${GH_REPO}/releases/tags/${RELEASE_TAG}" > "$response"; then
+            echo '::error::A release already exists for this tag; refusing to modify it.'
+            exit 1
+          elif ! grep -Eq '^HTTP/[0-9.]+ 404([[:space:]]|$)' "$response"; then
+            echo '::error::Could not establish whether a release already exists.'
+            exit 1
+          fi
+          notes="$RUNNER_TEMP/release-notes.txt"
+          cat > "$notes" <<EOF
+          Tweetintosh ${VERSION} (build ${BUILD}), ${CHANNEL} channel.
+
+          Requires Apple silicon (arm64) and macOS 15 or later.
+          The app is ad-hoc signed. No Apple notarization is provided.
+          This release does not change appcast.xml or publish a Sparkle update.
+
+          ZIP, DMG, and SHA256SUMS.txt are attached. This draft requires maintainer review and publication.
+          EOF
+          flags=(--verify-tag --draft)
+          if [[ "$CHANNEL" == preview ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" "${flags[@]}" \
+            --title "Tweetintosh ${VERSION}" --notes-file "$notes" \
+            "dist/Tweetintosh-v${VERSION}-macOS-arm64-adhoc.zip" \
+            "dist/Tweetintosh-v${VERSION}-macOS-arm64-adhoc.dmg" \
+            dist/SHA256SUMS.txt
+          {
+            printf '### Draft release created\n\n'
+            printf 'Tweetintosh %s is a draft awaiting maintainer review and publication.\n' "$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"
