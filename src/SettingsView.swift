@@ -165,16 +165,38 @@ struct GlassSegmentedTonePicker: View {
 }
 
 // MARK: - Glass Segmented Font Picker (High Contrast & Liquid Glass)
-struct GlassSegmentedFontPicker: View {
+struct GlassSegmentedFontPicker<CustomPicker: View>: View {
     @Binding var selection: AppFontType
+    @Binding var customPickerPresented: Bool
+    private let customPicker: () -> CustomPicker
+
     @ObservedObject var loc = LocalizationManager.shared
     @ObservedObject var theme = ThemeManager.shared
     @Namespace private var fontPickerNamespace
+    // The highlight catches up in an animation of its own. The typeface itself is committed without one: fonts and
+    // the layout they resize cannot be interpolated, and animating them relaid the whole window every frame of the
+    // spring.
+    @State private var highlighted: AppFontType
+
+    init(
+        selection: Binding<AppFontType>,
+        customPickerPresented: Binding<Bool>,
+        @ViewBuilder customPicker: @escaping () -> CustomPicker
+    ) {
+        self._selection = selection
+        self._customPickerPresented = customPickerPresented
+        self.customPicker = customPicker
+        self._highlighted = State(initialValue: selection.wrappedValue)
+    }
     
     var body: some View {
         HStack(spacing: 4) {
             segmentButton(type: .system, title: loc.t("font_system"))
             segmentButton(type: .mincho, title: loc.t("font_mincho"))
+            segmentButton(type: .custom, title: loc.t("font_custom"))
+                .popover(isPresented: $customPickerPresented, arrowEdge: .bottom) {
+                    customPicker()
+                }
         }
         .padding(3.5)
         .background(
@@ -185,14 +207,18 @@ struct GlassSegmentedFontPicker: View {
                         .stroke(theme.isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12), lineWidth: 0.8)
                 )
         )
+        // Only the highlight animates: the typeface change has already been committed above, without a transaction.
+        .onChange(of: selection) { _, newValue in
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                highlighted = newValue
+            }
+        }
     }
     
     private func segmentButton(type: AppFontType, title: String) -> some View {
-        let isSelected = selection == type
+        let isSelected = highlighted == type
         return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                selection = type
-            }
+            selection = type
         } label: {
             HStack(spacing: 6) {
                 if isSelected {
@@ -201,7 +227,7 @@ struct GlassSegmentedFontPicker: View {
                         .foregroundColor(theme.useLiquidGlass ? ThemeManager.accent : (theme.isLight ? ThemeManager.accent : .white))
                 }
                 Text(title)
-                    .font(type == .mincho ? .custom(theme.activeSerifFontName, size: 12.5) : .system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                    .font(segmentFont(for: type, selected: isSelected))
                     .foregroundColor(isSelected ? (theme.isLight ? ThemeManager.primaryText : .white) : (theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.70)))
             }
             .frame(maxWidth: .infinity)
@@ -230,6 +256,18 @@ struct GlassSegmentedFontPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.target)
+    }
+
+    private func segmentFont(for type: AppFontType, selected: Bool) -> Font {
+        let weight: Font.Weight = selected ? .semibold : .medium
+        switch type {
+        case .system:
+            return .system(size: 12.5, weight: weight)
+        case .mincho:
+            return .custom(theme.activeSerifFontName, size: 12.5).weight(weight)
+        case .custom:
+            return theme.previewCustomFont(size: 12.5, weight: weight)
+        }
     }
     
     private var selectedBackground: some View {
@@ -595,6 +633,9 @@ struct SettingsView: View {
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var mediaCache = MediaCacheManager.shared
 
+    @State private var showSegmentFontPicker = false
+    @State private var showRowFontPicker = false
+
     @ObservedObject var accountManager = AccountManager.shared
     private let cacheCleanup = CacheCleanup.shared
     private let updates = UpdateManager.shared
@@ -703,6 +744,62 @@ struct SettingsView: View {
         .background(SettingsCardBackground())
     }
     
+    // Choosing Custom without an installed face waits for a pick: cancelling the chooser leaves the old mode in place.
+    private var fontSelection: Binding<AppFontType> {
+        Binding(
+            get: { theme.fontType },
+            set: { newValue in
+                if newValue == .custom && !theme.isCustomFontAvailable {
+                    showSegmentFontPicker = true
+                } else {
+                    theme.fontType = newValue
+                }
+            }
+        )
+    }
+
+    private var fontFamilyPicker: some View {
+        FontFamilyPickerPopover(selectedFamily: theme.customFontFamily, onPick: chooseCustomFont)
+    }
+
+    private func chooseCustomFont(_ family: InstalledFonts.Family) {
+        if theme.selectCustomFont(family: family.name) {
+            showSegmentFontPicker = false
+            showRowFontPicker = false
+        }
+    }
+
+    private var fontFamilyRow: some View {
+        HStack(spacing: 12) {
+            Text(loc.t("font_family"))
+                .font(theme.appFont(size: 13))
+                .foregroundColor(ThemeManager.primaryText)
+
+            Spacer(minLength: 12)
+
+            Button {
+                showRowFontPicker = true
+            } label: {
+                HStack(spacing: 5) {
+                    Text(theme.customFontDisplayName ?? loc.t("font_choose"))
+                        .font(theme.appFont(size: 12.5))
+                        .foregroundColor(ThemeManager.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(ThemeManager.secondaryText)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.target)
+            .popover(isPresented: $showRowFontPicker, arrowEdge: .bottom) {
+                fontFamilyPicker
+            }
+            .help(theme.customFontDisplayName ?? loc.t("font_family"))
+        }
+    }
+
     // The Video Feed switch's name, marked as an experiment: the feed rests on an X endpoint the web client only
     // calls from its video viewer, and its behaviour is still being tuned
     private var videoFeedLabel: some View {
@@ -746,7 +843,31 @@ struct SettingsView: View {
                     .foregroundColor(ThemeManager.secondaryText)
                 
                 // High-contrast Font Selector (Fixes unreadable black Hiragino Mincho text)
-                GlassSegmentedFontPicker(selection: $theme.fontType)
+                GlassSegmentedFontPicker(selection: fontSelection, customPickerPresented: $showSegmentFontPicker) {
+                    fontFamilyPicker
+                }
+
+                if theme.fontType == .custom {
+                    VStack(alignment: .leading, spacing: 8) {
+                        fontFamilyRow
+
+                        if !theme.isCustomFontAvailable {
+                            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.orange)
+                                Text(loc.t("font_unavailable"))
+                                    .font(theme.appFont(size: 11.5))
+                                    .foregroundColor(ThemeManager.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        FontPreviewCard()
+                    }
+                    // The picker's target buttons reach 36 points past its frame, so leave room before the row below it.
+                    .padding(.top, 10)
+                }
 
                 HStack {
                     Text(loc.t("language"))

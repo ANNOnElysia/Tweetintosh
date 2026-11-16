@@ -167,13 +167,13 @@ private struct TweetLinkPointer: ViewModifier {
         let size: CGSize
         let fontSize: CGFloat
         let lineSpacing: CGFloat
-        let fontType: String
+        let fontKey: String
         let language: String
     }
 
     private var currentLayoutKey: LayoutKey {
         LayoutKey(tweetID: tweet.id, text: tweet.displayBodyText, links: tweet.displayLinks, size: size,
-                  fontSize: fontSize, lineSpacing: lineSpacing, fontType: ThemeManager.shared.fontType.rawValue,
+                  fontSize: fontSize, lineSpacing: lineSpacing, fontKey: ThemeManager.shared.fontLayoutKey,
                   language: LocalizationManager.shared.currentLanguage.rawValue)
     }
 

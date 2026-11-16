@@ -91,7 +91,7 @@ final class TimelineRowHeights {
         var readingLeadingGutter: CGFloat
         var readingTrailingGutter: CGFloat
         var mediaColumnWidth: CGFloat?
-        var fontType: AppFontType
+        var fontKey: String
         var language: AppLanguage
         var textScale: CGFloat
     }
@@ -104,7 +104,7 @@ final class TimelineRowHeights {
 
     private var entries: [String: Entry] = [:]
     private(set) var context = Context(rowWidth: 0, contentWidth: 0, readingLeadingGutter: 0, readingTrailingGutter: 0,
-                                       mediaColumnWidth: nil, fontType: .system, language: .english, textScale: 1)
+                                       mediaColumnWidth: nil, fontKey: "system", language: .english, textScale: 1)
     private lazy var sizer = NSHostingController(
         rootView: TimelineRowContent(tweet: Self.placeholderTweet, mediaColumnWidth: nil, isMeasuring: true)
     )
@@ -204,9 +204,7 @@ enum TimelineRowEstimator {
 
     private static func textHeight(_ text: String, fontSize: CGFloat, width: CGFloat, lineSpacing: CGFloat) -> CGFloat {
         let theme = ThemeManager.shared
-        let font: NSFont = theme.fontType == .mincho
-            ? (NSFont(name: theme.activeSerifFontName, size: fontSize + 0.5) ?? .systemFont(ofSize: fontSize))
-            : .systemFont(ofSize: fontSize)
+        let font = theme.nsFont(size: fontSize)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = lineSpacing
         let rect = (text as NSString).boundingRect(
@@ -506,6 +504,13 @@ struct TimelineTableView: NSViewRepresentable {
         private static let glideDuration: CFTimeInterval = 0.28
         private var lastCellShownAt: CFTimeInterval = 0
         private var articleObserver: AnyCancellable?
+        // A typeface or width change leaves every loaded row's height stale. Visible rows are worked out on the spot;
+        // the rest follow a few milliseconds at a time between frames, since a long feed's estimates alone cost more
+        // than one frame.
+        private var heightRefreshWork: DispatchWorkItem?
+        private var heightRefreshIndex = 0
+        // How long one slice of the sweep may run before the main thread is handed back
+        private static let heightRefreshBudget: CFTimeInterval = 0.004
 
         override init() {
             super.init()
@@ -546,6 +551,8 @@ struct TimelineTableView: NSViewRepresentable {
         func tearDown() {
             measureTimer?.invalidate()
             measureTimer = nil
+            heightRefreshWork?.cancel()
+            heightRefreshWork = nil
             prewarmPool.removeAll()
             if let boundsObserver {
                 NotificationCenter.default.removeObserver(boundsObserver)
@@ -636,6 +643,9 @@ struct TimelineTableView: NSViewRepresentable {
             }
 
             prewarmPool.removeAll()
+            // The sweep indexes into the feed it was started for
+            heightRefreshWork?.cancel()
+            heightRefreshWork = nil
             let anchor = captureAnchor()
             let difference = newIds.difference(from: ids)
             let changeCount = difference.insertions.count + difference.removals.count
@@ -796,7 +806,7 @@ struct TimelineTableView: NSViewRepresentable {
                 readingLeadingGutter: leading,
                 readingTrailingGutter: trailing,
                 mediaColumnWidth: contentWidth - Self.textColumnInset,
-                fontType: ThemeManager.shared.fontType,
+                fontKey: ThemeManager.shared.fontLayoutKey,
                 language: LocalizationManager.shared.currentLanguage,
                 textScale: ThemeManager.shared.postTextScale
             )
@@ -852,19 +862,62 @@ struct TimelineTableView: NSViewRepresentable {
             prewarmPool.removeAll()
             if let column = tableView.tableColumns.first, column.width != newContext.rowWidth { column.width = newContext.rowWidth }
             guard !tweets.isEmpty else { return }
-            let anchor = captureAnchor()
-            // Keep the width change to estimates; exact layout is spread over later ticks, starting on screen.
-            let visible = Set(visibleTweetRows())
-            rowHeights = tweets.map { heights.height(for: $0) }
-            for row in visible {
-                (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineTweetCell)?.show(content(for: tweets[row - 1]))
+            // What is on screen is laid out on this frame, so the reader sees the new typeface immediately.
+            var changed = IndexSet()
+            for row in visibleTweetRows() {
+                let tweet = tweets[row - 1]
+                let height = heights.height(for: tweet)
+                if height != rowHeights[row - 1] {
+                    rowHeights[row - 1] = height
+                    changed.insert(row)
+                }
+                let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineTweetCell
+                cell?.show(content(for: tweet))
             }
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0
-                tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 1..<(tweets.count + 1)))
-            }
-            restore(anchor)
+            if !changed.isEmpty { noteHeightsChanged(changed) }
+            beginHeightRefresh()
             scheduleMeasuring()
+        }
+
+        // The rest of the feed's estimates, in slices short enough to leave the main thread room between frames.
+        private func beginHeightRefresh() {
+            heightRefreshWork?.cancel()
+            heightRefreshIndex = 0
+            scheduleNextHeightRefresh()
+        }
+
+        private func scheduleNextHeightRefresh() {
+            guard heightRefreshIndex < tweets.count else {
+                heightRefreshWork = nil
+                return
+            }
+            let work = DispatchWorkItem { [weak self] in self?.continueHeightRefresh() }
+            heightRefreshWork = work
+            DispatchQueue.main.async(execute: work)
+        }
+
+        private func continueHeightRefresh() {
+            heightRefreshWork = nil
+            guard heightRefreshIndex < tweets.count else { return }
+            let deadline = CACurrentMediaTime() + Self.heightRefreshBudget
+            var changed = IndexSet()
+            func refresh(_ row: Int) {
+                // A row gliding between heights owns its height until the glide ends
+                guard !glides.contains(where: { $0.id == tweets[row].id }) else { return }
+                let height = heights.height(for: tweets[row])
+                if height != rowHeights[row] {
+                    rowHeights[row] = height
+                    changed.insert(row + 1)
+                }
+            }
+            // The reader can scroll during the sweep, so rows that have come into view are taken first.
+            for row in visibleTweetRows() { refresh(row - 1) }
+            while heightRefreshIndex < tweets.count, CACurrentMediaTime() < deadline {
+                refresh(heightRefreshIndex)
+                heightRefreshIndex += 1
+            }
+            if !changed.isEmpty { noteHeightsChanged(changed) }
+            scheduleNextHeightRefresh()
         }
 
         func widthDidChange() {
