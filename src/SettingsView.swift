@@ -349,28 +349,17 @@ struct SettingsCloseButton: View {
     }
 }
 
-// MARK: - SettingsView Main Interface
-struct SettingsView: View {
-    private static let headerHeight: CGFloat = 54
+// MARK: - Translation Settings
 
-    @ObservedObject var loc = LocalizationManager.shared
-    @ObservedObject var theme = ThemeManager.shared
-    @ObservedObject var mediaCache = MediaCacheManager.shared
-    
-    @ObservedObject var accountManager = AccountManager.shared
+/// The translation card, kept out of `SettingsView` so that opening the model picker, typing in it, or a model fetch
+/// redraws only this block instead of the whole 480 × 860 settings page.
+private struct TranslationSettingsCard: View {
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
     @ObservedObject private var translation = TranslationSettingsManager.shared
     @State private var showModelPicker = false
-    @State private var modelSearchQuery = ""
-    private let cacheCleanup = CacheCleanup.shared
-    private let updates = UpdateManager.shared
-    
-    var onSignOut: () -> Void
-    var onSwitchAccount: (String) -> Void
-    var onAddAccount: () -> Void
-    var onClearCache: () -> Void
-    var onClose: () -> Void = {}
-    
-    private var translationSection: some View {
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(loc.t("settings_translation"))
                 .font(theme.appFont(size: 13, weight: .semibold))
@@ -443,9 +432,12 @@ struct SettingsView: View {
                                     .frame(width: 24, height: 22)
                                     .contentShape(Rectangle())
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.target)
                             .popover(isPresented: $showModelPicker, arrowEdge: .bottom) {
-                                modelPickerPopover
+                                ModelPickerPopover(catalog: translation.catalog, selectedID: translation.modelName) { id in
+                                    translation.modelName = id
+                                    showModelPicker = false
+                                }
                             }
                         }
                     }
@@ -496,83 +488,122 @@ struct SettingsView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardBackground)
+        .background(SettingsCardBackground())
     }
+}
 
-    private var modelPickerPopover: some View {
-        let query = modelSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let presets = translation.activeRecommendedModels.filter {
-            query.isEmpty || $0.id.lowercased().contains(query) || $0.label.lowercased().contains(query)
-        }
-        let fetched = translation.fetchedModels.filter {
-            query.isEmpty || $0.lowercased().contains(query)
-        }
+/// The model picker's contents. The filter text lives here so typing redraws only the popover, and the catalog
+/// arrives sorted so opening the popover builds only the rows it can show.
+private struct ModelPickerPopover: View {
+    let catalog: ModelCatalog
+    let selectedID: String
+    let onPick: (String) -> Void
 
-        return VStack(spacing: 0) {
-            if translation.fetchedModels.count > 8 {
-                TextField("Filter…", text: $modelSearchQuery)
+    @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var theme = ThemeManager.shared
+    @State private var query = ""
+
+    var body: some View {
+        let filter = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let recommended = filter.isEmpty
+            ? catalog.recommended
+            : catalog.recommended.filter { $0.searchKey.contains(filter) }
+        let models = filter.isEmpty
+            ? catalog.models
+            : catalog.models.filter { $0.searchKey.contains(filter) }
+
+        VStack(spacing: 0) {
+            if catalog.models.count > 8 || !filter.isEmpty {
+                TextField("Filter…", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .font(theme.appFont(size: 12))
                     .padding(8)
                 Divider()
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    if !presets.isEmpty {
-                        Text(loc.t("translation_recommended_models"))
-                            .font(theme.appFont(size: 11, weight: .semibold))
-                            .foregroundColor(ThemeManager.secondaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.top, 6)
-                            .padding(.bottom, 2)
-
-                        ForEach(presets) { preset in
-                            modelPickerRow(id: preset.id, title: preset.label)
+            List {
+                if !recommended.isEmpty {
+                    Section {
+                        ForEach(recommended) { option in
+                            row(option)
                         }
-                    }
-
-                    if !fetched.isEmpty {
-                        Text(loc.t("translation_fetched_models"))
-                            .font(theme.appFont(size: 11, weight: .semibold))
-                            .foregroundColor(ThemeManager.secondaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.top, 8)
-                            .padding(.bottom, 2)
-
-                        ForEach(fetched, id: \.self) { modelId in
-                            modelPickerRow(id: modelId, title: modelId)
-                        }
+                    } header: {
+                        header(loc.t("translation_recommended_models"))
                     }
                 }
-                .padding(.vertical, 4)
+                if !models.isEmpty {
+                    Section {
+                        ForEach(models) { option in
+                            row(option)
+                        }
+                    } header: {
+                        header(loc.t("translation_fetched_models"))
+                    }
+                }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 24)
         }
         .frame(width: 280, height: 260)
     }
 
-    private func modelPickerRow(id: String, title: String) -> some View {
+    private func header(_ title: String) -> some View {
+        Text(title)
+            .font(theme.appFont(size: 11, weight: .semibold))
+            .foregroundColor(ThemeManager.secondaryText)
+            .textCase(nil)
+    }
+
+    private func row(_ option: ModelOption) -> some View {
         Button {
-            translation.modelName = id
-            showModelPicker = false
+            onPick(option.id)
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 10.5, weight: .bold))
-                    .foregroundColor(ThemeManager.accent)
-                    .opacity(translation.modelName == id ? 1 : 0)
-                Text(title)
+                Group {
+                    if option.id == selectedID {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10.5, weight: .bold))
+                            .foregroundColor(ThemeManager.accent)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 12, height: 12)
+
+                Text(option.label)
                     .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineLimit(1)
                 Spacer()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.target)
+        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .frame(height: 36)
     }
+}
+
+// MARK: - SettingsView Main Interface
+struct SettingsView: View {
+    private static let headerHeight: CGFloat = 54
+
+    @ObservedObject var loc = LocalizationManager.shared
+    @ObservedObject var theme = ThemeManager.shared
+    @ObservedObject var mediaCache = MediaCacheManager.shared
+
+    @ObservedObject var accountManager = AccountManager.shared
+    private let cacheCleanup = CacheCleanup.shared
+    private let updates = UpdateManager.shared
+
+    var onSignOut: () -> Void
+    var onSwitchAccount: (String) -> Void
+    var onAddAccount: () -> Void
+    var onClearCache: () -> Void
+    var onClose: () -> Void = {}
 
     // Accounts: tap one to switch to it, or add another
     private var updatesSection: some View {
@@ -604,7 +635,7 @@ struct SettingsView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardBackground)
+        .background(SettingsCardBackground())
     }
 
     private var accountsSection: some View {
@@ -669,7 +700,7 @@ struct SettingsView: View {
             .buttonStyle(.target)
         }
         .padding(14)
-        .background(cardBackground)
+        .background(SettingsCardBackground())
     }
     
     // The Video Feed switch's name, marked as an experiment: the feed rests on an X endpoint the web client only
@@ -775,7 +806,7 @@ struct SettingsView: View {
 
             }
             .padding(14)
-            .background(cardBackground)
+            .background(SettingsCardBackground())
             
             // 4. Content & Display (内容与展示)
             VStack(alignment: .leading, spacing: 10) {
@@ -822,9 +853,9 @@ struct SettingsView: View {
                 }
             }
             .padding(14)
-            .background(cardBackground)
+            .background(SettingsCardBackground())
             
-            translationSection
+            TranslationSettingsCard()
 
             // Updates, in a build that can verify them
             if updates.isAvailable {
@@ -902,7 +933,7 @@ struct SettingsView: View {
                 }
             }
             .padding(14)
-            .background(cardBackground)
+            .background(SettingsCardBackground())
             
             Spacer(minLength: 8)
             
@@ -1027,8 +1058,13 @@ struct SettingsView: View {
             )
     }
     
-    @ViewBuilder
-    private var cardBackground: some View {
+}
+
+/// The card surface every settings block sits on, so the glass and its fallbacks stay identical across the page.
+private struct SettingsCardBackground: View {
+    @ObservedObject private var theme = ThemeManager.shared
+
+    var body: some View {
         if theme.useLiquidGlass {
             if #available(macOS 26.0, *) {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)

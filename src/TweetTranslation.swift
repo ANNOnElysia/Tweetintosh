@@ -23,6 +23,41 @@ enum TranslationEngine: String, CaseIterable, Identifiable {
     }
 }
 
+/// A row of the model picker. The search key is lowered once when the catalog is built, so filtering compares strings
+/// instead of lowercasing every model on every keystroke.
+struct ModelOption: Identifiable, Hashable {
+    let id: String
+    let label: String
+    let searchKey: String
+
+    init(id: String, label: String) {
+        self.id = id
+        self.label = label
+        // A preset's label carries its family ("Claude · …"), which users search for, while a fetched model's label
+        // is its identifier again; joining the two would double every fetched model's key.
+        self.searchKey = label == id ? id.lowercased() : "\(id) \(label)".lowercased()
+    }
+}
+
+/// Everything the model picker shows, sorted and grouped when `/models` answers. The picker reads this straight, so
+/// opening it sorts and filters nothing.
+struct ModelCatalog {
+    let recommended: [ModelOption]
+    let models: [ModelOption]
+
+    /// Curated list used before `/models` has been fetched, or when the endpoint's models match no known family.
+    static let fallback = ModelCatalog(
+        recommended: [
+            ModelOption(id: "deepseek-chat", label: "DeepSeek · deepseek-chat"),
+            ModelOption(id: "gpt-4.1-mini", label: "OpenAI · gpt-4.1-mini"),
+            ModelOption(id: "gpt-4o-mini", label: "OpenAI · gpt-4o-mini"),
+            ModelOption(id: "claude-haiku-4-5", label: "Claude · claude-haiku-4-5"),
+            ModelOption(id: "gemini-2.5-flash", label: "Gemini · gemini-2.5-flash"),
+        ],
+        models: []
+    )
+}
+
 final class TranslationSettingsManager: ObservableObject {
     static let shared = TranslationSettingsManager()
 
@@ -42,7 +77,7 @@ final class TranslationSettingsManager: ObservableObject {
     @Published var modelName: String {
         didSet { UserDefaults.standard.set(modelName, forKey: Keys.modelName) }
     }
-    @Published var fetchedModels: [String] = []
+    @Published private(set) var catalog = ModelCatalog.fallback
     @Published var isVerifying: Bool = false
     @Published var verificationStatus: VerificationStatus? = nil
 
@@ -51,24 +86,24 @@ final class TranslationSettingsManager: ObservableObject {
         case failure(String)
     }
 
-    struct PresetModel: Identifiable {
+    /// One fetched identifier with the values the sorts need, so a comparison never re-parses a model name.
+    private struct KeyedModel {
         let id: String
-        let label: String
+        let searchKey: String
+        let numbers: [Int]
     }
 
-    /// Curated fallback list used only before `/models` has been fetched.
-    static let fallbackFlashModels: [PresetModel] = [
-        PresetModel(id: "deepseek-chat", label: "DeepSeek · deepseek-chat"),
-        PresetModel(id: "gpt-4.1-mini", label: "OpenAI · gpt-4.1-mini"),
-        PresetModel(id: "gpt-4o-mini", label: "OpenAI · gpt-4o-mini"),
-        PresetModel(id: "claude-haiku-4-5", label: "Claude · claude-haiku-4-5"),
-        PresetModel(id: "gemini-2.5-flash", label: "Gemini · gemini-2.5-flash"),
-    ]
-
-    /// Returns the latest 1-2 Flash/fast-tier models per family from `fetchedModels` when available,
-    /// falling back to `fallbackFlashModels` before models are fetched.
-    var activeRecommendedModels: [PresetModel] {
-        guard !fetchedModels.isEmpty else { return Self.fallbackFlashModels }
+    /// Sorts the fetched identifiers and picks the recommended tiers once, when the endpoint answers.
+    private static func makeCatalog(from ids: [String]) -> ModelCatalog {
+        let keyed = Set(ids).map {
+            KeyedModel(id: $0, searchKey: $0.lowercased(), numbers: extractNumbers($0))
+        }
+        let sorted = keyed.sorted { lhs, rhs in
+            let lScore = flashSortScore(lhs.searchKey)
+            let rScore = flashSortScore(rhs.searchKey)
+            if lScore != rScore { return lScore < rScore }
+            return versionNumbersDescending(lhs, rhs)
+        }
 
         let families: [(name: String, matches: (String) -> Bool)] = [
             ("DeepSeek", { s in
@@ -88,17 +123,21 @@ final class TranslationSettingsManager: ObservableObject {
             }),
         ]
 
-        var result: [PresetModel] = []
+        var recommended: [ModelOption] = []
         for family in families {
-            let candidates = fetchedModels
-                .filter { family.matches($0.lowercased()) }
-                .sorted { Self.versionNumbersDescending($0, $1) }
+            let candidates = sorted
+                .filter { family.matches($0.searchKey) }
+                .sorted { versionNumbersDescending($0, $1) }
                 .prefix(2)
-            for id in candidates {
-                result.append(PresetModel(id: id, label: "\(family.name) · \(id)"))
+            for model in candidates {
+                recommended.append(ModelOption(id: model.id, label: "\(family.name) · \(model.id)"))
             }
         }
-        return result.isEmpty ? Self.fallbackFlashModels : result
+
+        return ModelCatalog(
+            recommended: recommended.isEmpty ? ModelCatalog.fallback.recommended : recommended,
+            models: sorted.map { ModelOption(id: $0.id, label: $0.id) }
+        )
     }
 
     var effectiveTargetLanguage: AppLanguage {
@@ -195,20 +234,14 @@ final class TranslationSettingsManager: ObservableObject {
 
             if let items = json?["data"] as? [[String: Any]] {
                 let ids = items.compactMap { $0["id"] as? String }
-                let unique = Array(Set(ids)).sorted { lhs, rhs in
-                    let lScore = Self.flashSortScore(lhs)
-                    let rScore = Self.flashSortScore(rhs)
-                    if lScore != rScore { return lScore < rScore }
-                    return Self.versionNumbersDescending(lhs, rhs)
-                }
-                fetchedModels = unique
-                if !unique.isEmpty && !unique.contains(modelName) {
-                    if let firstRecommended = activeRecommendedModels.first?.id {
+                catalog = Self.makeCatalog(from: ids)
+                if !catalog.models.isEmpty && !catalog.models.contains(where: { $0.id == modelName }) {
+                    if let firstRecommended = catalog.recommended.first?.id {
                         modelName = firstRecommended
                     }
                 }
                 verificationStatus = .success(
-                    LocalizationManager.shared.format("translation_verified_count", ["count": String(unique.count)])
+                    LocalizationManager.shared.format("translation_verified_count", ["count": String(catalog.models.count)])
                 )
             } else {
                 let rawPreview = String(data: data.prefix(100), encoding: .utf8)?
@@ -224,26 +257,23 @@ final class TranslationSettingsManager: ObservableObject {
         }
     }
 
-    private static func flashSortScore(_ id: String) -> Int {
-        let s = id.lowercased()
-        if s.contains("flash") { return 0 }
-        if s.contains("haiku") { return 1 }
-        if s.contains("mini") || s.contains("nano") { return 2 }
-        if s == "deepseek-chat" || s.contains("deepseek-v3") { return 3 }
+    private static func flashSortScore(_ searchKey: String) -> Int {
+        if searchKey.contains("flash") { return 0 }
+        if searchKey.contains("haiku") { return 1 }
+        if searchKey.contains("mini") || searchKey.contains("nano") { return 2 }
+        if searchKey == "deepseek-chat" || searchKey.contains("deepseek-v3") { return 3 }
         return 4
     }
 
     /// Compares model IDs primarily by their embedded version numbers descending (e.g. 4.5 > 4.1 > 3.5, 3 > 2.5).
-    private static func versionNumbersDescending(_ lhs: String, _ rhs: String) -> Bool {
-        let lNums = extractNumbers(lhs)
-        let rNums = extractNumbers(rhs)
-        for (a, b) in zip(lNums, rNums) {
-            if a != b { return a > b }
+    private static func versionNumbersDescending(_ lhs: KeyedModel, _ rhs: KeyedModel) -> Bool {
+        for (a, b) in zip(lhs.numbers, rhs.numbers) where a != b {
+            return a > b
         }
-        if lNums.count != rNums.count {
-            return lNums.count > rNums.count
+        if lhs.numbers.count != rhs.numbers.count {
+            return lhs.numbers.count > rhs.numbers.count
         }
-        return lhs.lowercased() < rhs.lowercased()
+        return lhs.searchKey < rhs.searchKey
     }
 
     private static func extractNumbers(_ s: String) -> [Int] {
