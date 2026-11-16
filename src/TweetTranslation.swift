@@ -374,6 +374,9 @@ final class TranslationSettingsManager: ObservableObject {
 final class TweetTranslationCache {
     static let shared = TweetTranslationCache()
     private var entries: [String: String] = [:]
+    // The order entries arrived, so a long session can drop its oldest translations rather than keep every post read.
+    private var order: [String] = []
+    private static let entryLimit = 200
     private let lock = NSLock()
 
     private init() {}
@@ -385,9 +388,17 @@ final class TweetTranslationCache {
     }
 
     func set(_ text: String, tweetId: String, target: AppLanguage, engine: TranslationEngine) {
+        let key = "\(tweetId):\(target.rawValue):\(engine.rawValue)"
         lock.lock()
-        entries["\(tweetId):\(target.rawValue):\(engine.rawValue)"] = text
-        lock.unlock()
+        defer { lock.unlock() }
+        if entries.updateValue(text, forKey: key) == nil {
+            order.append(key)
+            if order.count > Self.entryLimit {
+                let excess = order.count - Self.entryLimit
+                for old in order.prefix(excess) { entries[old] = nil }
+                order.removeFirst(excess)
+            }
+        }
     }
 }
 
