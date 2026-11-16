@@ -15,11 +15,7 @@ import SwiftUI
 
 enum PostTextRenderer {
     static func font(size: CGFloat) -> NSFont {
-        let theme = ThemeManager.shared
-        if theme.fontType == .mincho {
-            return NSFont(name: theme.activeSerifFontName, size: size + 0.5) ?? .systemFont(ofSize: size)
-        }
-        return .systemFont(ofSize: size)
+        ThemeManager.shared.nsFont(size: size)
     }
 
     // The same text, links, mentions and colours a post row shows in SwiftUI
@@ -193,7 +189,7 @@ struct PostText: NSViewRepresentable {
         let links: [DisplayLink]
         let fontSize: CGFloat
         let lineSpacing: CGFloat
-        let fontType: String
+        let fontKey: String
         let language: String
         let isLight: Bool
         let isMild: Bool
@@ -203,7 +199,7 @@ struct PostText: NSViewRepresentable {
     private var key: Key {
         let theme = ThemeManager.shared
         return Key(text: tweet.displayBodyText, links: tweet.displayLinks, fontSize: fontSize,
-                   lineSpacing: lineSpacing, fontType: theme.fontType.rawValue,
+                   lineSpacing: lineSpacing, fontKey: theme.fontLayoutKey,
                    language: LocalizationManager.shared.currentLanguage.rawValue,
                    isLight: theme.isLight, isMild: theme.isMild, themeColor: theme.themeColor.rawValue)
     }
@@ -211,6 +207,9 @@ struct PostText: NSViewRepresentable {
     final class Coordinator {
         var key: Key?
         var text: NSAttributedString?
+        // SwiftUI asks for the size on every layout pass; the same text at the same width answers with the same height
+        var measuredWidth: CGFloat?
+        var measuredHeight: CGFloat?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -251,6 +250,8 @@ struct PostText: NSViewRepresentable {
         context.coordinator.key = key
         let text = PostTextRenderer.attributed(tweet, fontSize: fontSize, lineSpacing: lineSpacing)
         context.coordinator.text = text
+        context.coordinator.measuredWidth = nil
+        context.coordinator.measuredHeight = nil
         view.textStorage?.setAttributedString(text)
     }
 
@@ -260,8 +261,14 @@ struct PostText: NSViewRepresentable {
         // SwiftUI offers infinity when it asks for an ideal size; laying out to that would hand it a frame AppKit
         // cannot draw or place a cursor in.
         guard width.isFinite, width > 0 else { return nil }
+        if context.coordinator.measuredWidth == width, let height = context.coordinator.measuredHeight {
+            return CGSize(width: width, height: height)
+        }
         let text = context.coordinator.text ?? PostTextRenderer.attributed(tweet, fontSize: fontSize,
                                                                            lineSpacing: lineSpacing)
-        return CGSize(width: width, height: PostTextRenderer.height(of: text, width: width))
+        let height = PostTextRenderer.height(of: text, width: width)
+        context.coordinator.measuredWidth = width
+        context.coordinator.measuredHeight = height
+        return CGSize(width: width, height: height)
     }
 }

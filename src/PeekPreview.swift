@@ -281,10 +281,7 @@ enum PeekTextLinks {
             self.links = links
             // Found once per layout: the pointer asks this on every move, and the pattern scan is the pricey part
             mentions = TweetText.mentionRanges(in: text, excluding: links)
-            let theme = ThemeManager.shared
-            let font: NSFont = theme.fontType == .mincho
-                ? (NSFont(name: theme.activeSerifFontName, size: fontSize + 0.5) ?? .systemFont(ofSize: fontSize))
-                : .systemFont(ofSize: fontSize)
+            let font = ThemeManager.shared.nsFont(size: fontSize)
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineSpacing = lineSpacing
 

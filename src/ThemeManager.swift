@@ -5,6 +5,7 @@
 
 import SwiftUI
 import AppKit
+import CoreText
 
 enum AppThemeAppearance: String, CaseIterable, Identifiable, Codable {
     case dark = "dark"
@@ -59,6 +60,7 @@ enum AppThemeTone: String, CaseIterable, Identifiable, Codable {
 enum AppFontType: String, CaseIterable, Identifiable, Codable {
     case system = "system"
     case mincho = "mincho"
+    case custom = "custom"
     
     var id: String { rawValue }
 }
@@ -189,6 +191,18 @@ final class ThemeManager: ObservableObject {
             UserDefaults.standard.set(fontType.rawValue, forKey: "Tweetintosh_FontType")
         }
     }
+
+    // The family and one of its faces, kept together so a family that gains or loses members still restores.
+    // The raw family name is the selection; the PostScript name is only a checkpoint for the last installed face.
+    @Published private(set) var customFontFamily: String?
+    @Published private(set) var customFontPostScriptName: String?
+    @Published private(set) var fontRevision = 0
+
+    private var customFontAvailable = false
+    private var customFontNameCache: [Int: String] = [:]
+    private var fontObservers: [NSObjectProtocol] = []
+
+    var isCustomFontAvailable: Bool { customFontAvailable }
     
     @Published var useLiquidGlass: Bool {
         didSet {
@@ -342,6 +356,9 @@ final class ThemeManager: ObservableObject {
         } else {
             self.fontType = .system
         }
+
+        self.customFontFamily = UserDefaults.standard.string(forKey: "Tweetintosh_CustomFontFamily")
+        self.customFontPostScriptName = UserDefaults.standard.string(forKey: "Tweetintosh_CustomFontPostScriptName")
         
         if UserDefaults.standard.object(forKey: "Tweetintosh_UseLiquidGlass") != nil {
             self.useLiquidGlass = UserDefaults.standard.bool(forKey: "Tweetintosh_UseLiquidGlass")
@@ -374,9 +391,51 @@ final class ThemeManager: ObservableObject {
         self.showVideosTab = UserDefaults.standard.object(forKey: "Tweetintosh_ShowVideosTab") as? Bool ?? false
         let savedStep = UserDefaults.standard.object(forKey: "Tweetintosh_PostTextSize") as? Int ?? Self.actualPostTextStep
         self.postTextStep = Self.postTextScales.indices.contains(savedStep) ? savedStep : Self.actualPostTextStep
-        
+
+        refreshCustomFontAvailability()
+        watchInstalledFonts()
+        InstalledFonts.prewarm()
         applyAppearance()
         watchSystemAppearance()
+    }
+
+    deinit {
+        fontObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    // Font Book can activate or deactivate a face while the app is open. Both notices are observed because AppKit's
+    // covers its own font panel and Core Text's covers changes made by other processes.
+    private func watchInstalledFonts() {
+        let center = NotificationCenter.default
+        let names = [
+            Notification.Name("NSFontSetChangedNotification"),
+            Notification.Name(kCTFontManagerRegisteredFontsChangedNotification as String)
+        ]
+        fontObservers = names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.fontSetDidChange()
+            }
+        }
+    }
+
+    private func fontSetDidChange() {
+        refreshCustomFontAvailability()
+        fontRevision &+= 1
+    }
+
+    private func refreshCustomFontAvailability() {
+        customFontNameCache.removeAll()
+        customFontAvailable = resolvedCustomBaseFont() != nil
+    }
+
+    private func resolvedCustomBaseFont() -> NSFont? {
+        guard let family = customFontFamily else { return nil }
+        if let name = customFontPostScriptName,
+           let font = NSFont(name: name, size: 13),
+           font.familyName == family {
+            return font
+        }
+        return InstalledFonts.baseFont(forFamily: family)
     }
     
     // Dynamic Theme Colors:
@@ -509,7 +568,106 @@ final class ThemeManager: ObservableObject {
             return .system(size: size, weight: weight)
         case .mincho:
             return .custom(activeSerifFontName, size: size + 0.5).weight(weight)
+        case .custom:
+            guard let font = customNSFont(size: size, weight: weight) else {
+                return .system(size: size, weight: weight)
+            }
+            return Font(font)
         }
+    }
+
+    // The same face for AppKit text, so a post, the table's height estimate and its hit-testing copy cannot disagree.
+    func nsFont(size: CGFloat = 13, weight: Font.Weight = .regular) -> NSFont {
+        switch fontType {
+        case .system:
+            return .systemFont(ofSize: size, weight: Self.nsWeight(for: weight))
+        case .mincho:
+            return NSFont(name: activeSerifFontName, size: size + 0.5)
+                ?? .systemFont(ofSize: size, weight: Self.nsWeight(for: weight))
+        case .custom:
+            return customNSFont(size: size, weight: weight)
+                ?? .systemFont(ofSize: size, weight: Self.nsWeight(for: weight))
+        }
+    }
+
+    /// The family's current face for a weight, resolved through AppKit so a family that only has, say, Bold still
+    /// draws everything instead of silently reverting to the system font.
+    private func customNSFont(size: CGFloat, weight: Font.Weight) -> NSFont? {
+        guard let family = customFontFamily else { return nil }
+        let managerWeight = Self.managerWeight(for: weight)
+        if let name = customFontNameCache[managerWeight], let font = NSFont(name: name, size: size) {
+            return font
+        }
+        guard let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: managerWeight, size: size) else {
+            return nil
+        }
+        customFontNameCache[managerWeight] = font.fontName
+        return font
+    }
+
+    // Used by the Custom segment before the choice is committed; falls back to the system font like the reader's text.
+    func previewCustomFont(size: CGFloat = 13, weight: Font.Weight = .regular) -> Font {
+        guard let font = customNSFont(size: size, weight: weight) else {
+            return .system(size: size, weight: weight)
+        }
+        return Font(font)
+    }
+
+    @discardableResult
+    func selectCustomFont(family: String) -> Bool {
+        guard let base = InstalledFonts.baseFont(forFamily: family) else { return false }
+        customFontFamily = family
+        customFontPostScriptName = base.fontName
+        customFontNameCache.removeAll()
+        customFontAvailable = true
+        UserDefaults.standard.set(family, forKey: "Tweetintosh_CustomFontFamily")
+        UserDefaults.standard.set(base.fontName, forKey: "Tweetintosh_CustomFontPostScriptName")
+        fontRevision &+= 1
+        fontType = .custom
+        return true
+    }
+
+    // A custom family A and a custom family B both have the mode .custom, so caches key on the actual face as well.
+    var fontLayoutKey: String {
+        switch fontType {
+        case .system:
+            return "system"
+        case .mincho:
+            return "mincho:\(activeSerifFontName)"
+        case .custom:
+            return "custom:\(customFontFamily ?? ""):\(customFontPostScriptName ?? ""):\(fontRevision)"
+        }
+    }
+
+    var customFontDisplayName: String? {
+        guard let family = customFontFamily else { return nil }
+        guard customFontAvailable else { return family }
+        let name = NSFontManager.shared.localizedName(forFamily: family, face: nil)
+        return name.isEmpty ? family : name
+    }
+
+    private static func managerWeight(for weight: Font.Weight) -> Int {
+        if weight == .ultraLight { return 2 }
+        if weight == .thin { return 3 }
+        if weight == .light { return 4 }
+        if weight == .medium { return 6 }
+        if weight == .semibold { return 8 }
+        if weight == .bold { return 9 }
+        if weight == .heavy { return 11 }
+        if weight == .black { return 13 }
+        return 5
+    }
+
+    private static func nsWeight(for weight: Font.Weight) -> NSFont.Weight {
+        if weight == .ultraLight { return .ultraLight }
+        if weight == .thin { return .thin }
+        if weight == .light { return .light }
+        if weight == .medium { return .medium }
+        if weight == .semibold { return .semibold }
+        if weight == .bold { return .bold }
+        if weight == .heavy { return .heavy }
+        if weight == .black { return .black }
+        return .regular
     }
     
     func tweetFont(size: CGFloat = 15, weight: Font.Weight = .regular) -> Font {
@@ -522,7 +680,7 @@ final class ThemeManager: ObservableObject {
     
     func lineSpacing() -> CGFloat {
         switch fontType {
-        case .system:
+        case .system, .custom:
             return 4.0
         case .mincho:
             return 6.5

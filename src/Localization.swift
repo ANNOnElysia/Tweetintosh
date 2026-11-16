@@ -1135,6 +1135,69 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "宋体 / 明朝体",
             .traditionalChinese: "宋體 / 明朝體"
         ],
+        "font_custom": [
+            .english: "Custom",
+            .japanese: "カスタム",
+            .korean: "사용자 지정",
+            .simplifiedChinese: "自定义",
+            .traditionalChinese: "自訂"
+        ],
+        "font_family": [
+            .english: "Font Family",
+            .japanese: "フォントファミリー",
+            .korean: "서체 패밀리",
+            .simplifiedChinese: "字体家族",
+            .traditionalChinese: "字體家族"
+        ],
+        "font_choose": [
+            .english: "Choose…",
+            .japanese: "選択…",
+            .korean: "선택…",
+            .simplifiedChinese: "选择…",
+            .traditionalChinese: "選擇…"
+        ],
+        "font_search_placeholder": [
+            .english: "Search fonts",
+            .japanese: "フォントを検索",
+            .korean: "서체 검색",
+            .simplifiedChinese: "搜索字体",
+            .traditionalChinese: "搜尋字體"
+        ],
+        "font_no_results": [
+            .english: "No matching fonts",
+            .japanese: "一致するフォントがありません",
+            .korean: "일치하는 서체가 없습니다",
+            .simplifiedChinese: "没有匹配的字体",
+            .traditionalChinese: "沒有符合的字體"
+        ],
+        "font_unavailable": [
+            .english: "The selected font isn’t available. Using the system font.",
+            .japanese: "選択したフォントを利用できません。システムフォントで表示しています。",
+            .korean: "선택한 서체를 사용할 수 없습니다. 시스템 서체로 표시합니다.",
+            .simplifiedChinese: "所选字体不可用，当前使用系统字体。",
+            .traditionalChinese: "所選字體無法使用，目前使用系統字體。"
+        ],
+        "font_preview_title": [
+            .english: "Font Preview",
+            .japanese: "フォントプレビュー",
+            .korean: "서체 미리보기",
+            .simplifiedChinese: "字体预览",
+            .traditionalChinese: "字體預覽"
+        ],
+        "font_preview_body": [
+            .english: "The quick brown fox jumps over the lazy dog. 中文排版、かな、한글 123.",
+            .japanese: "いろはにほへと ちりぬるを。The quick brown fox. 中文排版、한글 123.",
+            .korean: "다람쥐 헌 쳇바퀴에 타고파. The quick brown fox. 中文排版、かな 123.",
+            .simplifiedChinese: "永和九年，岁在癸丑。The quick brown fox. かな、한글 123.",
+            .traditionalChinese: "永和九年，歲在癸丑。The quick brown fox. かな、한글 123."
+        ],
+        "font_preview_meta": [
+            .english: "ABC abc 123 · 中文 · 日本語 · 한국어 · ✨",
+            .japanese: "ABC abc 123 · 中文 · 日本語 · 한국어 · ✨",
+            .korean: "ABC abc 123 · 中文 · 日本語 · 한국어 · ✨",
+            .simplifiedChinese: "ABC abc 123 · 中文 · 日本語 · 한국어 · ✨",
+            .traditionalChinese: "ABC abc 123 · 中文 · 日本語 · 한국어 · ✨"
+        ],
         "clear_cache": [
             .english: "Clear Local Cache",
             .japanese: "ローカルキャッシュを消去",
