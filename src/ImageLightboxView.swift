@@ -85,6 +85,10 @@ final class LightboxManager: ObservableObject {
     }
     
     var currentSourceRect: CGRect {
+        Self.visiblePart(sourceRectForCurrentMedia())
+    }
+
+    private func sourceRectForCurrentMedia() -> CGRect {
         if let media = currentMedia {
             if let r = MediaFrameRegistry.shared.frame(for: media.mediaUrl), r != .zero {
                 return r
@@ -104,6 +108,13 @@ final class LightboxManager: ObservableObject {
             return CGRect(x: estimatedX, y: sourceRect.origin.y, width: cardW, height: sourceRect.height)
         }
         return .zero
+    }
+
+    // A full-bleed card can be partly past the window's edge; the zoom starts from the part that is on screen.
+    private static func visiblePart(_ rect: CGRect) -> CGRect {
+        guard rect != .zero, let bounds = AppWindowOrigin.bounds else { return rect }
+        let visible = rect.intersection(bounds)
+        return visible.isNull || visible.isEmpty ? rect : visible
     }
     
     private var keyMonitor: Any?

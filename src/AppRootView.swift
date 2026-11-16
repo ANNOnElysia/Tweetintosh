@@ -294,7 +294,11 @@ struct AppRootView: View {
 
                 ZStack(alignment: .topLeading) {
                     destination
-                        .padding(.leading, nav.sidebarExpanded ? SidebarLayout.columnWidth : 0)
+                        // Home draws under the sidebar; its rows keep the text clear of it. Other tabs still start
+                        // beside it.
+                        .padding(.leading, nav.currentTab == .home
+                                 ? 0
+                                 : (nav.sidebarExpanded ? SidebarLayout.columnWidth : 0))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     sidebarChromeGlass
@@ -454,7 +458,7 @@ struct AppRootView: View {
     @ViewBuilder private var destination: some View {
         switch nav.currentTab {
         case .home:
-            HomeColumns {
+            HomeColumns(sidebarInset: nav.sidebarExpanded ? SidebarLayout.columnWidth : 0) {
                 // Not in a NavigationStack: pages open through the app's own overlay stack, so it would navigate nowhere, and
                 // it adds layers of layout that run again whenever the root is laid out
                 MainTimelineView(onOpenSettings: onOpenSettings, onLoginRequest: onLoginRequest)

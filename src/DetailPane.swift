@@ -123,6 +123,14 @@ private struct MediaColumnWidthKey: EnvironmentKey {
     static let defaultValue: CGFloat? = nil
 }
 
+private struct ReadingLeadingGutterKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+private struct ReadingTrailingGutterKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
 extension EnvironmentValues {
     var isInDetailPane: Bool {
         get { self[IsInDetailPaneKey.self] }
@@ -134,19 +142,35 @@ extension EnvironmentValues {
         get { self[MediaColumnWidthKey.self] }
         set { self[MediaColumnWidthKey.self] = newValue }
     }
+
+    // The blank margins either side of the reading column. Media may run into them, under the sidebar included; text,
+    // actions and dividers may not.
+    var readingLeadingGutter: CGFloat {
+        get { self[ReadingLeadingGutterKey.self] }
+        set { self[ReadingLeadingGutterKey.self] = newValue }
+    }
+
+    var readingTrailingGutter: CGFloat {
+        get { self[ReadingTrailingGutterKey.self] }
+        set { self[ReadingTrailingGutterKey.self] = newValue }
+    }
 }
 
 // MARK: - Columns
 
-// The timeline is held to a comfortable reading width. It keeps the same place in the view tree whether or not the pane
-// is showing, so resizing the window doesn't rebuild it and lose the scroll position.
+// The timeline fills the area it is given, so a post's media can reach the window's edge. The reading width is a margin
+// inside each row instead of a frame around the whole list: text keeps its comfortable width, while a carousel may run
+// into the gutter. It keeps the same place in the view tree whether or not the pane is showing, so resizing the window
+// doesn't rebuild it and lose the scroll position.
 struct HomeColumns<Timeline: View>: View {
+    // The sidebar the timeline's media may run beneath; the text still centres in what is left of the window.
+    var sidebarInset: CGFloat = 0
     @ViewBuilder let timeline: () -> Timeline
     @ObservedObject private var layout = DetailPane.shared.layout
     @ObservedObject private var theme = ThemeManager.shared
 
-    // Alone, the timeline stops at a reading width. Beside the pane it takes the larger share, and the pane fills what is
-    // left, so the columns meet the window's edges with nothing blank around them.
+    // Alone, the text stops at a reading width. Beside the pane the timeline takes the larger share, and the pane fills
+    // what is left, so the columns meet the window's edges with nothing blank around them.
     private static var aloneWidth: CGFloat { 760 }
     private static var besidePaneMaxWidth: CGFloat { 900 }
     static var paneMinWidth: CGFloat { 380 }
@@ -154,7 +178,7 @@ struct HomeColumns<Timeline: View>: View {
     // Margins, avatar and spacing beside a post's media
     private static var mediaInset: CGFloat { 82 }
 
-    /// How wide the timeline column is in a window of `width`; with no pane beside it, the column is centred.
+    /// How wide the timeline's visible column is in a window of `width`; the text centres within it when there is no pane.
     static func timelineWidth(in width: CGFloat, paneAvailable: Bool) -> CGFloat {
         guard paneAvailable else { return min(aloneWidth, width) }
         if let chosen = DetailPane.shared.layout.paneWidth, width - timelineMinWidth >= paneMinWidth {
@@ -171,17 +195,20 @@ struct HomeColumns<Timeline: View>: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let timelineWidth = Self.timelineWidth(in: width, paneAvailable: layout.isAvailable)
-            let paneWidth = width - timelineWidth
-            let marginWidth = layout.isAvailable ? 0 : max(0, (width - timelineWidth) / 2)
+            let visibleWidth = max(0, width - sidebarInset)
+            let timelineVisibleWidth = layout.isAvailable
+                ? Self.timelineWidth(in: visibleWidth, paneAvailable: true)
+                : visibleWidth
+            let paneWidth = layout.isAvailable ? visibleWidth - timelineVisibleWidth : 0
+            let timelineWidth = width - paneWidth
+            let readingWidth = layout.isAvailable ? timelineVisibleWidth : min(timelineVisibleWidth, Self.aloneWidth)
+            let margin = max(0, (timelineVisibleWidth - readingWidth) / 2)
             HStack(spacing: 0) {
-                TimelineScrollMargin()
-                    .frame(width: marginWidth)
                 timeline()
                     .frame(width: timelineWidth)
-                    .environment(\.mediaColumnWidth, timelineWidth - Self.mediaInset)
-                TimelineScrollMargin()
-                    .frame(width: marginWidth)
+                    .environment(\.mediaColumnWidth, readingWidth - Self.mediaInset)
+                    .environment(\.readingLeadingGutter, sidebarInset + margin)
+                    .environment(\.readingTrailingGutter, margin)
                 if layout.isAvailable {
                     PaneSlideIn {
                         HStack(spacing: 0) {
@@ -189,7 +216,7 @@ struct HomeColumns<Timeline: View>: View {
                                 .fill(ThemeManager.divider)
                                 .frame(width: 0.5)
                                 .ignoresSafeArea()
-                                .overlay { PaneDivider(windowWidth: width) }
+                                .overlay { PaneDivider(windowWidth: width, visibleWidth: visibleWidth) }
                                 .zIndex(1)
                             DetailPaneColumn()
                                 .frame(width: paneWidth)
@@ -213,28 +240,6 @@ struct HomeColumns<Timeline: View>: View {
     }
 }
 
-// Forward the original event so the timeline keeps AppKit's wheel acceleration, gesture phases and momentum.
-private struct TimelineScrollMargin: NSViewRepresentable {
-    func makeNSView(context: Context) -> MarginView { MarginView() }
-    func updateNSView(_ nsView: MarginView, context: Context) {}
-
-    final class MarginView: NSView {
-        // The margin answers no click, so it must not inherit a hand left by the row the pointer came from. An arrow
-        // region of its own tells AppKit to restore it here, which a view with no cursor rects does not do.
-        override func resetCursorRects() {
-            super.resetCursorRects()
-            addCursorRect(bounds.intersection(visibleRect), cursor: .arrow)
-        }
-
-        override func scrollWheel(with event: NSEvent) {
-            guard let scrollView = TimelineScrollCoordinator.shared.scrollView,
-                  let window, scrollView.window === window,
-                  !scrollView.isHiddenOrHasHiddenAncestor else { return }
-            scrollView.scrollWheel(with: event)
-        }
-    }
-}
-
 // MARK: - Resizing and Hiding
 
 // The line between the timeline and the pane, with an 8-point band either side of it to drag. The pointer becomes the
@@ -242,6 +247,7 @@ private struct TimelineScrollMargin: NSViewRepresentable {
 private struct PaneDivider: View {
     static let space = "HomeColumns"
     let windowWidth: CGFloat
+    let visibleWidth: CGFloat
     @ObservedObject private var layout = DetailPane.shared.layout
 
     var body: some View {
@@ -254,7 +260,7 @@ private struct PaneDivider: View {
                 DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
                     .onChanged { value in
                         layout.paneWidth = HomeColumns<EmptyView>.clampedPaneWidth(windowWidth - value.location.x,
-                                                                                  in: windowWidth)
+                                                                                  in: visibleWidth)
                     }
                     .onEnded { _ in layout.saveWidth() }
             )
