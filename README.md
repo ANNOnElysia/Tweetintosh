@@ -72,7 +72,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 
 ### Requirements / 环境要求
 - macOS 15.0 or later
-- Full Xcode toolchain (CI uses Xcode 26.6); Command Line Tools alone cannot expand the Observation macros
+- Full Xcode 27.2 toolchain with the macOS 27 SDK; Command Line Tools alone cannot expand the Observation macros
 
 ### Build
 ```bash

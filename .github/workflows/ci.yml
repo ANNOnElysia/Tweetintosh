@@ -20,10 +20,10 @@ concurrency:
 jobs:
   build:
     name: Build and package (arm64)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 30
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     defaults:
       run:
         shell: bash
@@ -38,13 +38,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Assert arm64 and Xcode 26.6
+      - name: Assert arm64 and Xcode 27.2
         run: |
           set -euo pipefail
           test "$(uname -m)" = arm64
           xcode_version="$(xcodebuild -version)"
           printf '%s\n' "$xcode_version"
-          test "$(printf '%s\n' "$xcode_version" | head -n 1)" = 'Xcode 26.6'
+          test "$(printf '%s\n' "$xcode_version" | head -n 1)" = 'Xcode 27.2'
 
       - name: Read and validate release metadata
         id: metadata
@@ -84,9 +84,9 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .build
-          key: ${{ runner.os }}-${{ runner.arch }}-Xcode26.6-swiftpm-${{ hashFiles('Package.swift', 'Package.resolved', 'src/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-Xcode27.2-swiftpm-${{ hashFiles('Package.swift', 'Package.resolved', 'src/**') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-Xcode26.6-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-Xcode27.2-swiftpm-
 
       - name: Compile and assemble release app
         run: KEEP_BUILD_DIR=1 ./build.sh

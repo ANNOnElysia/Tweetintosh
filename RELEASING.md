@@ -26,9 +26,13 @@ Never commit it.
 
 ## CI builds and packaging
 
-The [CI workflow](.github/workflows/ci.yml) builds on GitHub's `macos-26` Apple silicon runners with the full
-Xcode 26.6 toolchain selected through `DEVELOPER_DIR`. Packages support **arm64 on macOS 15 or later**. Intel and
+The [CI workflow](.github/workflows/ci.yml) builds on GitHub's `xcode-27` Apple silicon runners with the full
+Xcode 27.2 toolchain selected through `DEVELOPER_DIR`. Packages support **arm64 on macOS 15 or later**. Intel and
 universal binaries are not produced. The runner architecture and the packaged executable are checked explicitly.
+The macOS 27 SDK is required to compile guarded APIs such as `NSScreen.touchCapabilities`; the deployment target
+remains macOS 15. GitHub currently provides this runner image as a public preview. When updating the pinned Xcode,
+check the [installed toolchains](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
+and update the cache key and toolchain assertion together.
 
 | Trigger | Validation | Download location |
 | --- | --- | --- |
