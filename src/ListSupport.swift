@@ -127,8 +127,8 @@ struct ScrollContainer<Content: View>: View {
     
     var body: some View {
         let reporter = watcher.reporter
-        reporter.onScrollView = { [watcher, onNearBottom, onScrollView] sv in
-            watcher.attach(sv, onNearBottom: onNearBottom)
+        reporter.onScrollView = { [weak watcher, onNearBottom, onScrollView] sv in
+            watcher?.attach(sv, onNearBottom: onNearBottom)
             onScrollView?(sv)
         }
         return List {
@@ -162,8 +162,8 @@ struct ScrollColumn<Content: View>: View {
 
     var body: some View {
         let reporter = watcher.reporter
-        reporter.onScrollView = { [watcher, onNearBottom, onScrollView] sv in
-            watcher.attach(sv, onNearBottom: onNearBottom)
+        reporter.onScrollView = { [weak watcher, onNearBottom, onScrollView] sv in
+            watcher?.attach(sv, onNearBottom: onNearBottom)
             onScrollView?(sv)
         }
         return ScrollView {
