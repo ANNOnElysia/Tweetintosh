@@ -1426,7 +1426,7 @@ struct DMPasscodeOverlay: View {
         ZStack {
             if vm.showPasscodeSheet {
                 DMPasscodeModalOverlay()
-                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                    .transition(.opacity)
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: vm.showPasscodeSheet)
