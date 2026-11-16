@@ -125,7 +125,12 @@ final class ImageLoader: ObservableObject {
             return
         }
         let request = Request(url: urlStr, targetSize: targetSize)
-        if current?.url != urlStr { cancelPendingData() }
+        if current?.url != urlStr {
+            cancelPendingData()
+            // This loader has been handed another post: its picture is no longer something any view can ask for.
+            loadedImage = nil
+            shown = nil
+        }
         current = request
         resizeWork?.cancel()
         resizeWork = nil
@@ -159,9 +164,13 @@ final class ImageLoader: ObservableObject {
         fetch(request)
     }
 
+    // The decoded picture lives in the shared cache while it is still useful; an offscreen loader holding its own
+    // reference is what would keep every post scrolled past alive.
     func stop() {
         current = nil
         cancelPendingData()
+        loadedImage = nil
+        shown = nil
     }
 
     private func fetch(_ request: Request) {

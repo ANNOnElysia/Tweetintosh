@@ -52,12 +52,13 @@ final class TimelineCacheManager {
     
     func saveSnapshot(feed: HomeFeedType = .forYou, listId: String? = nil, tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
         let url = cacheURL(for: feed, listId: listId)
+        // Only the newest 100 posts are kept. A cursor that continues the whole loaded list would point past what
+        // the snapshot holds, so a cut-down snapshot keeps none and says so: the next launch replaces it with a
+        // fresh first page instead of continuing from the middle.
+        // Cut down before the write is queued, so the closure doesn't hold every loaded post until it runs.
+        let kept = Array(tweets.prefix(100))
+        let isComplete = tweets.count <= kept.count
         queue.async {
-            // Only the newest 100 posts are kept. A cursor that continues the whole loaded list would point past what
-            // the snapshot holds, so a cut-down snapshot keeps none and says so: the next launch replaces it with a
-            // fresh first page instead of continuing from the middle.
-            let kept = Array(tweets.prefix(100))
-            let isComplete = tweets.count <= kept.count
             let snapshot = TimelineSnapshot(
                 tweets: kept,
                 topCursor: topCursor,

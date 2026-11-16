@@ -41,6 +41,14 @@ final class TimelineViewModel {
     var forYouPendingTweets: [Tweet] = []
     var followingPendingTweets: [Tweet] = []
     var listPendingTweets: [String: [Tweet]] = [:]
+
+    // A feed is a reading window, not a record of everything loaded. Paging happens at the bottom, so the posts that
+    // fall away are the ones far above the reader, long since scrolled past; keeping them only costs memory.
+    private static let retainedPostLimit = 600
+    private static let retainedPostsAfterTrim = 400
+    // A poll can queue posts behind the pill all day while the reader stays away from the top. Keeping the newest of
+    // them is enough to say what happened; the rest were never shown.
+    private static let pendingPostLimit = 100
     
     var isLoadingInitial = true
     var isRefreshing = false
@@ -269,6 +277,7 @@ final class TimelineViewModel {
         forYouPendingTweets = []
         followingPendingTweets = []
         listPendingTweets = [:]
+        removedBookmarks = [:]
         forYouTopCursor = nil
         forYouBottomCursor = nil
         followingTopCursor = nil
@@ -384,26 +393,29 @@ final class TimelineViewModel {
         }
     }
     
+    // Newest first, and only the newest few: see `pendingPostLimit`.
+    private func queuePending(_ newTweets: [Tweet], into pending: inout [Tweet]) {
+        let existingPendingIds = Set(pending.map { $0.id })
+        pending.insert(contentsOf: newTweets.filter { !existingPendingIds.contains($0.id) }, at: 0)
+        if pending.count > Self.pendingPostLimit {
+            pending.removeLast(pending.count - Self.pendingPostLimit)
+        }
+    }
+
     // `listId` is the list the posts belong to, not whichever one is selected when the answer arrives
     func enqueuePendingTweets(_ newTweets: [Tweet], for feed: HomeFeedType, listId: String? = nil) {
         switch feed {
         case .forYou:
-            let existingPendingIds = Set(forYouPendingTweets.map { $0.id })
-            let trulyNew = newTweets.filter { !existingPendingIds.contains($0.id) }
-            forYouPendingTweets.insert(contentsOf: trulyNew, at: 0)
+            queuePending(newTweets, into: &forYouPendingTweets)
         case .following:
-            let existingPendingIds = Set(followingPendingTweets.map { $0.id })
-            let trulyNew = newTweets.filter { !existingPendingIds.contains($0.id) }
-            followingPendingTweets.insert(contentsOf: trulyNew, at: 0)
+            queuePending(newTweets, into: &followingPendingTweets)
         case .bookmarks:
             // Never queued: the bookmarks page always shows them as they are
             break
         case .list:
             let listId = listId ?? selectedListId
             var currentPending = listPendingTweets[listId] ?? []
-            let existingPendingIds = Set(currentPending.map { $0.id })
-            let trulyNew = newTweets.filter { !existingPendingIds.contains($0.id) }
-            currentPending.insert(contentsOf: trulyNew, at: 0)
+            queuePending(newTweets, into: &currentPending)
             listPendingTweets[listId] = currentPending
         }
     }
@@ -558,6 +570,8 @@ final class TimelineViewModel {
                         self.setTopCursor(payload.topCursor, for: .bookmarks, listId: "")
                         self.setBottomCursor(payload.bottomCursor, for: .bookmarks, listId: "")
                         self.resetPaging(for: key)
+                        // X's list is the truth now; the copies kept for putting a refused un-bookmark back are stale
+                        self.removedBookmarks = [:]
                         TimelineCacheManager.shared.saveSnapshot(feed: .bookmarks, tweets: payload.tweets,
                                                                  topCursor: payload.topCursor, bottomCursor: payload.bottomCursor)
                         if self.selectedFeed == .bookmarks { self.updateActiveTweets() }
@@ -738,6 +752,13 @@ final class TimelineViewModel {
         }
     }
     
+    // Called only when an older page arrives at the bottom: a trim keeps the suffix, so running it after a refresh at
+    // the top would throw away the newest posts the reader just asked for.
+    private static func trimmedToWindow(_ posts: [Tweet]) -> [Tweet] {
+        guard posts.count > retainedPostLimit else { return posts }
+        return Array(posts.suffix(retainedPostsAfterTrim))
+    }
+
     private func finishPage(
         _ result: Result<(tweets: [Tweet], topCursor: String?, bottomCursor: String?), APIError>,
         feed: HomeFeedType,
@@ -756,6 +777,11 @@ final class TimelineViewModel {
             
             var updated = currentFeedTweets(feed, listId: listId)
             updated.append(contentsOf: olderOnes)
+            let untrimmed = updated.count
+            updated = Self.trimmedToWindow(updated)
+            if updated.count < untrimmed {
+                pagingLogger.notice("paging \(feed.rawValue, privacy: .public): dropped \(untrimmed - updated.count) posts above the window")
+            }
             setFeedTweets(updated, for: feed, listId: listId)
             
             // Only a cursor the server moved on from continues the chain; reusing one it repeats would ask for the

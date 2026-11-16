@@ -38,6 +38,8 @@ final class MediaCacheManager: ObservableObject {
     }
     private let requestQueue = DispatchQueue(label: "com.anno.tweetintosh.mediacache.requests")
     private var imageRequests: [String: ImageDataRequest] = [:]
+    // Every decoded bitmap can be built again from the disk cache, so the system's memory warnings release them.
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
     // Prefetches wait here rather than occupying a queue thread while their download runs
     private var prefetchPending: [String] = []
     private var prefetchQueued: Set<String> = []
@@ -77,6 +79,15 @@ final class MediaCacheManager: ObservableObject {
         ) { [weak self] _ in
             self?.pruneCache()
         }
+
+        // 3. Release the decoded bitmaps when the system is short of memory. The disk cache is the settings' business;
+        // only what can be rebuilt for free goes.
+        let pressure = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: ioQueue)
+        pressure.setEventHandler { [weak self] in
+            self?.memoryCache.removeAllObjects()
+        }
+        pressure.activate()
+        memoryPressureSource = pressure
     }
     
     // MARK: - Key & File Path Utilities
