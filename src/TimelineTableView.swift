@@ -42,6 +42,8 @@ extension EnvironmentValues {
 struct TimelineRowContent: View {
     let tweet: Tweet
     let mediaColumnWidth: CGFloat?
+    var readingLeadingGutter: CGFloat = 0
+    var readingTrailingGutter: CGFloat = 0
     var isMeasuring = false
     var cellGeometry: TableCellGeometry?
 
@@ -49,15 +51,17 @@ struct TimelineRowContent: View {
         if isMeasuring {
             // No peek anchors, players or scroll subscriptions: none of them changes the height, and they are most of what
             // a row costs to build
-            TweetRowView(tweet: tweet)
+            TweetRowView(tweet: tweet, bleedsMedia: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .environment(\.peekScope, .none)
                 .environment(\.allowsVideoAutoplay, false)
                 .environment(\.mediaColumnWidth, mediaColumnWidth)
+                .environment(\.readingLeadingGutter, readingLeadingGutter)
+                .environment(\.readingTrailingGutter, readingTrailingGutter)
                 .environment(\.tableCellGeometry, TableCellGeometry.forMeasuring)
                 .environment(\.isMeasuringRow, true)
         } else {
-            TweetRowView(tweet: tweet)
+            TweetRowView(tweet: tweet, bleedsMedia: true)
                 .modifier(PausesHitTestingWhileScrolling())
                 // Pinned to the top, so a row still on its estimated height never shifts inside its cell
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -65,6 +69,8 @@ struct TimelineRowContent: View {
                 .environment(\.peekScope, .timeline)
                 .environment(\.allowsVideoAutoplay, true)
                 .environment(\.mediaColumnWidth, mediaColumnWidth)
+                .environment(\.readingLeadingGutter, readingLeadingGutter)
+                .environment(\.readingTrailingGutter, readingTrailingGutter)
                 .environment(\.tableCellGeometry, cellGeometry)
         }
     }
@@ -80,6 +86,10 @@ final class TimelineRowHeights {
     // Everything outside a post that its height depends on
     struct Context: Equatable {
         var rowWidth: CGFloat
+        // The reading column's width, which is what the text and media actually wrap to
+        var contentWidth: CGFloat
+        var readingLeadingGutter: CGFloat
+        var readingTrailingGutter: CGFloat
         var mediaColumnWidth: CGFloat?
         var fontType: AppFontType
         var language: AppLanguage
@@ -93,7 +103,8 @@ final class TimelineRowHeights {
     }
 
     private var entries: [String: Entry] = [:]
-    private(set) var context = Context(rowWidth: 0, mediaColumnWidth: nil, fontType: .system, language: .english, textScale: 1)
+    private(set) var context = Context(rowWidth: 0, contentWidth: 0, readingLeadingGutter: 0, readingTrailingGutter: 0,
+                                       mediaColumnWidth: nil, fontType: .system, language: .english, textScale: 1)
     private lazy var sizer = NSHostingController(
         rootView: TimelineRowContent(tweet: Self.placeholderTweet, mediaColumnWidth: nil, isMeasuring: true)
     )
@@ -126,7 +137,9 @@ final class TimelineRowHeights {
 
     // Lays the row out for real, on the main thread, so the caller decides when there is room for it
     func measure(_ tweet: Tweet) -> CGFloat {
-        sizer.rootView = TimelineRowContent(tweet: tweet, mediaColumnWidth: context.mediaColumnWidth, isMeasuring: true)
+        sizer.rootView = TimelineRowContent(tweet: tweet, mediaColumnWidth: context.mediaColumnWidth,
+                                            readingLeadingGutter: context.readingLeadingGutter,
+                                            readingTrailingGutter: context.readingTrailingGutter, isMeasuring: true)
         let size = sizer.sizeThatFits(in: CGSize(width: context.rowWidth, height: .greatestFiniteMagnitude))
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         let height = max(1, ceil(size.height * scale) / scale)
@@ -156,7 +169,7 @@ enum TimelineRowEstimator {
     private static let textColumnInset: CGFloat = 82      // Margins, avatar and spacing beside a post's text
 
     static func height(of tweet: Tweet, context: TimelineRowHeights.Context) -> CGFloat {
-        let textWidth = max(120, context.rowWidth - textColumnInset)
+        let textWidth = max(120, context.contentWidth - textColumnInset)
         let theme = ThemeManager.shared
         let spacing = theme.lineSpacing()
         var column: CGFloat = 24 // The header is as tall as the options button
@@ -423,6 +436,8 @@ struct TimelineTableView: NSViewRepresentable {
     let onRetry: () -> Void
 
     @Environment(\.mediaColumnWidth) private var mediaColumnWidth
+    @Environment(\.readingLeadingGutter) private var readingLeadingGutter
+    @Environment(\.readingTrailingGutter) private var readingTrailingGutter
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -772,9 +787,15 @@ struct TimelineTableView: NSViewRepresentable {
         private func currentHeightContext() -> TimelineRowHeights.Context {
             let clipWidth = scrollView.contentView.bounds.width
             let width = clipWidth > 0 ? clipWidth : ((parent?.mediaColumnWidth).map { $0 + Self.textColumnInset } ?? 760)
+            let leading = parent?.readingLeadingGutter ?? 0
+            let trailing = parent?.readingTrailingGutter ?? 0
+            let contentWidth = max(0, width - leading - trailing)
             return TimelineRowHeights.Context(
                 rowWidth: width,
-                mediaColumnWidth: width - Self.textColumnInset,
+                contentWidth: contentWidth,
+                readingLeadingGutter: leading,
+                readingTrailingGutter: trailing,
+                mediaColumnWidth: contentWidth - Self.textColumnInset,
                 fontType: ThemeManager.shared.fontType,
                 language: LocalizationManager.shared.currentLanguage,
                 textScale: ThemeManager.shared.postTextScale
@@ -1003,7 +1024,10 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         private func content(for tweet: Tweet) -> TimelineRowContent {
-            TimelineRowContent(tweet: tweet, mediaColumnWidth: currentHeightContext().mediaColumnWidth)
+            let context = currentHeightContext()
+            return TimelineRowContent(tweet: tweet, mediaColumnWidth: context.mediaColumnWidth,
+                                      readingLeadingGutter: context.readingLeadingGutter,
+                                      readingTrailingGutter: context.readingTrailingGutter)
         }
 
         // MARK: NSTableViewDataSource & Delegate

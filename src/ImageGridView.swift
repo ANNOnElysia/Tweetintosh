@@ -307,8 +307,14 @@ struct ImageGridView: View {
     var tweet: Tweet? = nil
     var isInteractive: Bool = true
     var isQuoted: Bool = false
+    // In the Home timeline: the carousel may run past the reading column, out to the window's edge
+    var bleedsMedia: Bool = false
+    // Reports how far a full-bleed carousel has been scrolled, for the row's avatar to step out of the way
+    var onCarouselScroll: ((CGFloat) -> Void)? = nil
     @ObservedObject var theme = ThemeManager.shared
     @Environment(\.mediaColumnWidth) private var mediaColumnWidth
+    @Environment(\.readingLeadingGutter) private var readingLeadingGutter
+    @Environment(\.readingTrailingGutter) private var readingTrailingGutter
     
     private var columnWidth: CGFloat {
         Self.columnWidth(mediaColumnWidth: mediaColumnWidth)
@@ -441,21 +447,31 @@ struct ImageGridView: View {
     private func carouselStreamView(_ items: [TweetMedia]) -> some View {
         let height = Self.stripHeight(isQuoted: isQuoted)
         let corner: CGFloat = isQuoted ? 10 : 16
-        
+        // Full bleed: the strip starts at the text column but its viewport is the whole row, so cards slide under the
+        // window's edge. The leading and trailing values are what the row's 16pt margin, avatar and spacing hide.
+        let bleeds = bleedsMedia && !isQuoted
+        let leading: CGFloat = bleeds ? 66 + readingLeadingGutter : 0
+        let trailing: CGFloat = bleeds ? 16 + readingTrailingGutter : 0
+
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
+            HStack(spacing: bleeds ? 8 : 2) {
                 ForEach(0..<items.count, id: \.self) { idx in
                     let media = items[idx]
                     let ratio = media.aspectRatio > 0 ? media.aspectRatio : 1.0
                     let cardWidth = max(8, height * ratio)
                     let isFirst = idx == 0
                     let isLast = idx == items.count - 1
-                    
+                    // A full-bleed strip has separate cards, like an album shelf; the inset strip stays one continuous row.
+                    let shape = bleeds
+                        ? RoundedCorner(tl: corner, tr: corner, bl: corner, br: corner)
+                        : RoundedCorner(tl: isFirst ? corner : 0, tr: isLast ? corner : 0,
+                                        bl: isFirst ? corner : 0, br: isLast ? corner : 0)
+
                     MediaTile(
                         media: media,
                         url: thumbUrl(media.mediaUrl),
                         size: CGSize(width: cardWidth, height: height),
-                        shape: RoundedCorner(tl: isFirst ? corner : 0, tr: isLast ? corner : 0, bl: isFirst ? corner : 0, br: isLast ? corner : 0),
+                        shape: shape,
                         lightboxItems: items,
                         index: idx,
                         tweet: tweet,
@@ -463,12 +479,22 @@ struct ImageGridView: View {
                     )
                 }
             }
+            .padding(.leading, leading)
+            .padding(.trailing, trailing)
             // Inside the ScrollView, so the accessor finds the carousel's scroll view and not the timeline's
             .background(ScrollViewAccessor { sv in HorizontalOnlyScrolling.shared.register(sv) })
+            .background {
+                if let onCarouselScroll {
+                    CarouselScrollReporter(onOffset: onCarouselScroll)
+                }
+            }
         }
         // A reused table cell must not open the next post's images partway along
         .id(tweet?.id)
         .frame(height: height)
+        // Negative padding widens the viewport back to the row; the cards themselves keep their size.
+        .padding(.leading, -leading)
+        .padding(.trailing, -trailing)
     }
 }
 
@@ -524,6 +550,55 @@ final class HorizontalOnlyScrolling {
     }
 }
 
+// Reports the carousel's horizontal offset to the row, which uses it to move the avatar out of the way.
+private struct CarouselScrollReporter: NSViewRepresentable {
+    var onOffset: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> ReporterView {
+        let view = ReporterView()
+        view.onOffset = onOffset
+        return view
+    }
+
+    func updateNSView(_ nsView: ReporterView, context: Context) {
+        nsView.onOffset = onOffset
+        nsView.attach()
+    }
+
+    final class ReporterView: NSView {
+        var onOffset: ((CGFloat) -> Void)?
+        private var token: NSObjectProtocol?
+        private weak var clip: NSClipView?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil { detach() } else { attach() }
+        }
+
+        func attach() {
+            guard let scrollView = enclosingScrollView, clip !== scrollView.contentView else { return }
+            detach()
+            let clip = scrollView.contentView
+            self.clip = clip
+            clip.postsBoundsChangedNotifications = true
+            token = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
+                                                           object: clip, queue: .main) { [weak self] _ in
+                guard let self, let clip = self.clip else { return }
+                self.onOffset?(clip.bounds.minX)
+            }
+            onOffset?(clip.bounds.minX)
+        }
+
+        private func detach() {
+            if let token { NotificationCenter.default.removeObserver(token) }
+            token = nil
+            clip = nil
+        }
+
+        deinit { detach() }
+    }
+}
+
 // MARK: - Window-space Frame Holder
 // Knows how to find where something is; read only when it is tapped, so scrolling does no work for it.
 final class FrameBox: ObservableObject {
@@ -572,6 +647,12 @@ enum AppWindowOrigin {
     static var windowRect: CGRect? {
         guard let view = view, view.window != nil else { return nil }
         return view.convert(view.bounds, to: nil)
+    }
+
+    // The window's size in "AppWindow" space, for clipping anything that runs past the edge
+    static var bounds: CGRect? {
+        guard let view = view, view.window != nil else { return nil }
+        return CGRect(origin: .zero, size: view.bounds.size)
     }
     
     struct Anchor: NSViewRepresentable {

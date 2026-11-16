@@ -43,6 +43,8 @@ extension View {
 // MARK: - Tweet Skeleton Placeholder View
 struct TweetSkeletonRow: View {
     @ObservedObject var theme = ThemeManager.shared
+    @Environment(\.readingLeadingGutter) private var readingLeadingGutter
+    @Environment(\.readingTrailingGutter) private var readingTrailingGutter
     
     var body: some View {
         let blockColor = theme.isLight ? Color.black.opacity(0.07) : Color(white: 0.13)
@@ -88,7 +90,8 @@ struct TweetSkeletonRow: View {
                 .background(ThemeManager.divider)
                 .padding(.top, 4)
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16 + readingLeadingGutter)
+        .padding(.trailing, 16 + readingTrailingGutter)
         .padding(.vertical, 8)
         .shimmering()
     }

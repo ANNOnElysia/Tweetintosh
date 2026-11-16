@@ -10,8 +10,18 @@ struct TweetRowView: View {
     // Part of a conversation thread (profile Replies tab): a line joins this avatar to the post above / below
     var threadAbove: Bool = false
     var threadBelow: Bool = false
+    // In the Home timeline, where a multi-image carousel may run into the reading column's gutter
+    var bleedsMedia: Bool = false
     @ObservedObject var theme = ThemeManager.shared
     @ObservedObject var loc = LocalizationManager.shared
+    @Environment(\.readingLeadingGutter) private var readingLeadingGutter
+    @Environment(\.readingTrailingGutter) private var readingTrailingGutter
+    @State private var avatarReveal = AvatarRevealState()
+
+    // With no body text the carousel starts right under the header, and scrolling it left runs into the avatar.
+    private var shrinksAvatar: Bool {
+        bleedsMedia && tweet.media.count >= 3 && tweet.displayBodyText.isEmpty && tweet.replyContextText == nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -29,7 +39,7 @@ struct TweetRowView: View {
                             .foregroundColor(ThemeManager.secondaryText)
                             .lineLimit(1)
                     }
-                    .padding(.leading, 50) // Aligns with author name column
+                    .padding(.leading, 50 + readingLeadingGutter) // Aligns with author name column
                     .padding(.top, 10)
                     .padding(.bottom, 6)
                 } else {
@@ -39,10 +49,7 @@ struct TweetRowView: View {
                 // 2. Main Content Row (Avatar + Text/Media Column)
                 HStack(alignment: .top, spacing: 10) {
                     // Author Avatar
-                    CachedAsyncImage(urlString: tweet.author.avatarUrl, targetSize: CGSize(width: 40, height: 40))
-                        .frame(width: 40, height: 40)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
+                    RowAvatar(urlString: tweet.author.avatarUrl, reveal: avatarReveal)
                         .peekable(.profile(tweet.author))
                         .opensProfile(tweet.author)
                     
@@ -115,7 +122,10 @@ struct TweetRowView: View {
                         
                         // Media Photo / Video Grid
                         if !tweet.media.isEmpty {
-                            ImageGridView(mediaList: tweet.media, tweet: tweet)
+                            ImageGridView(mediaList: tweet.media, tweet: tweet, bleedsMedia: bleedsMedia,
+                                          onCarouselScroll: shrinksAvatar ? { offset in
+                                              avatarReveal.update(offset: offset)
+                                          } : nil)
                                 .padding(.top, 2)
                         }
                         
@@ -132,9 +142,10 @@ struct TweetRowView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.leading, 16 + readingLeadingGutter)
+                .padding(.trailing, 16 + readingTrailingGutter)
             }
-            .contentShape(Rectangle())
+            .contentShape(ReadingColumnShape(leading: readingLeadingGutter, trailing: readingTrailingGutter))
             // The whole card is a click target, so the hand covers it, its text included, as on X's web client.
             .navigationPointer()
             .onTapGesture {
@@ -149,16 +160,19 @@ struct TweetRowView: View {
             // Kept outside content onTapGesture to allow direct, uninhibited interaction with buttons & menus
             // The space between the post and the divider belongs to the buttons, so a tap anywhere in it lands on one
             TweetActionBar(tweet: tweet, reachAbove: 8, reachBelow: 12)
-                .padding(.leading, 66) // Aligns with text column (16 horizontal padding + 40 avatar + 10 spacing)
-                .padding(.trailing, 20)
+                .padding(.leading, 66 + readingLeadingGutter) // Aligns with text column (16 horizontal padding + 40 avatar + 10 spacing)
+                .padding(.trailing, 20 + readingTrailingGutter)
             
             // 4. Subtle Row Divider (a thread continues into the next row instead)
             if !threadBelow {
                 Divider()
                     .background(ThemeManager.divider)
+                    .padding(.leading, readingLeadingGutter)
+                    .padding(.trailing, readingTrailingGutter)
             }
         }
         .background(ThemeManager.background)
+        .onChange(of: tweet.id) { avatarReveal.reset() }
         .overlay(alignment: .topLeading) {
             threadLine
         }
@@ -180,7 +194,7 @@ struct TweetRowView: View {
                     .frame(width: 2)
                     .frame(maxHeight: .infinity)
             }
-            .padding(.leading, 35)
+            .padding(.leading, 35 + readingLeadingGutter)
             .allowsHitTesting(false)
         }
     }
@@ -202,6 +216,51 @@ struct TweetRowView: View {
         if let url = URL(string: urlStr) {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+// The avatar keeps out of a full-bleed carousel's way: it shrinks once the first card reaches it. A class so only the
+// avatar redraws on every scroll frame, not the whole row.
+final class AvatarRevealState: ObservableObject {
+    @Published private(set) var scale: CGFloat = 1
+
+    // The card starts ten points right of the avatar's edge (the 10pt gap beside the avatar), so any leftward scroll
+    // brings it closer. It begins giving way after 2 points and is as small as it gets after 34.
+    func update(offset: CGFloat) {
+        let progress = min(1, max(0, (offset - 2) / 32))
+        let next = 1 - 0.3 * progress
+        guard abs(next - scale) > 0.002 else { return }
+        scale = next
+    }
+
+    func reset() {
+        guard scale != 1 else { return }
+        scale = 1
+    }
+}
+
+private struct RowAvatar: View {
+    let urlString: String?
+    @ObservedObject var reveal: AvatarRevealState
+
+    var body: some View {
+        CachedAsyncImage(urlString: urlString, targetSize: CGSize(width: 40, height: 40))
+            .frame(width: 40, height: 40)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(ThemeManager.border, lineWidth: 0.5))
+            .scaleEffect(reveal.scale, anchor: .topLeading)
+    }
+}
+
+// Keeps a row's click target off the gutter either side of the reading column: the blank margin scrolls the timeline,
+// it does not open a post.
+private struct ReadingColumnShape: Shape {
+    let leading: CGFloat
+    let trailing: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(x: rect.minX + leading, y: rect.minY,
+                    width: max(0, rect.width - leading - trailing), height: rect.height))
     }
 }
 
