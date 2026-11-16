@@ -249,9 +249,14 @@ struct GlassSegmentedFontPicker: View {
 // after the label). It is the system control so it takes on Liquid Glass when pressed, as the HIG has sliders and
 // toggles do; a drawn imitation cannot match the system's glass.
 struct GlassCapsuleToggleStyle: ToggleStyle {
+    @ObservedObject private var theme = ThemeManager.shared
+
     func makeBody(configuration: Configuration) -> some View {
         HStack {
+            // A toggle builds its label outside the row's text styling, so it needs the chosen typeface here; it
+            // otherwise stays in the system font while every other row in Settings switches to Songti.
             configuration.label
+                .font(theme.appFont(size: 13))
             Spacer(minLength: 12)
             ThemedSwitch(isOn: configuration.$isOn)
         }
