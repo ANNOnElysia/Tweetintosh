@@ -9,6 +9,11 @@ import Foundation
 import CryptoKit
 import ImageIO
 
+extension Notification.Name {
+    /// A refresh answered, so the network is back: images that failed while it was down ask again.
+    static let mediaCacheRetryRequested = Notification.Name("com.anno.tweetintosh.mediaCacheRetryRequested")
+}
+
 final class MediaCacheManager: ObservableObject {
     static let shared = MediaCacheManager()
     
@@ -319,30 +324,48 @@ final class MediaCacheManager: ObservableObject {
                     return
                 }
                 self.requestQueue.async {
-                    guard var registered = self.imageRequests[urlStr], registered.id == token else { return }
-                    let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
-                    let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-                        guard let self else { return }
-                        guard let data, CGImageSourceCreateWithData(data as CFData, nil) != nil else {
-                            self.finishImageData(for: urlStr, id: token, data: nil)
-                            return
-                        }
-                        // Keep the shared request registered until its bytes are on disk. Late consumers and
-                        // prefetches then join it instead of starting another download during the write.
-                        self.ioQueue.async {
-                            if !FileManager.default.fileExists(atPath: path.path) {
-                                try? data.write(to: path, options: .atomic)
-                            }
-                            self.finishImageData(for: urlStr, id: token, data: data)
-                        }
-                    }
-                    registered.task = task
-                    self.imageRequests[urlStr] = registered
-                    task.resume()
+                    self.startImageDownload(url: url, urlStr: urlStr, id: token, attempt: 0)
                 }
             }
         }
         return token
+    }
+
+    // A stalled connection fails every image asked of it at once. A couple of quick retries recover most of them
+    // before the reader notices the placeholder; a cancellation is not a failure and is never retried.
+    private static let downloadAttempts = 3
+
+    // Call on requestQueue. The request stays registered through its retries, so a consumer arriving during the
+    // backoff joins it instead of starting another download.
+    private func startImageDownload(url: URL, urlStr: String, id: UUID, attempt: Int) {
+        guard var registered = imageRequests[urlStr], registered.id == id, !registered.waiters.isEmpty else { return }
+        let path = imageFilePath(for: urlStr)
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            guard let self else { return }
+            if let data, CGImageSourceCreateWithData(data as CFData, nil) != nil {
+                // Keep the shared request registered until its bytes are on disk. Late consumers and prefetches
+                // then join it instead of starting another download during the write.
+                self.ioQueue.async {
+                    if !FileManager.default.fileExists(atPath: path.path) {
+                        try? data.write(to: path, options: .atomic)
+                    }
+                    self.finishImageData(for: urlStr, id: id, data: data)
+                }
+                return
+            }
+            guard attempt + 1 < Self.downloadAttempts, (error as? URLError)?.code != .cancelled else {
+                self.finishImageData(for: urlStr, id: id, data: nil)
+                return
+            }
+            self.requestQueue.asyncAfter(deadline: .now() + 0.5 * pow(3, Double(attempt))) {
+                guard let registered = self.imageRequests[urlStr], registered.id == id else { return }
+                self.startImageDownload(url: url, urlStr: urlStr, id: id, attempt: attempt + 1)
+            }
+        }
+        registered.task = task
+        imageRequests[urlStr] = registered
+        task.resume()
     }
 
     // Called off requestQueue, after disk lookup or after the download has finished persisting its bytes.
@@ -429,6 +452,11 @@ final class MediaCacheManager: ObservableObject {
         }
     }
     
+    /// A refresh is the reader saying the network is back, so every image still on a placeholder tries again.
+    func retryFailedImages() {
+        NotificationCenter.default.post(name: .mediaCacheRetryRequested, object: nil)
+    }
+
     // MARK: - Automatic Cleanup
     // Once images and videos together pass the size chosen in Settings, the least recently written go first, down to
     // 80% of it so the next few pages do not set it off again. With the setting off, nothing is cleared on its own.

@@ -658,6 +658,7 @@ final class TimelineViewModel {
                         self.updateActiveTweets()
                     }
                     ListLoadMoreWatcher.shared.reevaluate()
+                    MediaCacheManager.shared.retryFailedImages()
                     
                 case .failure(let err):
                     if case .unauthenticated = err {
