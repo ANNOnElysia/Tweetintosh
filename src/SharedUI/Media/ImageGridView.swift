@@ -78,16 +78,6 @@ struct ImageGridView: View {
         return isQuoted ? min(windowHeight / 3.5, 180) : min(windowHeight / 3.0, 260)
     }
     
-    private func thumbUrl(_ original: String) -> String {
-        if original.contains("pbs.twimg.com/media") {
-            if original.contains("?") {
-                return original
-            }
-            return "\(original)?format=jpg&name=medium"
-        }
-        return original
-    }
-    
     var body: some View {
         Group {
             if mediaList.isEmpty {
@@ -111,7 +101,7 @@ struct ImageGridView: View {
         return HStack {
             MediaTile(
                 media: media,
-                url: thumbUrl(media.mediaUrl),
+                url: MediaCacheManager.shared.formatThumbUrl(media.mediaUrl),
                 size: CGSize(width: dims.width, height: dims.height),
                 shape: RoundedCorner(tl: corner, tr: corner, bl: corner, br: corner),
                 lightboxItems: [media],
@@ -170,10 +160,10 @@ struct ImageGridView: View {
         let corner: CGFloat = isQuoted ? 10 : 16
         
         return HStack(spacing: spacing) {
-            MediaTile(media: items[0], url: thumbUrl(items[0].mediaUrl), size: size,
+            MediaTile(media: items[0], url: MediaCacheManager.shared.formatThumbUrl(items[0].mediaUrl), size: size,
                       shape: RoundedCorner(tl: corner, tr: 0, bl: corner, br: 0),
                       lightboxItems: items, index: 0, tweet: tweet, isInteractive: isInteractive)
-            MediaTile(media: items[1], url: thumbUrl(items[1].mediaUrl), size: size,
+            MediaTile(media: items[1], url: MediaCacheManager.shared.formatThumbUrl(items[1].mediaUrl), size: size,
                       shape: RoundedCorner(tl: 0, tr: corner, bl: 0, br: corner),
                       lightboxItems: items, index: 1, tweet: tweet, isInteractive: isInteractive)
         }

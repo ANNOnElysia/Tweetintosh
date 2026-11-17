@@ -44,15 +44,10 @@ final class MediaFrameRegistry {
     func clear() {
         lock.lock()
         frames.removeAll()
+        // Providers are registered by the tiles for one presentation too. Keeping them would leave a closure and key
+        // for every picture ever opened; the next open registers its own before presenting.
+        providers.removeAll()
         lock.unlock()
-    }
-}
-
-// MARK: - Preference Key for Tracking Media View Geometry
-struct MediaFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
 
