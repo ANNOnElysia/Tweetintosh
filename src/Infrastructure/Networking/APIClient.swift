@@ -1,0 +1,1810 @@
+//
+//  APIClient.swift
+//  Tweetintosh - Headless Data-driven Client
+//
+
+import Foundation
+import os
+
+enum APIError: LocalizedError {
+    case unauthenticated
+    case invalidResponse
+    case networkError(Error)
+    case parseError
+    case serverError(String)
+    /// X understood the request and refused it: 344 is a per-action limit, 226 the automated-activity block. The
+    /// number is kept so it can be explained in the reader's language instead of being shown as a bare "344".
+    case refused(code: Int?, message: String?)
+    
+    var errorDescription: String? {
+        switch self {
+        case .unauthenticated: return "Not authenticated. Please sign in."
+        case .invalidResponse: return "Received invalid response from server."
+        case .networkError(let err): return err.localizedDescription
+        case .parseError: return "Failed to parse timeline data."
+        case .serverError(let msg): return msg
+        case .refused(let code, let message): return XFailure.describe(code: code, serverMessage: message)
+        }
+    }
+}
+
+final class APIClient {
+    static let shared = APIClient()
+    
+    let session: URLSession
+    let bearerToken = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+    let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
+    
+    // MARK: - Refusals
+    
+    /// X's reason for refusing a request, from {"errors":[{"code":344,"message":"..."}],"data":{}}. Returns nil when
+    /// the body is not one of those envelopes (a plain HTTP failure, for instance).
+    static func refusal(from data: Data?) -> (code: Int?, message: String?)? {
+        guard let data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let errors = json["errors"] as? [[String: Any]], !errors.isEmpty else { return nil }
+        let message = errors.compactMap { $0["message"] as? String }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        return (XFailure.code(in: errors), message.isEmpty ? nil : message)
+    }
+    
+    /// A short text form of an answer, for the log line that records a shape this app does not understand.
+    static func describe(_ json: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: json),
+              let text = String(data: data, encoding: .utf8) else { return "<unprintable>" }
+        return String(text.prefix(700))
+    }
+    
+    /// Writes what X actually answered, so a refusal nobody has seen before can be looked at afterwards.
+    // A request X turned away. A CSRF refusal (353) means X no longer takes the saved token: the hidden x.com page
+    // gets a new one for the session, and the next request goes through.
+    static func noteFailure(response: URLResponse?, data: Data?) {
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        var codes: [Int] = []
+        if let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let errors = json["errors"] as? [[String: Any]] {
+            codes = errors.compactMap { $0["code"] as? Int }
+        }
+        Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
+            .error("\(response?.url?.path ?? "-", privacy: .public) failed: status=\(status, privacy: .public) codes=\(codes.map(String.init).joined(separator: ","), privacy: .public)")
+        if codes.contains(353) {
+            WebKitWriteChannel.shared.renewCsrf()
+        }
+    }
+
+    static func logRefusal(_ refusal: (code: Int?, message: String?), endpoint: String) {
+        Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
+            .error("\(endpoint) refused: code=\(refusal.code.map(String.init) ?? "-", privacy: .public) message=\(refusal.message ?? "-", privacy: .public)")
+    }
+    
+    var clientLanguageHeader: String {
+        switch LocalizationManager.shared.currentLanguage {
+        case .english: return "en"
+        case .japanese: return "ja"
+        case .korean: return "ko"
+        case .simplifiedChinese: return "zh-cn"
+        case .traditionalChinese: return "zh-tw"
+        }
+    }
+    
+    private init() {
+        let config = URLSessionConfiguration.default
+        // Every request carries the login's cookies itself (AuthCredentials.cookieHeaderString), with the matching
+        // x-csrf-token. A cookie store would keep its own ct0 from X's responses and send that instead, and X refuses a
+        // request whose ct0 cookie and header differ.
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        config.httpCookieAcceptPolicy = .never
+        config.timeoutIntervalForRequest = 20.0
+        config.timeoutIntervalForResource = 30.0
+        self.session = URLSession(configuration: config)
+    }
+    
+    // MARK: - Fetch GraphQL Home Timeline (For You & Following)
+    func fetchGraphQLHomeTimeline(
+        feedType: HomeFeedType,
+        listId: String? = nil,
+        cursor: String? = nil,
+        seenTweetIds: [String] = [],
+        completion: @escaping (Result<(tweets: [Tweet], topCursor: String?, bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        let queryId: String
+        let endpoint: String
+        var variables: [String: Any] = [
+            "count": 20,
+            "includePromotedContent": ThemeManager.shared.showPromotedPosts,
+            "requestContext": "launch",
+            "seenTweetIds": seenTweetIds
+        ]
+        
+        switch feedType {
+        case .forYou:
+            queryId = "-SBRQaLiRjWvTFD5SI403A"
+            endpoint = "https://x.com/i/api/graphql/\(queryId)/HomeTimeline"
+            variables["withCommunity"] = true
+        case .following:
+            queryId = "hB-6CNtJdReMJny7IPMoQQ"
+            endpoint = "https://x.com/i/api/graphql/\(queryId)/HomeLatestTimeline"
+            variables["enableRanking"] = false
+        case .bookmarks:
+            fetchBookmarks(cursor: cursor, completion: completion)
+            return
+        case .list:
+            queryId = "uV0pbd0DrW8hTbMrtZ1SYQ"
+            endpoint = ""
+        }
+        
+        // Handle List timeline with GET method as expected by Twitter
+        if feedType == .list {
+            // The requested list, not whichever one is selected now: the reader may have moved on before the answer
+            let requestedListId = listId ?? TimelineViewModel.shared.selectedListId
+            guard !requestedListId.isEmpty else {
+                completion(.success(([], nil, nil)))
+                return
+            }
+            
+            var listVariables: [String: Any] = ["listId": requestedListId, "count": 20]
+            if let cursor = cursor {
+                listVariables["cursor"] = cursor
+            }
+            let listFeatures: [String: Any] = [
+                "responsive_web_graphql_timeline_navigation_enabled": true,
+                "creator_subscriptions_tweet_preview_api_enabled": true,
+                "responsive_web_edit_tweet_api_enabled": true,
+                "articles_preview_enabled": true,
+                "view_counts_everywhere_api_enabled": true,
+                "longform_notetweets_consumption_enabled": true,
+                "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+                "responsive_web_twitter_article_tweet_consumption_enabled": true
+            ]
+            
+            guard let varData = try? JSONSerialization.data(withJSONObject: listVariables),
+                  let featData = try? JSONSerialization.data(withJSONObject: listFeatures),
+                  let varStr = String(data: varData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let featStr = String(data: featData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let listURL = URL(string: "https://x.com/i/api/graphql/\(queryId)/ListLatestTweetsTimeline?variables=\(varStr)&features=\(featStr)") else {
+                completion(.failure(.parseError))
+                return
+            }
+            
+            var request = URLRequest(url: listURL)
+            request.httpMethod = "GET"
+            request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+            request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+            request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+            request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+            request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+            request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+            request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            
+            let task = session.dataTask(with: request) { [weak self] data, response, error in
+                guard let self = self else { return }
+                if let error = error {
+                    completion(.failure(.networkError(error)))
+                    return
+                }
+                guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                      let data = data else {
+                    APIClient.noteFailure(response: response, data: data)
+                    completion(.failure(.invalidResponse))
+                    return
+                }
+                do {
+                    let parsed = try self.parseGraphQLTimeline(data)
+                    completion(.success(parsed))
+                } catch {
+                    completion(.failure(.parseError))
+                }
+            }
+            task.resume()
+            return
+        }
+        
+        if let cursor = cursor {
+            variables["cursor"] = cursor
+        }
+        
+        let features: [String: Any] = [
+            "responsive_web_graphql_timeline_navigation_enabled": true,
+            "creator_subscriptions_tweet_preview_api_enabled": true,
+            "responsive_web_edit_tweet_api_enabled": true,
+            "articles_preview_enabled": true,
+            "view_counts_everywhere_api_enabled": true,
+            "longform_notetweets_consumption_enabled": true,
+            "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+            "responsive_web_twitter_article_tweet_consumption_enabled": true,
+            "communities_web_enable_tweet_community_results_fetch": true,
+            "c9s_tweet_anatomy_moderator_badge_enabled": true
+        ]
+        
+        guard let requestURL = URL(string: endpoint) else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "POST"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let payload: [String: Any] = [
+            "variables": variables,
+            "features": features,
+            "queryId": queryId
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                  let data = data else {
+                // Fall back to REST timeline if GraphQL fails
+                self.fetchHomeTimeline(cursor: cursor, completion: completion)
+                return
+            }
+            
+            do {
+                let parsed = try self.parseGraphQLTimeline(data)
+                if parsed.tweets.isEmpty && cursor == nil {
+                    // Fall back to REST timeline if empty
+                    self.fetchHomeTimeline(cursor: cursor, completion: completion)
+                } else {
+                    completion(.success(parsed))
+                }
+            } catch {
+                self.fetchHomeTimeline(cursor: cursor, completion: completion)
+            }
+        }
+        task.resume()
+    }
+    
+    // MARK: - Parse GraphQL Timeline URT JSON
+    func parseGraphQLTimeline(_ data: Data) throws -> (tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataDict = json["data"] as? [String: Any] else {
+            throw APIError.parseError
+        }
+        
+        var instructions: [[String: Any]]?
+        if let home = dataDict["home"] as? [String: Any],
+           let timeline = home["home_timeline_urt"] as? [String: Any],
+           let inst = timeline["instructions"] as? [[String: Any]] {
+            instructions = inst
+        } else if let list = dataDict["list"] as? [String: Any],
+                  let tweetsTimeline = list["tweets_timeline"] as? [String: Any],
+                  let timeline = tweetsTimeline["timeline"] as? [String: Any],
+                  let inst = timeline["instructions"] as? [[String: Any]] {
+            instructions = inst
+        }
+        
+        guard let instructions = instructions else {
+            throw APIError.parseError
+        }
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+        
+        var orderedTweets: [Tweet] = []
+        var seenIds = Set<String>()
+        var topCursor: String?
+        var bottomCursor: String?
+        
+        for inst in instructions {
+            let entries = (inst["entries"] as? [[String: Any]]) ?? []
+            for e in entries {
+                let eid = e["entryId"] as? String ?? ""
+                let content = e["content"] as? [String: Any]
+                // A cursor is typed in its content as often as it is named by its entry id; reading only the id
+                // turned pages that carried their next cursor this way into a feed that had ended.
+                if let cursorType = content?["cursorType"] as? String, let value = content?["value"] as? String {
+                    if cursorType == "Bottom" { bottomCursor = value }
+                    if cursorType == "Top" { topCursor = value }
+                } else if eid.hasPrefix("cursor-top-") {
+                    if let val = content?["value"] as? String {
+                        topCursor = val
+                    }
+                } else if eid.hasPrefix("cursor-bottom-") {
+                    if let val = content?["value"] as? String {
+                        bottomCursor = val
+                    }
+                } else if eid.hasPrefix("tweet-") || (ThemeManager.shared.showPromotedPosts && (eid.hasPrefix("promoted-tweet-") || eid.hasPrefix("promotedTweet-") || eid.lowercased().contains("promoted"))) {
+                    if let tweet = self.buildGraphQLTweet(entry: e, dateFormatter: dateFormatter) {
+                        if !seenIds.contains(tweet.id) {
+                            seenIds.insert(tweet.id)
+                            orderedTweets.append(tweet)
+                        }
+                    }
+                }
+            }
+            // Later pages hand over their next cursor by replacing the previous one
+            if let content = (inst["entry"] as? [String: Any])?["content"] as? [String: Any],
+               let cursorType = content["cursorType"] as? String,
+               let value = content["value"] as? String {
+                if cursorType == "Bottom" { bottomCursor = value }
+                if cursorType == "Top" { topCursor = value }
+            }
+        }
+        
+        return (orderedTweets, topCursor, bottomCursor)
+    }
+    
+    private func isPromotedEntry(
+        entryId: String,
+        itemContent: [String: Any]? = nil,
+        itemObj: [String: Any]? = nil,
+        resultObj: [String: Any]? = nil
+    ) -> Bool {
+        if entryId.lowercased().contains("promoted") {
+            return true
+        }
+        if let itemContent = itemContent {
+            if itemContent["promotedMetadata"] != nil { return true }
+            if let type = itemContent["itemContentType"] as? String, type.lowercased().contains("promoted") {
+                return true
+            }
+        }
+        if let itemObj = itemObj {
+            if let clientEvent = itemObj["clientEventInfo"] as? [String: Any],
+               let comp = clientEvent["component"] as? String,
+               comp.lowercased().contains("promoted") {
+                return true
+            }
+        }
+        if let resultObj = resultObj {
+            if resultObj["promoted_metadata"] != nil || resultObj["promotedMetadata"] != nil {
+                return true
+            }
+            if let typename = resultObj["__typename"] as? String, typename.lowercased().contains("promoted") {
+                return true
+            }
+        }
+        return false
+    }
+    
+    private func buildGraphQLTweet(entry: [String: Any], dateFormatter: DateFormatter) -> Tweet? {
+        let eid = (entry["entryId"] as? String) ?? ""
+        guard let content = entry["content"] as? [String: Any],
+              let itemContent = content["itemContent"] as? [String: Any],
+              let tweetResults = itemContent["tweet_results"] as? [String: Any],
+              let result = tweetResults["result"] as? [String: Any] else {
+            return nil
+        }
+        let isPromoted = self.isPromotedEntry(entryId: eid, itemContent: itemContent, itemObj: content, resultObj: result)
+        if isPromoted && !ThemeManager.shared.showPromotedPosts {
+            return nil
+        }
+        guard var tweet = parseGraphQLTweetResult(result, dateFormatter: dateFormatter) else {
+            return nil
+        }
+        if isPromoted {
+            tweet.isPromoted = true
+        }
+        return tweet
+    }
+    
+    // MARK: - Legacy Fetch Home Timeline
+    func fetchHomeTimeline(
+        cursor: String? = nil,
+        completion: @escaping (Result<(tweets: [Tweet], topCursor: String?, bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        var urlComponents = URLComponents(string: "https://x.com/i/api/2/timeline/home.json")!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "count", value: "35"),
+            URLQueryItem(name: "include_profile_interstitial_type", value: "1"),
+            URLQueryItem(name: "include_blocking", value: "1"),
+            URLQueryItem(name: "include_blocked_by", value: "1"),
+            URLQueryItem(name: "include_followed_by", value: "1"),
+            URLQueryItem(name: "include_want_retweets", value: "1"),
+            URLQueryItem(name: "include_mute_edge", value: "1"),
+            URLQueryItem(name: "include_can_dm", value: "1"),
+            URLQueryItem(name: "include_can_media_tag", value: "1"),
+            URLQueryItem(name: "include_ext_has_nft_avatar", value: "1"),
+            URLQueryItem(name: "include_ext_is_blue_verified", value: "1"),
+            URLQueryItem(name: "include_ext_verified_type", value: "1"),
+            URLQueryItem(name: "skip_status", value: "1"),
+            URLQueryItem(name: "cards_platform", value: "Web-12"),
+            URLQueryItem(name: "include_cards", value: "1"),
+            URLQueryItem(name: "include_ext_alt_text", value: "true"),
+            URLQueryItem(name: "include_ext_limited_action_results", value: "true"),
+            URLQueryItem(name: "include_quote_count", value: "true"),
+            URLQueryItem(name: "include_reply_count", value: "1"),
+            URLQueryItem(name: "tweet_mode", value: "extended"),
+            URLQueryItem(name: "include_ext_views", value: "true"),
+            URLQueryItem(name: "include_entities", value: "true")
+        ]
+        
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        urlComponents.queryItems = queryItems
+        
+        guard let requestURL = urlComponents.url else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                  let data = data else {
+                APIClient.noteFailure(response: response, data: data)
+                completion(.failure(.invalidResponse))
+                return
+            }
+            
+            do {
+                let parsed = try self.parseTimelineV2JSON(data)
+                completion(.success(parsed))
+            } catch {
+                completion(.failure(.parseError))
+            }
+        }
+        task.resume()
+    }
+    
+    // MARK: - Fetch Notifications Timeline
+    func fetchNotifications(
+        feed: NotificationFilter = .all,
+        cursor: String? = nil,
+        completion: @escaping (Result<(items: [NotificationItem], topCursor: String?, bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        var urlComponents = URLComponents(string: "https://x.com/i/api/2/notifications/\(feed.endpoint).json")!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "count", value: "35"),
+            URLQueryItem(name: "include_profile_interstitial_type", value: "1"),
+            URLQueryItem(name: "include_blocking", value: "1"),
+            URLQueryItem(name: "include_blocked_by", value: "1"),
+            URLQueryItem(name: "include_followed_by", value: "1"),
+            URLQueryItem(name: "include_want_retweets", value: "1"),
+            URLQueryItem(name: "include_mute_edge", value: "1"),
+            URLQueryItem(name: "include_can_dm", value: "1"),
+            URLQueryItem(name: "include_can_media_tag", value: "1"),
+            URLQueryItem(name: "include_ext_has_nft_avatar", value: "1"),
+            URLQueryItem(name: "include_ext_is_blue_verified", value: "1"),
+            URLQueryItem(name: "include_ext_verified_type", value: "1"),
+            URLQueryItem(name: "skip_status", value: "1"),
+            URLQueryItem(name: "cards_platform", value: "Web-12"),
+            URLQueryItem(name: "include_cards", value: "1"),
+            URLQueryItem(name: "include_ext_alt_text", value: "true"),
+            URLQueryItem(name: "include_ext_limited_action_results", value: "true"),
+            URLQueryItem(name: "include_quote_count", value: "true"),
+            URLQueryItem(name: "include_reply_count", value: "1"),
+            URLQueryItem(name: "tweet_mode", value: "extended"),
+            URLQueryItem(name: "include_ext_views", value: "true"),
+            URLQueryItem(name: "include_entities", value: "true")
+        ]
+        
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        urlComponents.queryItems = queryItems
+        
+        guard let requestURL = urlComponents.url else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("OAuth2Session", forHTTPHeaderField: "x-twitter-auth-type")
+        request.setValue("https://x.com/notifications", forHTTPHeaderField: "referer")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                  let data = data else {
+                APIClient.noteFailure(response: response, data: data)
+                completion(.failure(.invalidResponse))
+                return
+            }
+            
+            do {
+                let parsed = try self.parseNotificationsJSON(data)
+                completion(.success(parsed))
+            } catch {
+                completion(.failure(.parseError))
+            }
+        }
+        task.resume()
+    }
+    
+    // MARK: - Parse Notifications JSON
+    private func parseNotificationsJSON(_ data: Data) throws -> (items: [NotificationItem], topCursor: String?, bottomCursor: String?) {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let globalObjects = json["globalObjects"] as? [String: Any] else {
+            throw APIError.parseError
+        }
+        
+        // The Mentions feed holds only posts, so it has no notification records at all
+        let notifsDict = (globalObjects["notifications"] as? [String: [String: Any]]) ?? [:]
+        let tweetsDict = (globalObjects["tweets"] as? [String: [String: Any]]) ?? [:]
+        let usersDict = (globalObjects["users"] as? [String: [String: Any]]) ?? [:]
+        
+        let timeline = json["timeline"] as? [String: Any]
+        let instructions = (timeline?["instructions"] as? [[String: Any]]) ?? []
+        
+        var orderedItems: [NotificationItem] = []
+        var seenIds = Set<String>()
+        var topCursor: String?
+        var bottomCursor: String?
+        
+        for inst in instructions {
+            guard let addEntries = inst["addEntries"] as? [String: Any],
+                  let entries = addEntries["entries"] as? [[String: Any]] else {
+                continue
+            }
+            
+            for entry in entries {
+                let entryId = entry["entryId"] as? String ?? ""
+                
+                if entryId.hasPrefix("cursor-top-") {
+                    if let content = entry["content"] as? [String: Any],
+                       let op = content["operation"] as? [String: Any],
+                       let cursorObj = op["cursor"] as? [String: Any],
+                       let val = cursorObj["value"] as? String {
+                        topCursor = val
+                    }
+                } else if entryId.hasPrefix("cursor-bottom-") {
+                    if let content = entry["content"] as? [String: Any],
+                       let op = content["operation"] as? [String: Any],
+                       let cursorObj = op["cursor"] as? [String: Any],
+                       let val = cursorObj["value"] as? String {
+                        bottomCursor = val
+                    }
+                } else if entryId.hasPrefix("notification-") {
+                    let nid = entryId.replacingOccurrences(of: "notification-", with: "")
+                    // Replies and mentions are entries that hold the post itself, with no notification record
+                    if let tweetId = ((((entry["content"] as? [String: Any])?["item"] as? [String: Any])?["content"] as? [String: Any])?["tweet"] as? [String: Any])?["id"] as? String {
+                        if let item = self.buildPostNotificationItem(entryId: nid, tweetId: tweetId, tweetsDict: tweetsDict, usersDict: usersDict),
+                           seenIds.insert(item.id).inserted {
+                            orderedItems.append(item)
+                        }
+                    } else if let item = self.buildNotificationItem(nid: nid, entry: entry, notifsDict: notifsDict, tweetsDict: tweetsDict, usersDict: usersDict) {
+                        if !seenIds.contains(item.id) {
+                            seenIds.insert(item.id)
+                            orderedItems.append(item)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: if addEntries had no notification items, parse notifsDict directly
+        if orderedItems.isEmpty {
+            for (nid, _) in notifsDict {
+                if let item = self.buildNotificationItem(nid: nid, entry: [:], notifsDict: notifsDict, tweetsDict: tweetsDict, usersDict: usersDict) {
+                    if !seenIds.contains(item.id) {
+                        seenIds.insert(item.id)
+                        orderedItems.append(item)
+                    }
+                }
+            }
+            orderedItems.sort { $0.createdAt > $1.createdAt }
+        }
+        
+        return (orderedItems, topCursor, bottomCursor)
+    }
+    
+    private func buildNotificationItem(
+        nid: String,
+        entry: [String: Any],
+        notifsDict: [String: [String: Any]],
+        tweetsDict: [String: [String: Any]],
+        usersDict: [String: [String: Any]]
+    ) -> NotificationItem? {
+        guard let notif = notifsDict[nid] else { return nil }
+        
+        let iconDict = notif["icon"] as? [String: Any]
+        let iconId = iconDict?["id"] as? String ?? ""
+        let msgDict = notif["message"] as? [String: Any]
+        let actionSummary = msgDict?["text"] as? String ?? ""
+        
+        let timestampMs = (notif["timestampMs"] as? String).flatMap { Double($0) }
+            ?? (entry["sortIndex"] as? String).flatMap { Double($0) }
+            ?? (Date().timeIntervalSince1970 * 1000.0)
+        let createdAt = Date(timeIntervalSince1970: timestampMs / 1000.0)
+        
+        // Notification Type
+        let notifType: NotificationType
+        switch iconId {
+        case "heart_icon":
+            notifType = .like
+        case "retweet_icon":
+            notifType = .retweet
+        case "reply_icon":
+            notifType = .reply
+        case "person_icon":
+            notifType = .follow
+        default:
+            if actionSummary.localizedCaseInsensitiveContains("liked") {
+                notifType = .like
+            } else if actionSummary.localizedCaseInsensitiveContains("reposted") || actionSummary.localizedCaseInsensitiveContains("retweeted") {
+                notifType = .retweet
+            } else if actionSummary.localizedCaseInsensitiveContains("replied") {
+                notifType = .reply
+            } else if actionSummary.localizedCaseInsensitiveContains("followed") {
+                notifType = .follow
+            } else {
+                notifType = .mention
+            }
+        }
+        
+        // Extract Actors
+        var actors: [TweetUser] = []
+        let template = notif["template"] as? [String: Any]
+        let actions = template?["aggregateUserActionsV1"] as? [String: Any]
+        
+        if let fromUsers = actions?["fromUsers"] as? [[String: Any]] {
+            for fu in fromUsers {
+                if let userObj = fu["user"] as? [String: Any],
+                   let uid = userObj["id"] as? String,
+                   let u = usersDict[uid] {
+                    let name = u["name"] as? String ?? ""
+                    let screenName = u["screen_name"] as? String ?? ""
+                    let avatarUrl = (u["profile_image_url_https"] as? String)?
+                        .replacingOccurrences(of: "_normal", with: "_bigger")
+                    let isVerified = (u["verified"] as? Bool) ?? (u["is_blue_verified"] as? Bool) ?? false
+                    actors.append(TweetUser(id: uid, name: name, screenName: screenName, avatarUrl: avatarUrl, isVerified: isVerified))
+                }
+            }
+        }
+        
+        if actors.isEmpty, let entities = msgDict?["entities"] as? [[String: Any]] {
+            for ent in entities {
+                if let ref = ent["ref"] as? [String: Any],
+                   let userRef = ref["user"] as? [String: Any],
+                   let uid = userRef["id"] as? String,
+                   let u = usersDict[uid] {
+                    let name = u["name"] as? String ?? ""
+                    let screenName = u["screen_name"] as? String ?? ""
+                    let avatarUrl = (u["profile_image_url_https"] as? String)?
+                        .replacingOccurrences(of: "_normal", with: "_bigger")
+                    let isVerified = (u["verified"] as? Bool) ?? (u["is_blue_verified"] as? Bool) ?? false
+                    actors.append(TweetUser(id: uid, name: name, screenName: screenName, avatarUrl: avatarUrl, isVerified: isVerified))
+                }
+            }
+        }
+        
+        // Target Tweet Snippet
+        var targetTweetSnippet: String?
+        var targetTweetId: String?
+        var thumbnailUrl: String?
+        if let targetObjects = actions?["targetObjects"] as? [[String: Any]] {
+            for to in targetObjects {
+                if let tweetObj = to["tweet"] as? [String: Any],
+                   let tid = tweetObj["id"] as? String,
+                   let tweet = tweetsDict[tid] {
+                    // Through the post parser, so the text loses its media links and leading @mentions
+                    let parsed = buildTweet(from: tweet, tweetsDict: tweetsDict, usersDict: usersDict, dateFormatter: Self.restDateFormatter)
+                    targetTweetSnippet = parsed?.displayBodyText ?? (tweet["full_text"] as? String)
+                    targetTweetId = tid
+                    thumbnailUrl = parsed?.media.first.flatMap(Self.notificationThumbnail)
+                    break
+                }
+            }
+        }
+        
+        return NotificationItem(
+            id: nid,
+            type: notifType,
+            actors: actors,
+            actionSummary: actionSummary,
+            targetTweetSnippet: targetTweetSnippet,
+            targetTweetId: targetTweetId,
+            thumbnailUrl: thumbnailUrl,
+            replyBody: nil,
+            createdAt: createdAt,
+            iconId: iconId.isEmpty ? nil : iconId
+        )
+    }
+    
+    // A reply or mention: the post itself is the notification
+    private func buildPostNotificationItem(
+        entryId: String,
+        tweetId: String,
+        tweetsDict: [String: [String: Any]],
+        usersDict: [String: [String: Any]]
+    ) -> NotificationItem? {
+        guard let tweetObj = tweetsDict[tweetId],
+              let tweet = buildTweet(from: tweetObj, tweetsDict: tweetsDict, usersDict: usersDict, dateFormatter: Self.restDateFormatter) else { return nil }
+        return NotificationItem(
+            id: entryId,
+            type: tweet.inReplyToStatusId != nil ? .reply : .mention,
+            actors: [tweet.author],
+            actionSummary: "",
+            targetTweetSnippet: nil,
+            targetTweetId: tweet.id,
+            thumbnailUrl: tweet.media.first.flatMap(Self.notificationThumbnail),
+            replyBody: tweet.displayBodyText.isEmpty ? nil : tweet.displayBodyText,
+            createdAt: tweet.createdAt
+        )
+    }
+    
+    private static let restDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+        return formatter
+    }()
+    
+    private static func notificationThumbnail(_ media: TweetMedia) -> String? {
+        let url = media.previewUrl ?? media.mediaUrl
+        return url.isEmpty ? nil : (url.contains("?") ? url : url + "?format=jpg&name=small")
+    }
+    
+    // MARK: - JSON Parser (URT v2 Timeline)
+    private func parseTimelineV2JSON(_ data: Data) throws -> (tweets: [Tweet], topCursor: String?, bottomCursor: String?) {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let globalObjects = json["globalObjects"] as? [String: Any],
+              let tweetsDict = globalObjects["tweets"] as? [String: [String: Any]],
+              let usersDict = globalObjects["users"] as? [String: [String: Any]] else {
+            throw APIError.parseError
+        }
+        
+        let timeline = json["timeline"] as? [String: Any]
+        let instructions = (timeline?["instructions"] as? [[String: Any]]) ?? []
+        
+        var orderedTweets: [Tweet] = []
+        var topCursor: String?
+        var bottomCursor: String?
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+        
+        // Find addEntries instruction
+        for inst in instructions {
+            guard let addEntries = inst["addEntries"] as? [String: Any],
+                  let entries = addEntries["entries"] as? [[String: Any]] else {
+                continue
+            }
+            
+            for entry in entries {
+                let entryId = entry["entryId"] as? String ?? ""
+                
+                // Cursors
+                if entryId.hasPrefix("cursor-top-") {
+                    if let content = entry["content"] as? [String: Any],
+                       let op = content["operation"] as? [String: Any],
+                       let cursorObj = op["cursor"] as? [String: Any],
+                       let val = cursorObj["value"] as? String {
+                        topCursor = val
+                    }
+                } else if entryId.hasPrefix("cursor-bottom-") {
+                    if let content = entry["content"] as? [String: Any],
+                       let op = content["operation"] as? [String: Any],
+                       let cursorObj = op["cursor"] as? [String: Any],
+                       let val = cursorObj["value"] as? String {
+                        bottomCursor = val
+                    }
+                }
+                
+                // Tweet
+                if entryId.hasPrefix("tweet-") {
+                    let tweetId = entryId.replacingOccurrences(of: "tweet-", with: "")
+                    if let tweetObj = tweetsDict[tweetId] {
+                        if let tweet = buildTweet(from: tweetObj, tweetsDict: tweetsDict, usersDict: usersDict, dateFormatter: dateFormatter) {
+                            orderedTweets.append(tweet)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: If instructions didn't list entries, pull directly from tweetsDict
+        if orderedTweets.isEmpty && !tweetsDict.isEmpty {
+            for (_, tweetObj) in tweetsDict {
+                if let tweet = buildTweet(from: tweetObj, tweetsDict: tweetsDict, usersDict: usersDict, dateFormatter: dateFormatter) {
+                    orderedTweets.append(tweet)
+                }
+            }
+            orderedTweets.sort { $0.createdAt > $1.createdAt }
+        }
+        
+        return (orderedTweets, topCursor, bottomCursor)
+    }
+    
+    private func buildTweet(
+        from raw: [String: Any],
+        tweetsDict: [String: [String: Any]],
+        usersDict: [String: [String: Any]],
+        dateFormatter: DateFormatter
+    ) -> Tweet? {
+        var tweetObj = raw
+        var isRetweet = false
+        var retweetedBy: String?
+        
+        // Handle Retweet
+        if let rtId = raw["retweeted_status_id_str"] as? String, let original = tweetsDict[rtId] {
+            isRetweet = true
+            if let rtUserId = raw["user_id_str"] as? String, let rtUser = usersDict[rtUserId] {
+                retweetedBy = rtUser["name"] as? String
+            }
+            tweetObj = original
+        }
+        
+        guard let idStr = tweetObj["id_str"] as? String,
+              let fullText = (tweetObj["full_text"] as? String) ?? (tweetObj["text"] as? String),
+              let userIdStr = tweetObj["user_id_str"] as? String,
+              let userObj = usersDict[userIdStr],
+              let userName = userObj["name"] as? String,
+              let screenName = userObj["screen_name"] as? String else {
+            return nil
+        }
+        
+        let avatarUrl = (userObj["profile_image_url_https"] as? String)?
+            .replacingOccurrences(of: "_normal", with: "_bigger")
+        let isVerified = (userObj["is_blue_verified"] as? Bool) ?? (userObj["verified"] as? Bool) ?? false
+        
+        let createdAtStr = tweetObj["created_at"] as? String ?? ""
+        let createdAt = dateFormatter.date(from: createdAtStr) ?? Date()
+        
+        let author = TweetUser(
+            id: userIdStr,
+            name: userName,
+            screenName: screenName,
+            avatarUrl: avatarUrl,
+            isVerified: isVerified,
+            bio: userObj["description"] as? String,
+            followersCount: userObj["followers_count"] as? Int,
+            followingCount: userObj["friends_count"] as? Int,
+            bannerUrl: userObj["profile_banner_url"] as? String,
+            location: userObj["location"] as? String
+        )
+        
+        // Extract Media
+        var mediaList: [TweetMedia] = []
+        if let extendedEntities = tweetObj["extended_entities"] as? [String: Any],
+           let mediaItems = extendedEntities["media"] as? [[String: Any]] {
+            for m in mediaItems {
+                if let mId = m["id_str"] as? String,
+                   let mType = m["type"] as? String,
+                   let mUrl = m["media_url_https"] as? String {
+                    let sizes = m["sizes"] as? [String: Any]
+                    let large = sizes?["large"] as? [String: Any]
+                    let width = (large?["w"] as? Int) ?? 800
+                    let height = (large?["h"] as? Int) ?? 600
+                    
+                    var videoInfo: TweetVideoInfo? = nil
+                    if let vInfo = m["video_info"] as? [String: Any] {
+                        let durationMillis = vInfo["duration_millis"] as? Int
+                        let ar = vInfo["aspect_ratio"] as? [Int]
+                        var variants: [TweetVideoVariant] = []
+                        if let vList = vInfo["variants"] as? [[String: Any]] {
+                            for v in vList {
+                                if let cType = v["content_type"] as? String,
+                                   let vUrl = v["url"] as? String {
+                                    let br = v["bitrate"] as? Int
+                                    variants.append(TweetVideoVariant(contentType: cType, url: vUrl, bitrate: br))
+                                }
+                            }
+                        }
+                        videoInfo = TweetVideoInfo(durationMillis: durationMillis, aspectRatio: ar, variants: variants)
+                    }
+                    
+                    mediaList.append(TweetMedia(
+                        id: mId,
+                        type: mType,
+                        mediaUrl: mUrl,
+                        previewUrl: mUrl,
+                        width: width,
+                        height: height,
+                        videoInfo: videoInfo
+                    ))
+                }
+            }
+        }
+        
+        let replyCount = (tweetObj["reply_count"] as? Int) ?? 0
+        let retweetCount = (tweetObj["retweet_count"] as? Int) ?? 0
+        let favoriteCount = (tweetObj["favorite_count"] as? Int) ?? 0
+        let isFavorited = (tweetObj["favorited"] as? Bool) ?? ((tweetObj["favorited"] as? NSNumber)?.boolValue ?? false)
+        let isRetweeted = (tweetObj["retweeted"] as? Bool) ?? ((tweetObj["retweeted"] as? NSNumber)?.boolValue ?? false)
+        let isBookmarked = (tweetObj["bookmarked"] as? Bool) ?? ((tweetObj["bookmarked"] as? NSNumber)?.boolValue ?? false)
+        let bookmarkCount = (tweetObj["bookmark_count"] as? Int) ?? 0
+        
+        var viewCount: Int? = nil
+        if let extViews = tweetObj["ext_views"] as? [String: Any] {
+            if let countStr = extViews["count"] as? String, let c = Int(countStr) {
+                viewCount = c
+            } else if let countInt = extViews["count"] as? Int {
+                viewCount = countInt
+            }
+        }
+        
+        let inReplyToScreenName = tweetObj["in_reply_to_screen_name"] as? String
+        let inReplyToStatusId = (tweetObj["in_reply_to_status_id_str"] as? String) ?? (tweetObj["in_reply_to_status_id"] as? NSNumber)?.stringValue
+        
+        return Tweet(
+            id: idStr,
+            text: fullText,
+            createdAt: createdAt,
+            author: author,
+            media: mediaList,
+            replyCount: replyCount,
+            retweetCount: retweetCount,
+            favoriteCount: favoriteCount,
+            isRetweet: isRetweet,
+            retweetedBy: retweetedBy,
+            isFavorited: isFavorited,
+            isRetweeted: isRetweeted,
+            isBookmarked: isBookmarked,
+            bookmarkCount: bookmarkCount,
+            viewCount: viewCount,
+            quotedTweet: nil,
+            inReplyToScreenName: inReplyToScreenName,
+            inReplyToStatusId: inReplyToStatusId,
+            links: Self.parseLinks(tweetObj["entities"] as? [String: Any])
+        )
+    }
+    
+    // MARK: - Fetch Official User Lists
+    func fetchUserLists(completion: @escaping (Result<[TwitterList], APIError>) -> Void) {
+        guard let creds = CredentialsManager.shared.loadCredentials() else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        let queryId = "EJr344tsMZZpEwjeaYvk-g"
+        let variables: [String: Any] = ["count": 100]
+        let features: [String: Any] = [
+            "responsive_web_graphql_timeline_navigation_enabled": true
+        ]
+        
+        guard let varData = try? JSONSerialization.data(withJSONObject: variables),
+              let featData = try? JSONSerialization.data(withJSONObject: features),
+              let varStr = String(data: varData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let featStr = String(data: featData, encoding: .utf8)?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let gqlURL = URL(string: "https://x.com/i/api/graphql/\(queryId)/ListsManagementPageTimeline?variables=\(varStr)&features=\(featStr)") else {
+            self.fetchUserListsREST(creds: creds, completion: completion)
+            return
+        }
+        
+        var request = URLRequest(url: gqlURL)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let data = data,
+               let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                let lists = self.parseListsManagementTimeline(data: data)
+                if !lists.isEmpty {
+                    completion(.success(lists))
+                    return
+                }
+            }
+            // Fallback to REST /1.1/lists/list.json
+            self.fetchUserListsREST(creds: creds, completion: completion)
+        }
+        task.resume()
+    }
+    
+    private func fetchUserListsREST(creds: AuthCredentials, completion: @escaping (Result<[TwitterList], APIError>) -> Void) {
+        guard let restURL = URL(string: "https://api.x.com/1.1/lists/list.json?reverse=true") else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var request = URLRequest(url: restURL)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            guard let data = data,
+                  let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                completion(.failure(.invalidResponse))
+                return
+            }
+            let lists = self.parseRESTUserLists(data: data)
+            completion(.success(lists))
+        }
+        task.resume()
+    }
+    
+    func parseListsManagementTimeline(data: Data) -> [TwitterList] {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let d = json["data"] as? [String: Any],
+              let viewer = d["viewer"] as? [String: Any],
+              let lmt = viewer["list_management_timeline"] as? [String: Any],
+              let timeline = lmt["timeline"] as? [String: Any],
+              let instructions = timeline["instructions"] as? [[String: Any]] else {
+            return []
+        }
+        
+        var lists: [TwitterList] = []
+        var seenIds = Set<String>()
+        
+        for inst in instructions {
+            guard let entries = inst["entries"] as? [[String: Any]] else { continue }
+            for entry in entries {
+                let eid = entry["entryId"] as? String ?? ""
+                let isPinned = eid.hasPrefix("pinned-list-module")
+                let isOwnedOrSub = eid.hasPrefix("owned-subscribed-list-module")
+                
+                if isPinned || isOwnedOrSub {
+                    guard let content = entry["content"] as? [String: Any],
+                          let items = content["items"] as? [[String: Any]] else { continue }
+                    for subItem in items {
+                        guard let itm = subItem["item"] as? [String: Any],
+                              let ic = itm["itemContent"] as? [String: Any],
+                              let l = ic["list"] as? [String: Any] else { continue }
+                        
+                        let id = (l["id_str"] as? String) ?? (l["id"] as? Int64).map { String($0) } ?? ""
+                        let name = (l["name"] as? String) ?? ""
+                        guard !id.isEmpty, !name.isEmpty, !seenIds.contains(id) else { continue }
+                        seenIds.insert(id)
+                        
+                        let desc = l["description"] as? String
+                        let memberCount = (l["member_count"] as? Int) ?? 0
+                        let subscriberCount = (l["subscriber_count"] as? Int) ?? 0
+                        let mode = l["mode"] as? String ?? "Public"
+                        let isPrivate = mode.lowercased() == "private"
+                        
+                        var ownerName: String?
+                        var ownerHandle: String?
+                        if let userRes = l["user_results"] as? [String: Any],
+                           let res = userRes["result"] as? [String: Any] {
+                            let core = (res["core"] as? [String: Any]) ?? [:]
+                            let legacy = (res["legacy"] as? [String: Any]) ?? [:]
+                            ownerName = (legacy["name"] as? String) ?? (core["name"] as? String)
+                            ownerHandle = (legacy["screen_name"] as? String) ?? (core["screen_name"] as? String)
+                        }
+                        
+                        var bannerUrl: String?
+                        if let bannerMedia = l["default_banner_media"] as? [String: Any] {
+                            bannerUrl = bannerMedia["media_url_https"] as? String
+                        }
+                        
+                        lists.append(TwitterList(
+                            id: id,
+                            name: name,
+                            description: desc,
+                            memberCount: memberCount,
+                            subscriberCount: subscriberCount,
+                            isPrivate: isPrivate,
+                            isPinned: isPinned,
+                            bannerUrl: bannerUrl,
+                            ownerName: ownerName,
+                            ownerHandle: ownerHandle
+                        ))
+                    }
+                }
+            }
+        }
+        return lists
+    }
+    
+    func parseRESTUserLists(data: Data) -> [TwitterList] {
+        guard let array = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+            return []
+        }
+        return array.compactMap { item -> TwitterList? in
+            guard let id = (item["id_str"] as? String) ?? (item["id"] as? Int64).map({ String($0) }),
+                  let name = item["name"] as? String, !id.isEmpty, !name.isEmpty else {
+                return nil
+            }
+            let desc = item["description"] as? String
+            let memberCount = item["member_count"] as? Int ?? 0
+            let subscriberCount = item["subscriber_count"] as? Int ?? 0
+            let mode = item["mode"] as? String ?? "public"
+            let isPrivate = mode.lowercased() == "private"
+            
+            var ownerName: String?
+            var ownerHandle: String?
+            if let user = item["user"] as? [String: Any] {
+                ownerName = user["name"] as? String
+                ownerHandle = user["screen_name"] as? String
+            }
+            
+            return TwitterList(
+                id: id,
+                name: name,
+                description: desc,
+                memberCount: memberCount,
+                subscriberCount: subscriberCount,
+                isPrivate: isPrivate,
+                isPinned: false,
+                bannerUrl: nil,
+                ownerName: ownerName,
+                ownerHandle: ownerHandle
+            )
+        }
+    }
+    
+    // MARK: - Tweet Engagement Mutations
+    
+    /// Runs a mutation through the browser channel, so X accepts it (see WebKitWriteChannel).
+    private func performGraphQLMutation(
+        endpoint: String,
+        body: [String: Any],
+        successCheck: @escaping ([String: Any]) -> Bool,
+        completion: @escaping (Result<Void, APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        let path = URL(string: endpoint)?.path ?? endpoint
+        WebKitWriteChannel.shared.perform(path: path, body: body) { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success(let json):
+                guard let data = json["data"] as? [String: Any], successCheck(data) else {
+                    completion(.failure(.serverError("Unexpected server response")))
+                    return
+                }
+                completion(.success(()))
+            }
+        }
+    }
+    
+    /// Like a tweet
+    func favoriteTweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "lI07N6Otwv1PhnEgXILM7A"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/FavoriteTweet"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["favorite_tweet"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Remove like from a tweet
+    func unfavoriteTweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "ZYKSe-w7KEslx3JhSIk5LA"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/UnfavoriteTweet"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["unfavorite_tweet"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Retweet a tweet
+    func retweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "mbRO74GrOvSfRcJnlMapnQ"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/CreateRetweet"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id, "dark_request": false],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { $0["create_retweet"] != nil },
+            completion: completion
+        )
+    }
+    
+    /// Remove retweet from a tweet
+    func unretweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "ZyZigVsNiFO6v1dEks1eWg"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/DeleteRetweet"
+        let body: [String: Any] = [
+            "variables": ["source_tweet_id": id, "tweet_id": id, "dark_request": false],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { $0["unretweet"] != nil },
+            completion: completion
+        )
+    }
+    
+    /// Bookmark a tweet
+    func bookmark(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "aoDbu3RHznuiSkQ9aNM67Q"
+        // Note: Production Twitter maps CreateBookmark directly to the query ID without action name suffix
+        let endpoint = "https://x.com/i/api/graphql/\(qid)"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["tweet_bookmark_put"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Remove bookmark from a tweet
+    func unbookmark(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        let qid = "Wlmlj2-xzyS1GN3a6cj-mQ"
+        let endpoint = "https://x.com/i/api/graphql/\(qid)/DeleteBookmark"
+        let body: [String: Any] = [
+            "variables": ["tweet_id": id],
+            "queryId": qid
+        ]
+        performGraphQLMutation(
+            endpoint: endpoint,
+            body: body,
+            successCheck: { ($0["tweet_bookmark_delete"] as? String) == "Done" },
+            completion: completion
+        )
+    }
+    
+    /// Deletes one of your own posts. X's operation id is looked up again if the known ones are refused.
+    func deleteTweet(id: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        func attempt(_ qids: [String], discovered: Bool) {
+            guard let qid = qids.first else {
+                if discovered {
+                    completion(.failure(.serverError("No working query id for DeleteTweet")))
+                } else {
+                    GraphQLOperationIDs.shared.discover(using: self, creds: creds) {
+                        attempt(GraphQLOperationIDs.shared.ids(for: "DeleteTweet"), discovered: true)
+                    }
+                }
+                return
+            }
+            let body: [String: Any] = [
+                "variables": ["tweet_id": id, "dark_request": false],
+                "queryId": qid
+            ]
+            performGraphQLMutation(
+                endpoint: "https://x.com/i/api/graphql/\(qid)/DeleteTweet",
+                body: body,
+                successCheck: { $0["delete_tweet"] != nil }
+            ) { result in
+                switch result {
+                case .success:
+                    GraphQLOperationIDs.shared.markWorking(qid, for: "DeleteTweet")
+                    completion(result)
+                case .failure:
+                    attempt(Array(qids.dropFirst()), discovered: discovered)
+                }
+            }
+        }
+        attempt(GraphQLOperationIDs.shared.ids(for: "DeleteTweet"), discovered: false)
+    }
+    
+    /// Reply to a tweet
+    func reply(to tweetId: String, text: String, mediaIds: [String] = [], cardUri: String? = nil, completion: @escaping (Result<String, APIError>) -> Void) {
+        createTweet(text: text, replyToTweetId: tweetId, attachmentUrl: nil, mediaIds: mediaIds, cardUri: cardUri, completion: completion)
+    }
+    
+    // MARK: - Mute & Block Actions
+    
+    private func performFormAction(
+        endpoint: String,
+        bodyParams: [String: String],
+        completion: @escaping (Result<Void, APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let bodyString = bodyParams.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }.joined(separator: "&")
+        request.httpBody = bodyString.data(using: .utf8)
+        
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200...299).contains(status) {
+                completion(.success(()))
+            } else {
+                completion(.failure(.serverError("HTTP \(status)")))
+            }
+        }.resume()
+    }
+    
+    func muteUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/mutes/users/create.json", bodyParams: params, completion: completion)
+    }
+    
+    func unmuteUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/mutes/users/destroy.json", bodyParams: params, completion: completion)
+    }
+    
+    func blockUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/blocks/create.json", bodyParams: params, completion: completion)
+    }
+    
+    func unblockUser(userId: String, screenName: String? = nil, completion: @escaping (Result<Void, APIError>) -> Void) {
+        var params: [String: String] = [:]
+        if !userId.isEmpty {
+            params["user_id"] = userId
+        } else if let sn = screenName, !sn.isEmpty {
+            params["screen_name"] = sn
+        }
+        performFormAction(endpoint: "https://x.com/i/api/1.1/blocks/destroy.json", bodyParams: params, completion: completion)
+    }
+    
+    // MARK: - Media Upload
+    
+    /// Uploads one photo, GIF or video the way X's own apps do (INIT, then the file in chunks, then FINALIZE, then
+    /// waiting for X to process videos and GIFs) and returns the media id to attach to a post.
+    func uploadMedia(_ attachment: ComposerAttachment, progress: ((Double) -> Void)? = nil) async throws -> String {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else { throw APIError.unauthenticated }
+        let base = "https://upload.x.com/i/media/upload.json"
+        
+        func request(_ query: [String: String], method: String = "POST") throws -> URLRequest {
+            var comps = URLComponents(string: base)!
+            comps.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+            guard let url = comps.url else { throw APIError.invalidResponse }
+            var req = URLRequest(url: url)
+            req.httpMethod = method
+            req.timeoutInterval = 120
+            req.setValue(bearerToken, forHTTPHeaderField: "authorization")
+            req.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+            req.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+            req.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+            req.setValue("OAuth2Session", forHTTPHeaderField: "x-twitter-auth-type")
+            req.setValue("https://x.com/compose/post", forHTTPHeaderField: "referer")
+            req.setValue("https://x.com", forHTTPHeaderField: "origin")
+            req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+            return req
+        }
+        func send(_ req: URLRequest) async throws -> [String: Any] {
+            let (data, response) = try await session.data(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status) else {
+                throw APIError.serverError(Self.errorMessage(from: data) ?? "HTTP \(status)")
+            }
+            return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        }
+        
+        let fileData = try Data(contentsOf: attachment.url, options: .mappedIfSafe)
+        
+        // 1. INIT
+        let initResponse = try await send(request([
+            "command": "INIT", "total_bytes": String(fileData.count),
+            "media_type": attachment.mimeType, "media_category": attachment.kind.uploadCategory
+        ]))
+        guard let mediaId = initResponse["media_id_string"] as? String else { throw APIError.parseError }
+        
+        // 2. APPEND, in chunks
+        let chunkSize = 2 * 1024 * 1024
+        var offset = 0, index = 0
+        while offset < fileData.count {
+            let chunk = fileData.subdata(in: offset..<min(offset + chunkSize, fileData.count))
+            let boundary = "Boundary-\(UUID().uuidString)"
+            var body = Data()
+            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"media\"; filename=\"blob\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+            body.append(chunk)
+            body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+            var req = try request(["command": "APPEND", "media_id": mediaId, "segment_index": String(index)])
+            req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+            _ = try await send(req)
+            offset += chunk.count
+            index += 1
+            progress?(Double(offset) / Double(max(fileData.count, 1)))
+        }
+        
+        // 3. FINALIZE, then wait while X processes videos and GIFs
+        var finalize = try await send(request(["command": "FINALIZE", "media_id": mediaId]))
+        var waited = 0.0
+        while let info = finalize["processing_info"] as? [String: Any], let state = info["state"] as? String {
+            if state == "succeeded" { break }
+            if state == "failed" {
+                let message = (info["error"] as? [String: Any])?["message"] as? String
+                throw APIError.serverError(message ?? "X couldn't process the media")
+            }
+            let delay = max(1.0, (info["check_after_secs"] as? Double) ?? 2.0)
+            waited += delay
+            if waited > 180 { throw APIError.serverError("X took too long to process the media") }
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            finalize = try await send(request(["command": "STATUS", "media_id": mediaId], method: "GET"))
+        }
+        return mediaId
+    }
+    
+    /// Create a new tweet (standalone post, reply, or quote post).
+    ///
+    /// This goes through WebKitWriteChannel rather than URLSession: X drops writes that do not arrive over a
+    /// browser's connection, answering 200 with an empty tweet_results and publishing nothing.
+    func createTweet(
+        text: String,
+        replyToTweetId: String? = nil,
+        attachmentUrl: String? = nil,
+        mediaIds: [String] = [],
+        cardUri: String? = nil,
+        completion: @escaping (Result<String, APIError>) -> Void
+    ) {
+        let features: [String: Any] = [
+            "premium_content_api_read_enabled": false,
+            "communities_web_enable_tweet_community_results_fetch": true,
+            "c9s_tweet_anatomy_moderator_badge_enabled": true,
+            "responsive_web_grok_analyze_button_fetch_trends_enabled": false,
+            "responsive_web_grok_analyze_post_followups_enabled": false,
+            "responsive_web_jetfuel_frame": true,
+            "responsive_web_edit_tweet_api_enabled": true,
+            "graphql_is_translatable_rweb_tweet_is_translatable_enabled": true,
+            "view_counts_everywhere_api_enabled": true,
+            "longform_notetweets_consumption_enabled": true,
+            "responsive_web_twitter_article_tweet_consumption_enabled": true,
+            "tweet_awards_web_tipping_enabled": false,
+            "freedom_of_speech_not_reach_fetch_enabled": true,
+            "standardized_nudges_misinfo": true,
+            "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+            "longform_notetweets_rich_text_read_enabled": true,
+            "longform_notetweets_inline_media_enabled": true,
+            "responsive_web_graphql_timeline_navigation_enabled": true,
+            "responsive_web_enhance_cards_enabled": false
+        ]
+        
+        var variables: [String: Any] = [
+            "tweet_text": text,
+            "dark_request": false,
+            "media": [
+                "media_entities": mediaIds.map { ["media_id": $0, "tagged_users": []] as [String: Any] },
+                "possibly_sensitive": false
+            ],
+            "semantic_annotation_ids": []
+        ]
+        
+        if let replyTo = replyToTweetId, !replyTo.isEmpty {
+            variables["reply"] = [
+                "in_reply_to_tweet_id": replyTo,
+                "exclude_reply_user_ids": []
+            ]
+        }
+        
+        if let attach = attachmentUrl, !attach.isEmpty {
+            variables["attachment_url"] = attach
+        }
+        
+        if let cardUri = cardUri {
+            variables["card_uri"] = cardUri
+        }
+        
+        func attempt(qids: [String]) {
+            guard let qid = qids.first else {
+                completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
+                return
+            }
+            let path = "/i/api/graphql/\(qid)/CreateTweet"
+            let body: [String: Any] = [
+                "variables": variables,
+                "features": features,
+                "queryId": qid
+            ]
+            
+            WebKitWriteChannel.shared.perform(path: path, body: body) { result in
+                switch result {
+                case .failure(let error):
+                    completion(.failure(error))
+                case .success(let json):
+                    let result = (((json["data"] as? [String: Any])?["create_tweet"] as? [String: Any])?["tweet_results"] as? [String: Any])?["result"] as? [String: Any]
+                    let post = (result?["tweet"] as? [String: Any]) ?? result
+                    guard let restId = (post?["rest_id"] as? String) ?? (post?["legacy"] as? [String: Any])?["id_str"] as? String else {
+                        Logger(subsystem: "com.anno.tweetintosh", category: "graphql")
+                            .error("CreateTweet (\(qid)) answered without a post: \(Self.describe(json), privacy: .public)")
+                        let remaining = Array(qids.dropFirst())
+                        if !remaining.isEmpty {
+                            attempt(qids: remaining)
+                        } else {
+                            completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
+                        }
+                        return
+                    }
+                    GraphQLOperationIDs.shared.markWorking(qid, for: "CreateTweet")
+                    completion(.success(restId))
+                }
+            }
+        }
+        
+        let candidateQids = GraphQLOperationIDs.shared.ids(for: "CreateTweet")
+        attempt(qids: candidateQids.isEmpty ? ["5CVj-J0FZWyGgJpcjeBJEA"] : candidateQids)
+    }
+    
+    // MARK: - Fetch Tweet Detail & Thread Conversation
+    func fetchTweetDetail(
+        tweetId: String,
+        cursor: String? = nil,
+        completion: @escaping (Result<(focalTweet: Tweet?, ancestors: [Tweet], replies: [Tweet], bottomCursor: String?), APIError>) -> Void
+    ) {
+        guard let creds = CredentialsManager.shared.loadCredentials(), creds.isValid else {
+            completion(.failure(.unauthenticated))
+            return
+        }
+        
+        let qid = "gJoREC4Bspo4kJ0ax9C3sQ"
+        
+        var variables: [String: Any] = [
+            "focalTweetId": tweetId,
+            "with_rux_injections": false,
+            "rankingMode": "Relevance",
+            "includePromotedContent": ThemeManager.shared.showPromotedPosts,
+            "withCommunity": true,
+            "withQuickPromoteEligibility": false,
+            "withBirdwatchNotes": true,
+            "withVoice": true
+        ]
+        if let cursor = cursor, !cursor.isEmpty {
+            variables["cursor"] = cursor
+        }
+        
+        let features: [String: Any] = [
+            "rweb_video_screen_enabled": true,
+            "responsive_web_graphql_exclude_directive_enabled": true,
+            "verified_phone_label_enabled": false,
+            "creator_subscriptions_tweet_preview_api_enabled": true,
+            "responsive_web_graphql_timeline_navigation_enabled": true,
+            "responsive_web_graphql_skip_user_profile_image_extensions_enabled": false,
+            "communities_web_enable_tweet_community_results_fetch": true,
+            "c9s_tweet_anatomy_moderator_badge_enabled": true,
+            "articles_preview_enabled": true,
+            "responsive_web_edit_tweet_api_enabled": true,
+            "graphql_is_translatable_rweb_tweet_is_translatable_enabled": true,
+            "view_counts_everywhere_api_enabled": true,
+            "longform_notetweets_consumption_enabled": true,
+            "responsive_web_twitter_article_tweet_consumption_enabled": true,
+            "tweet_awards_web_tipping_enabled": false,
+            "creator_subscriptions_quote_tweet_preview_enabled": false,
+            "freedom_of_speech_not_reached_appeal_enabled": true,
+            "standardized_nudges_misinfo": true,
+            "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+            "rweb_tipjar_consumption_enabled": true,
+            "responsive_web_enhance_cards_enabled": false
+        ]
+        
+        guard let varData = try? JSONSerialization.data(withJSONObject: variables),
+              let varStr = String(data: varData, encoding: .utf8),
+              let featData = try? JSONSerialization.data(withJSONObject: features),
+              let featStr = String(data: featData, encoding: .utf8) else {
+            completion(.failure(.parseError))
+            return
+        }
+        
+        var comp = URLComponents(string: "https://x.com/i/api/graphql/\(qid)/TweetDetail")!
+        comp.queryItems = [
+            URLQueryItem(name: "variables", value: varStr),
+            URLQueryItem(name: "features", value: featStr)
+        ]
+        
+        guard let url = comp.url else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(bearerToken, forHTTPHeaderField: "authorization")
+        request.setValue(creds.ct0, forHTTPHeaderField: "x-csrf-token")
+        request.setValue(creds.cookieHeaderString, forHTTPHeaderField: "cookie")
+        request.setValue("yes", forHTTPHeaderField: "x-twitter-active-user")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "x-twitter-client-language")
+        request.setValue(clientLanguageHeader, forHTTPHeaderField: "Accept-Language")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://x.com/", forHTTPHeaderField: "referer")
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEE MMM dd HH:mm:ss Z yyyy"
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let error = error {
+                completion(.failure(.networkError(error)))
+                return
+            }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.invalidResponse))
+                return
+            }
+            guard (200...299).contains(httpResponse.statusCode), let data = data else {
+                completion(.failure(.serverError("HTTP \(httpResponse.statusCode)")))
+                return
+            }
+            do {
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    completion(.failure(.parseError))
+                    return
+                }
+                guard let dataObj = json["data"] as? [String: Any],
+                      let threadedConv = dataObj["threaded_conversation_with_injections_v2"] as? [String: Any],
+                      let instructions = threadedConv["instructions"] as? [[String: Any]] else {
+                    completion(.failure(.parseError))
+                    return
+                }
+                
+                var focalTweet: Tweet?
+                var ancestors: [Tweet] = []
+                var replies: [Tweet] = []
+                var bottomCursor: String?
+                
+                for inst in instructions {
+                    guard let type = inst["type"] as? String else { continue }
+                    if type == "TimelineAddEntries" {
+                        let entries = (inst["entries"] as? [[String: Any]]) ?? []
+                        for entry in entries {
+                            let entryId = (entry["entryId"] as? String) ?? ""
+                            let content = (entry["content"] as? [String: Any]) ?? [:]
+                            let entryType = (content["entryType"] as? String) ?? ""
+                            
+                            if entryType == "TimelineTimelineItem" {
+                                if let tweet = self.buildGraphQLTweet(entry: entry, dateFormatter: dateFormatter) {
+                                    if tweet.id == tweetId {
+                                        focalTweet = tweet
+                                    } else if focalTweet == nil {
+                                        ancestors.append(tweet)
+                                    } else {
+                                        replies.append(tweet)
+                                    }
+                                }
+                            } else if entryType == "TimelineTimelineModule" && entryId.hasPrefix("conversationthread-") {
+                                let items = (content["items"] as? [[String: Any]]) ?? []
+                                for it in items {
+                                    guard let itemObj = it["item"] as? [String: Any],
+                                          let itemContent = itemObj["itemContent"] as? [String: Any],
+                                          let tweetResults = itemContent["tweet_results"] as? [String: Any],
+                                          let res = tweetResults["result"] as? [String: Any] else {
+                                        continue
+                                    }
+                                    let itemEntryId = (it["entryId"] as? String) ?? ""
+                                    let isPromoted = self.isPromotedEntry(entryId: itemEntryId, itemContent: itemContent, itemObj: itemObj, resultObj: res)
+                                    if isPromoted && !ThemeManager.shared.showPromotedPosts {
+                                        continue
+                                    }
+                                    if var replyTweet = self.parseGraphQLTweetResult(res, dateFormatter: dateFormatter) {
+                                        if isPromoted {
+                                            replyTweet.isPromoted = true
+                                        }
+                                        replies.append(replyTweet)
+                                    }
+                                }
+                            } else if entryType == "TimelineTimelineCursor" || entryId.hasPrefix("cursor-bottom") {
+                                if let cursorType = content["cursorType"] as? String, cursorType == "Bottom" {
+                                    bottomCursor = content["value"] as? String
+                                } else if entryId.hasPrefix("cursor-bottom") {
+                                    bottomCursor = content["value"] as? String
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                completion(.success((focalTweet, ancestors, replies, bottomCursor)))
+            } catch {
+                completion(.failure(.parseError))
+            }
+        }
+        task.resume()
+    }
+    
+    func fetchTweetDetail(tweetId: String, cursor: String? = nil) async throws -> (focalTweet: Tweet?, ancestors: [Tweet], replies: [Tweet], bottomCursor: String?) {
+        try await withCheckedThrowingContinuation { continuation in
+            fetchTweetDetail(tweetId: tweetId, cursor: cursor) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+}
