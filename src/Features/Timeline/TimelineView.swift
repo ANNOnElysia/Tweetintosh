@@ -588,17 +588,13 @@ private struct TimelinePullRefreshIndicatorOverlay: View {
             // sidebar's column ends, not at the window's left edge.
             let leadingInset: CGFloat = nav.sidebarExpanded ? SidebarLayout.columnWidth : 0
 
-            HStack(spacing: 0) {
-                if leadingInset > 0 {
-                    Color.clear.frame(width: leadingInset)
-                }
+            GeometryReader { geometry in
                 SVGRefreshIndicatorView(
                     pullProgress: pullProg,
                     isRefreshing: viewModel.isRefreshing,
                     colorScheme: theme.themeColor
                 )
-                .frame(height: 40)
-                .frame(maxWidth: .infinity)
+                .frame(width: max(0, geometry.size.width - leadingInset), height: 40)
                 .mask {
                     LinearGradient(stops: [
                         .init(color: .clear, location: 0),
@@ -607,10 +603,9 @@ private struct TimelinePullRefreshIndicatorOverlay: View {
                         .init(color: .clear, location: 1)
                     ], startPoint: .leading, endPoint: .trailing)
                 }
+                .offset(x: leadingInset, y: offsetY)
+                .opacity(opac)
             }
-            .frame(maxWidth: .infinity)
-            .offset(y: offsetY)
-            .opacity(opac)
             .allowsHitTesting(false)
             .transition(.opacity)
         }
