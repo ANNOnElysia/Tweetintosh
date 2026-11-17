@@ -188,6 +188,7 @@ final class ProfileViewModel: ObservableObject, TweetMutationTarget {
                     }
                 }
             }
+            MediaCacheManager.shared.retryFailedImages()
             // The profile is already updated above; only the spinner waits out its minimum.
             let wait = max(0, minimumDuration - Date().timeIntervalSince(started))
             let finish = { [weak self] in

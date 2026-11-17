@@ -383,6 +383,7 @@ final class NotificationsViewModel: ObservableObject {
                     self.store(state, for: feed)
                     self.applyIfSelected(feed)
                     self.prefetchMedia(for: data.items)
+                    MediaCacheManager.shared.retryFailedImages()
                 case .failure:
                     state.failed = true
                     self.feeds[feed] = state
