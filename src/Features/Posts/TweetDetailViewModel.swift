@@ -195,6 +195,7 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
                         self.ownPendingReplies = self.ownPendingReplies.filter { !listed.contains($0.key) }
                         self.replies.insert(contentsOf: self.ownPendingReplies.values.sorted { $0.id > $1.id }, at: 0)
                     }
+                    MediaCacheManager.shared.retryFailedImages()
                 }
                 self.endRefreshing(after: max(0, minimumDuration - Date().timeIntervalSince(started)))
             }
