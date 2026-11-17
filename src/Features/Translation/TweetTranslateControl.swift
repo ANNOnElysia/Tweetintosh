@@ -19,6 +19,16 @@ struct TweetTranslateControl: View {
     @ObservedObject private var settings = TranslationSettingsManager.shared
     @State private var translationConfig: TranslationSession.Configuration?
     @State private var isTranslating = false
+    // Identifies the translation whose result may still be shown. A language or engine change bumps it so a late
+    // answer cannot replace the newly chosen language's result.
+    @State private var requestGeneration = 0
+    // Apple's translation task hands back only the session, so the target it started for travels here.
+    @State private var appleRequest: AppleRequest?
+
+    private struct AppleRequest {
+        let generation: Int
+        let target: AppLanguage
+    }
 
     private var targetLanguage: AppLanguage {
         settings.targetLanguage ?? loc.currentLanguage
@@ -52,10 +62,12 @@ struct TweetTranslateControl: View {
                 }
             }
             .onChange(of: targetLanguage) { _, newLang in
+                cancelInFlightTranslation()
                 showingTranslation = false
                 translatedText = TweetTranslationCache.shared.get(tweetId: tweetId, target: newLang, engine: settings.engine)
             }
             .onChange(of: settings.engine) { _, newEngine in
+                cancelInFlightTranslation()
                 showingTranslation = false
                 translatedText = TweetTranslationCache.shared.get(tweetId: tweetId, target: targetLanguage, engine: newEngine)
             }
@@ -76,48 +88,77 @@ struct TweetTranslateControl: View {
             return
         }
 
+        requestGeneration &+= 1
+        let generation = requestGeneration
         switch settings.engine {
         case .apple:
+            let target = targetLanguage
+            appleRequest = AppleRequest(generation: generation, target: target)
             isTranslating = true
-            let target = Locale.Language(identifier: targetLanguage.rawValue)
+            let localeTarget = Locale.Language(identifier: target.rawValue)
             if translationConfig == nil {
-                translationConfig = TranslationSession.Configuration(source: nil, target: target)
+                translationConfig = TranslationSession.Configuration(source: nil, target: localeTarget)
             } else {
-                translationConfig?.target = target
+                translationConfig?.target = localeTarget
                 translationConfig?.invalidate()
             }
         case .byok:
-            isTranslating = true
             let target = targetLanguage
+            appleRequest = nil
+            translationConfig = nil
+            isTranslating = true
             Task {
-                await performBYOKTranslation(target: target)
+                await performBYOKTranslation(target: target, generation: generation)
             }
         }
     }
 
+    // Called when the chosen language or engine changes: the old answer is no longer the one this control should show.
+    private func cancelInFlightTranslation() {
+        requestGeneration &+= 1
+        appleRequest = nil
+        translationConfig = nil
+        isTranslating = false
+    }
+
     @MainActor
     private func performAppleTranslation(using session: TranslationSession) async {
-        defer { isTranslating = false }
+        guard let request = appleRequest else { return }
+        defer {
+            if requestGeneration == request.generation {
+                isTranslating = false
+                appleRequest = nil
+            }
+        }
         do {
             let response = try await session.translate(sourceText)
             let result = response.targetText
-            TweetTranslationCache.shared.set(result, tweetId: tweetId, target: targetLanguage, engine: .apple)
+            // Cache under the language this request actually asked for, not whichever is selected now.
+            TweetTranslationCache.shared.set(result, tweetId: tweetId, target: request.target, engine: .apple)
+            guard requestGeneration == request.generation else { return }
             translatedText = result
             showingTranslation = true
         } catch {
+            guard requestGeneration == request.generation else { return }
             showingTranslation = false
         }
     }
 
     @MainActor
-    private func performBYOKTranslation(target: AppLanguage) async {
-        defer { isTranslating = false }
+    private func performBYOKTranslation(target: AppLanguage, generation: Int) async {
+        defer {
+            if requestGeneration == generation {
+                isTranslating = false
+            }
+        }
         do {
             let result = try await settings.translateWithBYOK(sourceText, to: target)
             TweetTranslationCache.shared.set(result, tweetId: tweetId, target: target, engine: .byok)
+            guard requestGeneration == generation else { return }
             translatedText = result
             showingTranslation = true
         } catch {
+            guard requestGeneration == generation else { return }
             showingTranslation = false
             let msg = (error as? TranslationSettingsManager.BYOKError)?.errorDescription ?? error.localizedDescription
             if case TranslationSettingsManager.BYOKError.missingKey = error {
