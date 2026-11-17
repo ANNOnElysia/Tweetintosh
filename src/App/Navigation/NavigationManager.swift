@@ -5,6 +5,7 @@
 
 import SwiftUI
 import AppKit
+import Combine
 
 enum AppTab: Int, CaseIterable, Identifiable {
     case home = 0
@@ -323,8 +324,14 @@ final class NavigationManager {
     @ObservationIgnored private var isCmdDown: Bool = false
     
     @ObservationIgnored private var eventMonitor: Any?
-    
+    // Turning the Videos tab off while it is on screen sends the reader back Home
+    @ObservationIgnored private var videosSettingObserver: AnyCancellable?
+
     private init() {
+        videosSettingObserver = observeChanges(of: { _ = ThemeManager.shared.showVideosTab }) { [weak self] in
+            guard let self, !ThemeManager.shared.showVideosTab, self.currentTab == .videos else { return }
+            self.selectTab(.home)
+        }
         setupKeyboardMonitoring()
     }
     
