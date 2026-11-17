@@ -584,22 +584,31 @@ private struct TimelinePullRefreshIndicatorOverlay: View {
             
             // Pure GPU translation offset to avoid subpixel frame resizing passes
             let offsetY: CGFloat = baseTop + (pullDist - 40.0) / 2.0
-            
-            SVGRefreshIndicatorView(
-                pullProgress: pullProg,
-                isRefreshing: viewModel.isRefreshing,
-                colorScheme: theme.themeColor
-            )
-            .frame(height: 40)
-            .frame(maxWidth: .infinity)
-            .mask {
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black, location: 0.12),
-                    .init(color: .black, location: 0.88),
-                    .init(color: .clear, location: 1)
-                ], startPoint: .leading, endPoint: .trailing)
+            // The timeline's background runs under the floating sidebar; the refresh line should start where the
+            // sidebar's column ends, not at the window's left edge.
+            let leadingInset: CGFloat = nav.sidebarExpanded ? SidebarLayout.columnWidth : 0
+
+            HStack(spacing: 0) {
+                if leadingInset > 0 {
+                    Color.clear.frame(width: leadingInset)
+                }
+                SVGRefreshIndicatorView(
+                    pullProgress: pullProg,
+                    isRefreshing: viewModel.isRefreshing,
+                    colorScheme: theme.themeColor
+                )
+                .frame(height: 40)
+                .frame(maxWidth: .infinity)
+                .mask {
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 0.12),
+                        .init(color: .black, location: 0.88),
+                        .init(color: .clear, location: 1)
+                    ], startPoint: .leading, endPoint: .trailing)
+                }
             }
+            .frame(maxWidth: .infinity)
             .offset(y: offsetY)
             .opacity(opac)
             .allowsHitTesting(false)
