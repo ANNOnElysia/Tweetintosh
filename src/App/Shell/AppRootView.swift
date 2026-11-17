@@ -6,35 +6,6 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Native AppKit Visual Effect View (True macOS Translucent Gaussian Blur)
-final class NonInteractiveVisualEffectView: NSVisualEffectView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil // Transparent to all mouse clicks so SwiftUI buttons receive events immediately
-    }
-}
-
-struct VisualEffectBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .hudWindow
-    var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
-    var state: NSVisualEffectView.State = .active
-    
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NonInteractiveVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = state
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
-        nsView.state = state
-    }
-}
-
-// MARK: - Top Bar Targets
-
 // The top bar's controls are small and sit near the top edge, so a finger reaches for them from below and often lands
 // beside them. Each takes taps across the full height of the bar plus this much space above and below it; the space is
 // given back outside, so nothing moves.
@@ -60,113 +31,7 @@ private extension View {
     }
 }
 
-// MARK: - Adaptive Glass Modifier (Liquid Glass Mode vs Frosted Glass Off Mode)
-// Every Liquid Glass surface goes through here. It is Apple's glass as the HIG describes it, with no clarity control of
-// the app's own: how clear or tinted the glass looks, and Reduce Transparency, are the user's choices in System Settings,
-// which the system glass already follows.
-@available(macOS 26.0, *)
-private struct TweetGlassModifier<S: Shape>: ViewModifier {
-    var glass: Glass
-    var shape: S
-
-    func body(content: Content) -> some View {
-        content.glassEffect(glass, in: shape)
-    }
-}
-
-extension View {
-    @available(macOS 26.0, *)
-    func tweetGlass<S: Shape>(_ glass: Glass = .regular, in shape: S) -> some View {
-        modifier(TweetGlassModifier(glass: glass, shape: shape))
-    }
-}
-
-struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
-    var isLiquid: Bool
-    var shape: S
-    // Clear variant, so content behind stays visible (top tab switcher)
-    var isClear: Bool = false
-    // Interactive glass answers a press itself, which suits glass that is a control. A bar or panel holding other
-    // controls passes false: on a touch screen its own response to a finger took the touch from the tab or button on it.
-    var isInteractive: Bool = true
-    @ObservedObject private var theme = ThemeManager.shared
-
-    func body(content: Content) -> some View {
-        if isLiquid {
-            if #available(macOS 26.0, *) {
-                // Mode A: Native Liquid Glass (SwiftUI macOS 26+ native API)
-                let base: Glass = isClear ? .clear : .regular
-                let tinted: Glass = theme.useLiquidGlassTint
-                    ? base.tint(ThemeManager.accent.opacity(theme.isLight ? 0.12 : 0.16))
-                    : base
-                let glassStyle: Glass = isInteractive ? tinted.interactive() : tinted
-
-                // Nothing painted behind or around it: a fill sits between the glass and what it refracts and turns it
-                // milky, and the system glass already draws its own edge and shadow
-                content.tweetGlass(glassStyle, in: shape)
-            } else {
-                fallbackFrostedGlass(content: content)
-            }
-        } else {
-            // Mode B: Liquid Glass Disabled - Pure High-grade Gaussian Blur (VisualEffectView)
-            fallbackFrostedGlass(content: content)
-        }
-    }
-    
-    @ViewBuilder
-    private func fallbackFrostedGlass(content: Content) -> some View {
-        content
-            .background(
-                ZStack {
-                    VisualEffectBackground(
-                        material: theme.isLight ? .headerView : .sidebar,
-                        blendingMode: .withinWindow
-                    )
-                    (theme.isLight ? Color.white.opacity(0.72) : Color(white: 0.08).opacity(0.42))
-                }
-                .clipShape(shape)
-            )
-            .overlay(
-                shape
-                    .stroke(
-                        LinearGradient(
-                            colors: theme.isLight ? [
-                                Color(hex: "#DED9CB").opacity(0.85),
-                                Color(hex: "#ECE8DC").opacity(0.60),
-                                Color.white.opacity(0.90)
-                            ] : [
-                                Color.white.opacity(0.24),
-                                Color.white.opacity(0.08),
-                                Color.white.opacity(0.16)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.75
-                    )
-                    .allowsHitTesting(false)
-            )
-            .shadow(
-                color: Color.black.opacity(theme.isLight ? 0.08 : 0.35),
-                radius: theme.isLight ? 10 : 14,
-                x: 0,
-                y: theme.isLight ? 3 : 5
-            )
-    }
-}
-
 // MARK: - Sidebar Glass Transition
-
-// One timing for the sidebar, the top capsule and the page beside them, so the shapes and the layout move together.
-// Apple Music on iPad settles both in about a quarter of a second with a spring, not a long ease: the droplet has
-// travelled and the new row is highlighted before a 0.45 s curve would still be halfway there.
-// Shared with NavigationManager, whose keyboard shortcut and automatic expansion toggle the same state.
-enum SidebarMotion {
-    static let toggle = Animation.spring(response: 0.28, dampingFraction: 0.90)
-    // The selected tab's glass capsule on its own, which has less distance to cover than the sidebar.
-    static let selection = Animation.spring(response: 0.22, dampingFraction: 0.86)
-    static let content = Animation.spring(response: 0.24, dampingFraction: 0.88)
-}
 
 private struct SidebarChromeMotion: AnimatableModifier {
     var progress: CGFloat
@@ -205,17 +70,6 @@ private struct SidebarChromeMotion: AnimatableModifier {
 }
 
 // MARK: - AppRootView (Adaptive Shell)
-
-// The floating sidebar's column. The leading margin is wider than the window-edge margins so the system glass shadow
-// has room on the left; the width shrinks by the same amount, keeping the right edge where it was so the timeline does
-// not move. The trailing and bottom margins give the shadow room before it is cut off by the page and the window edge.
-enum SidebarLayout {
-    static let width: CGFloat = 208
-    static let leadingMargin: CGFloat = 20
-    static let trailingMargin: CGFloat = 32
-    static let bottomMargin: CGFloat = 32
-    static let columnWidth = leadingMargin + width + trailingMargin
-}
 
 struct AppRootView: View {
     @Bindable private var nav = NavigationManager.shared
