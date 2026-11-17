@@ -127,6 +127,8 @@ struct ScrollContainer<Content: View>: View {
     
     var body: some View {
         let reporter = watcher.reporter
+        // The watcher owns the reporter, so the reporter must not own the watcher back: that cycle would keep the
+        // page's callbacks and everything they capture alive after the page is gone.
         reporter.onScrollView = { [weak watcher, onNearBottom, onScrollView] sv in
             watcher?.attach(sv, onNearBottom: onNearBottom)
             onScrollView?(sv)

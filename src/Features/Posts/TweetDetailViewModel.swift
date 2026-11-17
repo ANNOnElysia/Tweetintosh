@@ -83,6 +83,8 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
     @Published var isSubmittingReply: Bool = false
     
     private let apiClient: APIClient
+    // Kept so the registrations go when the page does; NotificationCenter keeps every block observer it is given.
+    private var observers: [NSObjectProtocol] = []
     
     init(focalTweet: Tweet, apiClient: APIClient = .shared) {
         defer { TweetMutationHub.shared.register(self) }
@@ -90,14 +92,14 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
         self.apiClient = apiClient
         
         // A reply sent from the reply sheet to this post (or to a reply shown here): show it
-        NotificationCenter.default.addObserver(forName: NSNotification.Name("Tweetintosh_ReplyPosted"), object: nil, queue: .main) { [weak self] note in
+        observers.append(NotificationCenter.default.addObserver(forName: NSNotification.Name("Tweetintosh_ReplyPosted"), object: nil, queue: .main) { [weak self] note in
             guard let self = self, let targetId = note.userInfo?["targetId"] as? String else { return }
             if targetId == self.focalTweet.id || self.replies.contains(where: { $0.id == targetId }) || self.ancestors.contains(where: { $0.id == targetId }) {
                 self.refreshAfterReply()
             }
-        }
+        })
         
-        NotificationCenter.default.addObserver(
+        observers.append(NotificationCenter.default.addObserver(
             forName: NSNotification.Name("Tweetintosh_PromotedPostsSettingDidChange"),
             object: nil,
             queue: .main
@@ -109,7 +111,11 @@ final class TweetDetailViewModel: ObservableObject, TweetMutationTarget {
             } else {
                 self.loadDetail()
             }
-        }
+        })
+    }
+    
+    deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
     
     // MARK: - Load Tweet Detail & Conversation Thread

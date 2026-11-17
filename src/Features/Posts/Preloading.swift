@@ -104,6 +104,9 @@ final class ProfilePreloader {
                         guard let self = self else { return }
                         if case .success(let page) = postsResult {
                             entry.posts = (page.items, page.bottomCursor)
+                            // The entry is only complete now; its age starts here so the finished page is not the first
+                            // one evicted for a timestamp taken before its posts arrived.
+                            entry.fetchedAt = Date()
                             self.store(entry, for: name)
                         }
                         self.inFlight.remove(name)
@@ -152,9 +155,11 @@ final class ProfilePreloader {
 
     private func store(_ entry: Entry, for name: String) {
         entries[name] = entry
-        if entries.count > maxEntries {
-            let oldest = entries.min { $0.value.fetchedAt < $1.value.fetchedAt }?.key
-            if let oldest = oldest, oldest != name { entries.removeValue(forKey: oldest) }
+        // Out-of-order completions can reinsert an entry that other preloads displaced; evict until the cap holds
+        // rather than assuming one insertion needs at most one removal.
+        while entries.count > maxEntries,
+              let oldest = entries.min(by: { $0.value.fetchedAt < $1.value.fetchedAt })?.key {
+            entries.removeValue(forKey: oldest)
         }
     }
 }

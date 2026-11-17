@@ -28,6 +28,11 @@ domain reproduces a fresh install.
 
 ## Source map
 
+Sources are grouped under `src/App` (lifecycle, shell, navigation, commands), `src/Features` (one directory per
+screen area), `src/Domain` (shared post models), `src/Infrastructure` (accounts, networking, caches, localization,
+platform services) and `src/SharedUI` (reusable views, materials and media loading). The entries below name the file,
+not its full path.
+
 Entry point and shell
 - `main.swift` — `@main` AppDelegate: windows, menu bar, settings window, login flow, account switching, fn+Control
   window tiling.
