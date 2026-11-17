@@ -328,10 +328,15 @@ final class NavigationManager {
     @ObservationIgnored private var videosSettingObserver: AnyCancellable?
 
     private init() {
-        videosSettingObserver = observeChanges(of: { _ = ThemeManager.shared.showVideosTab }) { [weak self] in
-            guard let self, !ThemeManager.shared.showVideosTab, self.currentTab == .videos else { return }
-            self.selectTab(.home)
-        }
+        // ThemeManager is still an ObservableObject, so its @Published value is not visible to observeChanges,
+        // which tracks @Observable state. The value Combine hands over is also the value after the change.
+        videosSettingObserver = ThemeManager.shared.$showVideosTab
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isShown in
+                guard let self, !isShown, self.currentTab == .videos else { return }
+                self.selectTab(.home)
+            }
         setupKeyboardMonitoring()
     }
     
