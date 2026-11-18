@@ -172,11 +172,14 @@ final class TranslationSettingsManager: ObservableObject {
             case .missingKey:
                 return LocalizationManager.shared.t("translation_missing_key")
             case .invalidURL:
-                return "Invalid API Base URL"
+                return LocalizationManager.shared.t("translation_invalid_base_url")
             case .serverError(let msg):
                 return msg
             case .emptyResponse(let detail):
-                return detail.isEmpty ? "Empty response from model" : "Empty response from model (\(detail))"
+                let loc = LocalizationManager.shared
+                return detail.isEmpty
+                    ? loc.t("translation_empty_response")
+                    : loc.format("translation_empty_response_detail", ["detail": detail])
             }
         }
     }
@@ -246,9 +249,9 @@ final class TranslationSettingsManager: ObservableObject {
                 let rawPreview = String(data: data.prefix(100), encoding: .utf8)?
                     .replacingOccurrences(of: "\n", with: " ") ?? "HTTP \(status)"
                 if rawPreview.lowercased().contains("<html") || rawPreview.lowercased().contains("<!doctype") {
-                    verificationStatus = .failure("Endpoint returned HTML instead of JSON (check Base URL)")
+                    verificationStatus = .failure(LocalizationManager.shared.t("translation_html_response"))
                 } else {
-                    verificationStatus = .failure("Unexpected /models response")
+                    verificationStatus = .failure(LocalizationManager.shared.t("translation_unexpected_response"))
                 }
             }
         } catch {
@@ -353,7 +356,7 @@ final class TranslationSettingsManager: ObservableObject {
         let rawPreview = String(data: data.prefix(120), encoding: .utf8)?
             .replacingOccurrences(of: "\n", with: " ") ?? "HTTP \(status)"
         if rawPreview.lowercased().contains("<html") || rawPreview.lowercased().contains("<!doctype") {
-            throw BYOKError.serverError("Endpoint returned HTML instead of JSON (check API Base URL, e.g. missing /v1)")
+            throw BYOKError.serverError(LocalizationManager.shared.t("translation_html_response"))
         }
         throw BYOKError.emptyResponse(rawPreview)
     }

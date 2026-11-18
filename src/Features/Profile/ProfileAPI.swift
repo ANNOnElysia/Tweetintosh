@@ -426,7 +426,7 @@ extension APIClient {
 
         func attempt(_ ids: [String]) {
             guard let id = ids.first else {
-                completion(.failure(.serverError("No working query id for \(operation)")))
+                completion(.failure(.serverError(LocalizationManager.shared.t("error_query_id_missing"))))
                 return
             }
             let body: [String: Any] = [

@@ -89,7 +89,7 @@ final class MediaActions {
             URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
                 guard let self = self, let data = data, let img = NSImage(data: data) else {
                     DispatchQueue.main.async {
-                        AppToastManager.shared.show("Failed to copy image", icon: "xmark.circle")
+                        AppToastManager.shared.show(LocalizationManager.shared.t("media_copy_failed"), icon: "xmark.circle")
                     }
                     return
                 }

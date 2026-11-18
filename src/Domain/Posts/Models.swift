@@ -454,14 +454,15 @@ struct Tweet: Codable, Hashable, Identifiable {
         let now = Date()
         let interval = now.timeIntervalSince(createdAt)
         
+        let loc = LocalizationManager.shared
         if interval < 60 {
-            return LocalizationManager.shared.t("time_just_now")
+            return loc.t("time_just_now")
         } else if interval < 3600 {
-            return "\(Int(interval / 60))m"
+            return loc.format("time_short_minutes", ["count": "\(Int(interval / 60))"])
         } else if interval < 86400 {
-            return "\(Int(interval / 3600))h"
+            return loc.format("time_short_hours", ["count": "\(Int(interval / 3600))"])
         } else if interval < 86400 * 7 {
-            return "\(Int(interval / 86400))d"
+            return loc.format("time_short_days", ["count": "\(Int(interval / 86400))"])
         } else {
             return Self.mmmDDateFormatter.string(from: createdAt)
         }

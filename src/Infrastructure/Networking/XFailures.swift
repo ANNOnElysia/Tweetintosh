@@ -56,7 +56,10 @@ enum XFailure {
             return LocalizationManager.shared.t(key, language: language)
         }
         if let serverMessage, !serverMessage.isEmpty { return serverMessage }
-        if let code { return "X refused this (\(code))" }
-        return "X refused this"
+        if let code {
+            return LocalizationManager.shared.t("error_refused_with_code", language: language)
+                .replacingOccurrences(of: "{code}", with: String(code))
+        }
+        return LocalizationManager.shared.t("error_refused", language: language)
     }
 }

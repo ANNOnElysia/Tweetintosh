@@ -589,7 +589,7 @@ private struct DMConversationRow: View {
             fmt.dateFormat = "HH:mm"
             return fmt.string(from: date)
         } else if cal.isDateInYesterday(date) {
-            return "Yesterday"
+            return LocalizationManager.shared.t("time_yesterday")
         } else {
             let fmt = DateFormatter()
             fmt.dateFormat = "MM/dd"

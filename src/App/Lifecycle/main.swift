@@ -428,8 +428,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         self.reloadForActiveAccount()
                     case .failure:
                         let alert = NSAlert()
-                        alert.messageText = "Couldn't read the account that signed in"
-                        alert.informativeText = "X didn't answer. Check the connection and try adding the account again."
+                        alert.messageText = LocalizationManager.shared.t("login_account_failed_title")
+                        alert.informativeText = LocalizationManager.shared.t("login_account_failed_message")
                         alert.runModal()
                     }
                 }

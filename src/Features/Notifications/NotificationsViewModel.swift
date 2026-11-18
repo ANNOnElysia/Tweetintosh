@@ -93,17 +93,20 @@ struct NotificationItem: Identifiable, Hashable, Codable {
     
     var relativeTime: String {
         let interval = Date().timeIntervalSince(createdAt)
+        let loc = LocalizationManager.shared
         if interval < 60 {
-            return LocalizationManager.shared.t("time_just_now")
+            return loc.t("time_just_now")
         } else if interval < 3600 {
-            return "\(Int(interval / 60))m"
+            return loc.format("time_short_minutes", ["count": "\(Int(interval / 60))"])
         } else if interval < 86400 {
-            return "\(Int(interval / 3600))h"
+            return loc.format("time_short_hours", ["count": "\(Int(interval / 3600))"])
         } else {
-            return "\(Int(interval / 86400))d"
+            return loc.format("time_short_days", ["count": "\(Int(interval / 86400))"])
         }
     }
     
+    // The multilingual literals below match X's own action summaries, which arrive in whichever language X was
+    // using rather than the app's. They are protocol text, not UI copy, so they are deliberately not localized.
     var isRecentPost: Bool {
         if iconId == "recommendation_icon" {
             return true

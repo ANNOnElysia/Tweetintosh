@@ -22,10 +22,10 @@ enum AppTab: Int, CaseIterable, Identifiable {
     
     var title: String {
         switch self {
-        case .home: return "Home"
-        case .notifications: return "Notifications"
-        case .messages: return "Messages"
-        case .videos: return "Videos"
+        case .home: return LocalizationManager.shared.t("tab_home")
+        case .notifications: return LocalizationManager.shared.t("tab_notifications")
+        case .messages: return LocalizationManager.shared.t("tab_messages")
+        case .videos: return LocalizationManager.shared.t("tab_videos")
         }
     }
     
