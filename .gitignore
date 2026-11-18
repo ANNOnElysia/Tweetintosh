@@ -5,11 +5,13 @@
 
 # SPM & Swift Build Artifacts
 .build/
+.swiftpm/
 *.dSYM/
 *.dia
 
-# Compiled Application Bundle & Installers (Rebuildable via ./build.sh)
+# Compiled Application Bundle & Installers (Rebuildable via ./build.sh, dist/ is tools/release.sh output)
 Tweetintosh.app/
+dist/
 *.dmg
 
 # Editor & Temporary Files
