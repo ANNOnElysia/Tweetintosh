@@ -495,13 +495,13 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                 
                 const resp = await fetch(url, { headers });
                 if (!resp.ok) {
-                    return { success: false, error: "HTTP " + resp.status };
+                    return { success: false, errorCode: "http", status: resp.status };
                 }
                 const json = await resp.json();
                 const userRes = json.data?.user_results_by_rest_ids?.[0]?.result;
                 const pks = userRes?.get_public_keys?.public_keys_with_token_map || [];
                 if (pks.length === 0) {
-                    return { success: false, error: "No public keys found for user" };
+                    return { success: false, errorCode: "no_public_keys" };
                 }
                 
                 const jbModule = await import("https://abs.twimg.com/x-web/xchat/embed/assets/juicebox-sdk-Ra1ujYy4.js");
@@ -552,15 +552,15 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                 }
                 
                 if (lastErr) {
-                    let desc = "Incorrect passcode";
+                    const result = { success: false, errorCode: "incorrect_passcode" };
                     if (lastErr.guesses_remaining !== undefined) {
-                        desc += " (" + lastErr.guesses_remaining + " attempts left)";
+                        result.guessesRemaining = lastErr.guesses_remaining;
                     }
-                    return { success: false, error: desc };
+                    return result;
                 }
-                return { success: false, error: "Recovery failed on all keys" };
+                return { success: false, errorCode: "recovery_failed" };
             } catch (err) {
-                return { success: false, error: err.stack || err.message || String(err) };
+                return { success: false, errorCode: "unknown", message: err.stack || err.message || String(err) };
             }
         }
         return await runJuiceboxRecovery();
@@ -590,8 +590,29 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
                 if success, let hexKey = res["hexKey"] as? String, !hexKey.isEmpty {
                     completion(.success(XChatRecoveredSecret(hex: hexKey, publicKeyVersion: res["keyVersion"] as? String)))
                 } else {
-                    let errStr = res["error"] as? String ?? "Recovery failed"
-                    completion(.failure(.serverError(errStr)))
+                    let loc = LocalizationManager.shared
+                    let message: String
+                    switch res["errorCode"] as? String {
+                    case "incorrect_passcode":
+                        let remaining = (res["guessesRemaining"] as? Int)
+                            ?? Int(res["guessesRemaining"] as? String ?? "")
+                        if let remaining {
+                            message = loc.format("messages_passcode_incorrect_attempts", ["count": "\(remaining)"])
+                        } else {
+                            message = loc.t("messages_passcode_incorrect")
+                        }
+                    case "no_public_keys":
+                        message = loc.t("messages_passcode_no_keys")
+                    case "http":
+                        let status = res["status"] as? Int ?? 0
+                        message = loc.format("error_http_status", ["status": "\(status)"])
+                    default:
+                        if let detail = res["message"] as? String {
+                            writeLog.error("Juicebox recovery failed: \(detail, privacy: .public)")
+                        }
+                        message = loc.t("messages_passcode_error")
+                    }
+                    completion(.failure(.serverError(message)))
                 }
             }
         }
@@ -601,7 +622,7 @@ final class WebKitWriteChannel: NSObject, WKNavigationDelegate {
     
     private func presentCaptchaWindow() {
         guard let window = hostWindow else { return }
-        window.title = "Security Verification - X"
+        window.title = LocalizationManager.shared.t("login_security_verification")
         window.center()
         window.styleMask = [.titled, .closable]
         window.makeKeyAndOrderFront(nil)

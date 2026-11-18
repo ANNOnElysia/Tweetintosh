@@ -570,7 +570,7 @@ struct DMConversation: Identifiable, Codable, Equatable {
             return other.name.isEmpty ? other.formattedHandle : other.name
         }
         let names = participants.map { $0.name }
-        return names.isEmpty ? "Direct Message" : names.joined(separator: ", ")
+        return names.isEmpty ? LocalizationManager.shared.t("messages_direct_message") : names.joined(separator: ", ")
     }
     
     var displayHandle: String {

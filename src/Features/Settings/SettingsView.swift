@@ -552,7 +552,7 @@ private struct ModelPickerPopover: View {
 
         VStack(spacing: 0) {
             if catalog.models.count > 8 || !filter.isEmpty {
-                TextField("Filter…", text: $query)
+                TextField(loc.t("settings_filter_placeholder"), text: $query)
                     .textFieldStyle(.roundedBorder)
                     .font(theme.appFont(size: 12))
                     .padding(8)
@@ -1077,7 +1077,7 @@ struct SettingsView: View {
             }
             HStack {
                 Spacer()
-                Text("Tweetintosh v\(AppVersion.short) (Headless Native Swift)")
+                Text(loc.format("settings_version_footer", ["version": AppVersion.short]))
                     .font(theme.appFont(size: 11))
                     .foregroundColor(ThemeManager.tertiaryText)
                 Spacer()

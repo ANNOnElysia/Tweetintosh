@@ -629,7 +629,7 @@ private struct LiquidGlassCapsule: View {
             .buttonStyle(.target)
             .topBarTargetSpace()
             .padding(.trailing, 6)
-            .help(nav.isSearchActive ? "Close Search (Esc / ⌥S)" : "Search (⌥S)")
+            .help(loc.t(nav.isSearchActive ? "tooltip_close_search" : "tooltip_search"))
         }
         .padding(.vertical, 4)
         .modifier(

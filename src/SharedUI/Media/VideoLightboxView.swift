@@ -31,8 +31,8 @@ enum VideoQualityOption: Hashable, Identifiable {
     
     var shortLabel: String {
         switch self {
-        case .highest: return "MAX"
-        case .auto: return "AUTO"
+        case .highest: return LocalizationManager.shared.t("video_quality_highest_short")
+        case .auto: return LocalizationManager.shared.t("video_quality_auto_short")
         case .resolution(let h): return "\(h)p"
         }
     }

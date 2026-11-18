@@ -284,7 +284,7 @@ extension APIClient {
             guard let id = ids.first(where: { !tried.contains($0) }) else {
                 if discovered {
                     graphQLLog.error("no working query id for \(operation, privacy: .public)")
-                    completion(.failure(.serverError("No working query id for \(operation)")))
+                    completion(.failure(.serverError(LocalizationManager.shared.t("error_query_id_missing"))))
                 } else {
                     GraphQLOperationIDs.shared.discover(using: self, creds: creds) {
                         attempt(GraphQLOperationIDs.shared.ids(for: operation), tried: tried, discovered: true, retriedBest: retriedBest)

@@ -778,6 +778,27 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "解锁失败，请重试。",
             .traditionalChinese: "解鎖失敗，請重試。"
         ],
+        "messages_passcode_incorrect_attempts": [
+            .english: "Incorrect passcode. {count} attempts left.",
+            .japanese: "パスコードが正しくありません。残り {count} 回です。",
+            .korean: "암호가 올바르지 않습니다. {count}회 남았습니다.",
+            .simplifiedChinese: "密码错误，还可以尝试 {count} 次。",
+            .traditionalChinese: "密碼錯誤，還可以嘗試 {count} 次。"
+        ],
+        "messages_passcode_no_keys": [
+            .english: "This account has no encryption keys on X, so encrypted messages can't be unlocked.",
+            .japanese: "このアカウントには X 上に暗号化キーがないため、暗号化されたメッセージを解除できません。",
+            .korean: "이 계정에는 X에 암호화 키가 없어 암호화된 메시지의 잠금을 해제할 수 없습니다.",
+            .simplifiedChinese: "这个账号在 X 上没有加密密钥，无法解锁加密私信。",
+            .traditionalChinese: "這個帳號在 X 上沒有加密金鑰，無法解鎖加密私訊。"
+        ],
+        "messages_direct_message": [
+            .english: "Direct Message",
+            .japanese: "ダイレクトメッセージ",
+            .korean: "다이렉트 메시지",
+            .simplifiedChinese: "私信",
+            .traditionalChinese: "私訊"
+        ],
         "tab_search": [
             .english: "Search",
             .japanese: "検索",
@@ -1099,6 +1120,41 @@ final class LocalizationManager: ObservableObject {
             .korean: "X 계정으로 로그인",
             .simplifiedChinese: "登录 X 账户",
             .traditionalChinese: "登入 X 帳號"
+        ],
+        "login_window_title": [
+            .english: "Sign in to X (Tweetintosh Authentication)",
+            .japanese: "X にログイン（Tweetintosh 認証）",
+            .korean: "X 로그인 (Tweetintosh 인증)",
+            .simplifiedChinese: "登录 X（Tweetintosh 认证）",
+            .traditionalChinese: "登入 X（Tweetintosh 認證）"
+        ],
+        "login_popup_title": [
+            .english: "Sign in",
+            .japanese: "ログイン",
+            .korean: "로그인",
+            .simplifiedChinese: "登录",
+            .traditionalChinese: "登入"
+        ],
+        "login_security_verification": [
+            .english: "Security Verification - X",
+            .japanese: "セキュリティ確認 - X",
+            .korean: "보안 확인 - X",
+            .simplifiedChinese: "安全验证 - X",
+            .traditionalChinese: "安全驗證 - X"
+        ],
+        "login_account_failed_title": [
+            .english: "Couldn't read the account that signed in",
+            .japanese: "ログインしたアカウントを読み取れませんでした",
+            .korean: "로그인한 계정을 읽지 못했습니다",
+            .simplifiedChinese: "无法读取刚登录的账号",
+            .traditionalChinese: "無法讀取剛登入的帳號"
+        ],
+        "login_account_failed_message": [
+            .english: "X didn't answer. Check the connection and try adding the account again.",
+            .japanese: "X から応答がありませんでした。接続を確認し、もう一度アカウントを追加してください。",
+            .korean: "X가 응답하지 않았습니다. 연결을 확인하고 계정을 다시 추가해 주세요.",
+            .simplifiedChinese: "X 没有响应。请检查网络连接，然后重新添加账号。",
+            .traditionalChinese: "X 沒有回應。請檢查網路連線，然後重新加入帳號。"
         ],
         "settings": [
             .english: "Settings",
@@ -1807,6 +1863,41 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "接口返回的模型",
             .traditionalChinese: "介面回傳的模型"
         ],
+        "translation_invalid_base_url": [
+            .english: "Invalid API Base URL",
+            .japanese: "API ベース URL が正しくありません",
+            .korean: "API 기본 URL이 올바르지 않습니다",
+            .simplifiedChinese: "API 基础 URL 无效",
+            .traditionalChinese: "API 基礎 URL 無效"
+        ],
+        "translation_empty_response": [
+            .english: "The model returned an empty response.",
+            .japanese: "モデルから空の応答が返されました。",
+            .korean: "모델이 빈 응답을 반환했습니다.",
+            .simplifiedChinese: "模型返回了空内容。",
+            .traditionalChinese: "模型傳回了空白內容。"
+        ],
+        "translation_empty_response_detail": [
+            .english: "The model returned an empty response ({detail}).",
+            .japanese: "モデルから空の応答が返されました（{detail}）。",
+            .korean: "모델이 빈 응답을 반환했습니다({detail}).",
+            .simplifiedChinese: "模型返回了空内容（{detail}）。",
+            .traditionalChinese: "模型傳回了空白內容（{detail}）。"
+        ],
+        "translation_html_response": [
+            .english: "The endpoint returned a web page instead of JSON. Check the API Base URL.",
+            .japanese: "エンドポイントが JSON ではなく Web ページを返しました。API ベース URL を確認してください。",
+            .korean: "엔드포인트가 JSON 대신 웹 페이지를 반환했습니다. API 기본 URL을 확인하세요.",
+            .simplifiedChinese: "接口返回了网页而不是 JSON。请检查 API 基础 URL。",
+            .traditionalChinese: "介面傳回了網頁而不是 JSON。請檢查 API 基礎 URL。"
+        ],
+        "translation_unexpected_response": [
+            .english: "The endpoint returned an unexpected response.",
+            .japanese: "エンドポイントから想定外の応答が返されました。",
+            .korean: "엔드포인트가 예상치 못한 응답을 반환했습니다.",
+            .simplifiedChinese: "接口返回了无法识别的内容。",
+            .traditionalChinese: "介面傳回了無法辨識的內容。"
+        ],
         "profile_tab_posts": [
             .english: "Posts",
             .japanese: "ポスト",
@@ -2150,6 +2241,34 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "刚刚",
             .traditionalChinese: "剛剛"
         ],
+        "time_short_minutes": [
+            .english: "{count}m",
+            .japanese: "{count}分",
+            .korean: "{count}분",
+            .simplifiedChinese: "{count}分钟",
+            .traditionalChinese: "{count}分鐘"
+        ],
+        "time_short_hours": [
+            .english: "{count}h",
+            .japanese: "{count}時間",
+            .korean: "{count}시간",
+            .simplifiedChinese: "{count}小时",
+            .traditionalChinese: "{count}小時"
+        ],
+        "time_short_days": [
+            .english: "{count}d",
+            .japanese: "{count}日",
+            .korean: "{count}일",
+            .simplifiedChinese: "{count}天",
+            .traditionalChinese: "{count}天"
+        ],
+        "time_yesterday": [
+            .english: "Yesterday",
+            .japanese: "昨日",
+            .korean: "어제",
+            .simplifiedChinese: "昨天",
+            .traditionalChinese: "昨天"
+        ],
         "tooltip_toggle_sidebar": [
             .english: "Toggle Sidebar (⌥`)",
             .japanese: "サイドバーの切り替え (⌥`)",
@@ -2438,6 +2557,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "自动 (自适应网络)",
             .traditionalChinese: "自動 (自適應網路)"
         ],
+        "video_quality_highest_short": [
+            .english: "MAX",
+            .japanese: "最高",
+            .korean: "최고",
+            .simplifiedChinese: "最高",
+            .traditionalChinese: "最高"
+        ],
+        "video_quality_auto_short": [
+            .english: "AUTO",
+            .japanese: "自動",
+            .korean: "자동",
+            .simplifiedChinese: "自动",
+            .traditionalChinese: "自動"
+        ],
         "video_quality_1080p": [
             .english: "1080p Full HD",
             .japanese: "1080p フルHD",
@@ -2563,6 +2696,13 @@ final class LocalizationManager: ObservableObject {
             .korean: "원본 이미지가 클립보드에 복사되었습니다",
             .simplifiedChinese: "原图已复制到剪贴板",
             .traditionalChinese: "原圖已複製至剪貼簿"
+        ],
+        "media_copy_failed": [
+            .english: "Failed to copy image",
+            .japanese: "画像をコピーできませんでした",
+            .korean: "이미지를 복사하지 못했습니다",
+            .simplifiedChinese: "复制图片失败",
+            .traditionalChinese: "複製圖片失敗"
         ],
         "image_saved": [
             .english: "Original image saved successfully",
@@ -2696,6 +2836,20 @@ final class LocalizationManager: ObservableObject {
             .korean: "업데이트",
             .simplifiedChinese: "更新",
             .traditionalChinese: "更新"
+        ],
+        "settings_version_footer": [
+            .english: "Tweetintosh v{version} (Headless Native Swift)",
+            .japanese: "Tweetintosh v{version}（ヘッドレス・ネイティブ Swift）",
+            .korean: "Tweetintosh v{version} (헤드리스 네이티브 Swift)",
+            .simplifiedChinese: "Tweetintosh v{version}（原生 Swift 无网页界面）",
+            .traditionalChinese: "Tweetintosh v{version}（原生 Swift 無網頁介面）"
+        ],
+        "settings_filter_placeholder": [
+            .english: "Filter…",
+            .japanese: "絞り込む…",
+            .korean: "필터…",
+            .simplifiedChinese: "筛选…",
+            .traditionalChinese: "篩選…"
         ],
         "auto_check_updates": [
             .english: "Check for Updates Automatically",
@@ -2901,6 +3055,83 @@ final class LocalizationManager: ObservableObject {
             .korean: "이 게시물은 X가 노출을 제한해 작성자만 볼 수 있습니다. 평소처럼 계정을 사용하다 보면 풀리는 경우가 많습니다.",
             .simplifiedChinese: "这条内容被 X 限流了，只有你自己能看到。正常用一段时间账号通常会恢复。",
             .traditionalChinese: "這則內容被 X 限流了，只有你自己看得到。正常用一段時間帳號通常會恢復。"
+        ],
+        "error_not_authenticated": [
+            .english: "Not authenticated. Please sign in.",
+            .japanese: "認証されていません。ログインしてください。",
+            .korean: "인증되지 않았습니다. 로그인해 주세요.",
+            .simplifiedChinese: "尚未登录，请先登录。",
+            .traditionalChinese: "尚未登入，請先登入。"
+        ],
+        "error_invalid_response": [
+            .english: "Received an invalid response from the server.",
+            .japanese: "サーバーから不正な応答が返されました。",
+            .korean: "서버에서 잘못된 응답을 받았습니다.",
+            .simplifiedChinese: "服务器返回了无效响应。",
+            .traditionalChinese: "伺服器傳回了無效回應。"
+        ],
+        "error_parse_failed": [
+            .english: "Couldn't read the data from X.",
+            .japanese: "X からのデータを読み取れませんでした。",
+            .korean: "X에서 받은 데이터를 읽지 못했습니다.",
+            .simplifiedChinese: "无法解析来自 X 的数据。",
+            .traditionalChinese: "無法解析來自 X 的資料。"
+        ],
+        "error_refused_with_code": [
+            .english: "X refused this (code {code})",
+            .japanese: "X がこの操作を拒否しました（コード {code}）",
+            .korean: "X가 이 작업을 거부했습니다(코드 {code})",
+            .simplifiedChinese: "X 拒绝了这个操作（代码 {code}）",
+            .traditionalChinese: "X 拒絕了這個操作（代碼 {code}）"
+        ],
+        "error_refused": [
+            .english: "X refused this",
+            .japanese: "X がこの操作を拒否しました",
+            .korean: "X가 이 작업을 거부했습니다",
+            .simplifiedChinese: "X 拒绝了这个操作",
+            .traditionalChinese: "X 拒絕了這個操作"
+        ],
+        "error_http_status": [
+            .english: "X returned HTTP {status}.",
+            .japanese: "X が HTTP {status} を返しました。",
+            .korean: "X가 HTTP {status}을(를) 반환했습니다.",
+            .simplifiedChinese: "X 返回了 HTTP {status}。",
+            .traditionalChinese: "X 傳回了 HTTP {status}。"
+        ],
+        "error_unexpected_server_response": [
+            .english: "X returned an unexpected response.",
+            .japanese: "X から想定外の応答が返されました。",
+            .korean: "X가 예상치 못한 응답을 반환했습니다.",
+            .simplifiedChinese: "X 返回了无法识别的响应。",
+            .traditionalChinese: "X 傳回了無法辨識的回應。"
+        ],
+        "error_query_id_missing": [
+            .english: "X's app interface changed, so this action couldn't be completed. Updating Tweetintosh may fix it.",
+            .japanese: "X の画面構成が変わり、この操作を完了できませんでした。Tweetintosh を更新すると解決する場合があります。",
+            .korean: "X의 인터페이스가 바뀌어 이 작업을 완료하지 못했습니다. Tweetintosh를 업데이트하면 해결될 수 있습니다.",
+            .simplifiedChinese: "X 的接口发生了变化，这个操作没能完成。更新 Tweetintosh 也许能解决。",
+            .traditionalChinese: "X 的介面發生了變化，這個操作沒能完成。更新 Tweetintosh 也許能解決。"
+        ],
+        "error_media_process_failed": [
+            .english: "X couldn't process the media.",
+            .japanese: "X がメディアを処理できませんでした。",
+            .korean: "X가 미디어를 처리하지 못했습니다.",
+            .simplifiedChinese: "X 无法处理这个媒体文件。",
+            .traditionalChinese: "X 無法處理這個媒體檔案。"
+        ],
+        "error_media_process_timeout": [
+            .english: "X took too long to process the media.",
+            .japanese: "X のメディア処理がタイムアウトしました。",
+            .korean: "X의 미디어 처리 시간이 너무 오래 걸렸습니다.",
+            .simplifiedChinese: "X 处理媒体文件超时了。",
+            .traditionalChinese: "X 處理媒體檔案逾時了。"
+        ],
+        "error_post_not_confirmed": [
+            .english: "X didn't confirm the post, so it was not published.",
+            .japanese: "X から投稿の確認が返らなかったため、公開されませんでした。",
+            .korean: "X가 게시를 확인하지 않아 공개되지 않았습니다.",
+            .simplifiedChinese: "X 没有确认这条帖子，所以没有发布出去。",
+            .traditionalChinese: "X 沒有確認這則貼文，所以沒有發佈出去。"
         ]
     ]
         

@@ -21,7 +21,7 @@ final class LoginWindowController: NSWindowController, WKNavigationDelegate, WKU
             backing: .buffered,
             defer: false
         )
-        window.title = "Sign in to X (Tweetintosh Authentication)"
+        window.title = LocalizationManager.shared.t("login_window_title")
         window.center()
         window.backgroundColor = .black
         
@@ -82,7 +82,7 @@ final class LoginWindowController: NSWindowController, WKNavigationDelegate, WKU
             defer: false
         )
         popupWindow.isReleasedWhenClosed = false
-        popupWindow.title = "Sign in"
+        popupWindow.title = LocalizationManager.shared.t("login_popup_title")
         popupWindow.center()
         
         let popup = WKWebView(frame: popupWindow.contentView!.bounds, configuration: configuration)

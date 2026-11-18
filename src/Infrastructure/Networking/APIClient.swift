@@ -18,10 +18,10 @@ enum APIError: LocalizedError {
     
     var errorDescription: String? {
         switch self {
-        case .unauthenticated: return "Not authenticated. Please sign in."
-        case .invalidResponse: return "Received invalid response from server."
+        case .unauthenticated: return LocalizationManager.shared.t("error_not_authenticated")
+        case .invalidResponse: return LocalizationManager.shared.t("error_invalid_response")
         case .networkError(let err): return err.localizedDescription
-        case .parseError: return "Failed to parse timeline data."
+        case .parseError: return LocalizationManager.shared.t("error_parse_failed")
         case .serverError(let msg): return msg
         case .refused(let code, let message): return XFailure.describe(code: code, serverMessage: message)
         }
@@ -1213,7 +1213,7 @@ final class APIClient {
                 completion(.failure(error))
             case .success(let json):
                 guard let data = json["data"] as? [String: Any], successCheck(data) else {
-                    completion(.failure(.serverError("Unexpected server response")))
+                    completion(.failure(.serverError(LocalizationManager.shared.t("error_unexpected_server_response"))))
                     return
                 }
                 completion(.success(()))
@@ -1327,7 +1327,7 @@ final class APIClient {
         func attempt(_ qids: [String], discovered: Bool) {
             guard let qid = qids.first else {
                 if discovered {
-                    completion(.failure(.serverError("No working query id for DeleteTweet")))
+                    completion(.failure(.serverError(LocalizationManager.shared.t("error_query_id_missing"))))
                 } else {
                     GraphQLOperationIDs.shared.discover(using: self, creds: creds) {
                         attempt(GraphQLOperationIDs.shared.ids(for: "DeleteTweet"), discovered: true)
@@ -1514,11 +1514,11 @@ final class APIClient {
             if state == "succeeded" { break }
             if state == "failed" {
                 let message = (info["error"] as? [String: Any])?["message"] as? String
-                throw APIError.serverError(message ?? "X couldn't process the media")
+                throw APIError.serverError(message ?? LocalizationManager.shared.t("error_media_process_failed"))
             }
             let delay = max(1.0, (info["check_after_secs"] as? Double) ?? 2.0)
             waited += delay
-            if waited > 180 { throw APIError.serverError("X took too long to process the media") }
+            if waited > 180 { throw APIError.serverError(LocalizationManager.shared.t("error_media_process_timeout")) }
             try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             finalize = try await send(request(["command": "STATUS", "media_id": mediaId], method: "GET"))
         }
@@ -1586,7 +1586,7 @@ final class APIClient {
         
         func attempt(qids: [String]) {
             guard let qid = qids.first else {
-                completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
+                completion(.failure(.serverError(LocalizationManager.shared.t("error_post_not_confirmed"))))
                 return
             }
             let path = "/i/api/graphql/\(qid)/CreateTweet"
@@ -1610,7 +1610,7 @@ final class APIClient {
                         if !remaining.isEmpty {
                             attempt(qids: remaining)
                         } else {
-                            completion(.failure(.serverError("X didn't confirm the post, so it was not published.")))
+                            completion(.failure(.serverError(LocalizationManager.shared.t("error_post_not_confirmed"))))
                         }
                         return
                     }
