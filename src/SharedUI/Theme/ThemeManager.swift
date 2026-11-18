@@ -246,10 +246,6 @@ final class ThemeManager: ObservableObject {
     @Published var showVideosTab: Bool {
         didSet {
             UserDefaults.standard.set(showVideosTab, forKey: "Tweetintosh_ShowVideosTab")
-            // Turned off while watching, the tab it was on is gone
-            if !showVideosTab && NavigationManager.shared.currentTab == .videos {
-                NavigationManager.shared.selectTab(.home)
-            }
         }
     }
     

@@ -115,6 +115,10 @@ struct ImageLightboxOverlay: View {
                         .onTapGesture(count: 2) {
                             manager.toggleZoom()
                         }
+                        // Double-click magnifies the artwork; once magnified the drag to hand pans it
+                        .pointerStyle(manager.zoomScale > 1.05
+                                      ? (manager.isPanningZoom ? .grabActive : .grabIdle)
+                                      : .zoomIn)
                         .mediaContextMenu(media: currentMedia, tweet: manager.currentTweet)
                     }
                     
@@ -353,14 +357,6 @@ struct ImageLightboxOverlay: View {
         let dragDist = abs(manager.dragOffset.height)
         return max(0.72, 1.0 - dragDist / 1000.0)
     }
-    
-    private func originalUrl(_ url: String) -> String {
-        if url.contains("pbs.twimg.com/media") {
-            let base = url.components(separatedBy: "?").first ?? url
-            return "\(base)?format=jpg&name=orig"
-        }
-        return url
-    }
 }
 
 // MARK: - Bottom Thumbnail Scrubber
@@ -398,7 +394,7 @@ private struct LightboxThumbnailScrubber: View {
                 let corner: CGFloat = isSelected ? 7 : 5
 
                 CachedAsyncImage(
-                    urlString: thumbUrl(media.mediaUrl),
+                    urlString: MediaCacheManager.shared.formatThumbUrl(media.mediaUrl),
                     placeholderColor: Color(white: 0.14),
                     contentMode: .fill,
                     targetSize: CGSize(width: activeSize * 2, height: activeSize * 2)
@@ -451,10 +447,4 @@ private struct LightboxThumbnailScrubber: View {
         )
     }
 
-    private func thumbUrl(_ original: String) -> String {
-        if original.contains("pbs.twimg.com/media"), !original.contains("?") {
-            return "\(original)?format=jpg&name=medium"
-        }
-        return original
-    }
 }

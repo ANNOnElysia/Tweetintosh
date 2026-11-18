@@ -5,6 +5,7 @@
 
 import SwiftUI
 import AppKit
+import Combine
 
 enum AppTab: Int, CaseIterable, Identifiable {
     case home = 0
@@ -323,8 +324,19 @@ final class NavigationManager {
     @ObservationIgnored private var isCmdDown: Bool = false
     
     @ObservationIgnored private var eventMonitor: Any?
-    
+    // Turning the Videos tab off while it is on screen sends the reader back Home
+    @ObservationIgnored private var videosSettingObserver: AnyCancellable?
+
     private init() {
+        // ThemeManager is still an ObservableObject, so its @Published value is not visible to observeChanges,
+        // which tracks @Observable state. The value Combine hands over is also the value after the change.
+        videosSettingObserver = ThemeManager.shared.$showVideosTab
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isShown in
+                guard let self, !isShown, self.currentTab == .videos else { return }
+                self.selectTab(.home)
+            }
         setupKeyboardMonitoring()
     }
     

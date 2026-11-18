@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - Image Memory & Disk Cache
 final class ImageCache {
@@ -54,6 +55,8 @@ final class ImageLoader: ObservableObject {
     private var shown: Request?
     private var current: Request?
     private var inFlight: Flight?
+    // The last attempt got no picture: only then does a refresh ask this address again.
+    private var failed = false
     private var pendingData: (flightID: UUID, url: String, token: UUID)?
     private var resizeWork: DispatchWorkItem?
     private var resizeID: UUID?
@@ -97,6 +100,7 @@ final class ImageLoader: ObservableObject {
             return
         }
         let request = Request(url: urlStr, targetSize: targetSize)
+        failed = false
         if current?.url != urlStr {
             cancelPendingData()
             // This loader has been handed another post: its picture is no longer something any view can ask for.
@@ -149,6 +153,12 @@ final class ImageLoader: ObservableObject {
             self.loadedImage = nil
             self.shown = nil
         }
+    }
+
+    // A refresh after a failed load tries this address again; a picture already shown or on its way is left alone.
+    func retryAfterFailure(urlString: String?, targetSize: CGSize?) {
+        guard failed, let urlString, current == Request(url: urlString, targetSize: targetSize) else { return }
+        load(urlString: urlString, targetSize: targetSize)
     }
 
     private func fetch(_ request: Request) {
@@ -218,7 +228,10 @@ final class ImageLoader: ObservableObject {
             if let current, current.url == flight.request.url, resizeWork == nil { fetch(current) }
             return
         }
-        guard let image else { return }
+        guard let image else {
+            failed = true
+            return
+        }
         loadedImage = image
         shown = flight.request
     }
@@ -283,6 +296,9 @@ struct CachedAsyncImage: View {
             // X has answered), and a reused table cell is handed a different post, so a new address is loaded too
             .onChange(of: LoadKey(url: urlString, targetSize: targetSize)) {
                 loader.load(urlString: urlString, targetSize: targetSize)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .mediaCacheRetryRequested)) { _ in
+                loader.retryAfterFailure(urlString: urlString, targetSize: targetSize)
             }
         }
     }
