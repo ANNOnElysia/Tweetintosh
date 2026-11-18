@@ -412,25 +412,43 @@ private struct DMConversationListView: View {
                         }
                     } else {
                         ForEach(vm.filteredConversations) { conv in
-                            DMConversationRow(
+                            DMSwipeableRow(
                                 conversation: conv,
-                                isSelected: conv.id == vm.selectedConversationId,
                                 isEditMode: vm.isEditMode,
-                                isChecked: vm.selectedConversationIds.contains(conv.id),
-                                onSelect: {
-                                    // The release that ends a deep press on the avatar still arrives as a click
-                                    guard !PeekCoordinator.shared.suppressesActivation else { return }
-                                    if vm.isEditMode {
-                                        if vm.selectedConversationIds.contains(conv.id) {
-                                            vm.selectedConversationIds.remove(conv.id)
-                                        } else {
-                                            vm.selectedConversationIds.insert(conv.id)
+                                vm: vm,
+                                theme: theme,
+                                loc: loc
+                            ) {
+                                DMConversationRow(
+                                    conversation: conv,
+                                    isSelected: conv.id == vm.selectedConversationId,
+                                    isEditMode: vm.isEditMode,
+                                    isChecked: vm.selectedConversationIds.contains(conv.id),
+                                    onSelect: {
+                                        // The release that ends a deep press on the avatar still arrives as a click
+                                        guard !PeekCoordinator.shared.suppressesActivation else { return }
+                                        if vm.activeSwipeConversationId != nil {
+                                            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                                                vm.activeSwipeConversationId = nil
+                                            }
+                                            return
                                         }
-                                    } else {
-                                        vm.selectConversation(conv)
+                                        if vm.isEditMode {
+                                            if vm.selectedConversationIds.contains(conv.id) {
+                                                vm.selectedConversationIds.remove(conv.id)
+                                            } else {
+                                                vm.selectedConversationIds.insert(conv.id)
+                                            }
+                                        } else {
+                                            vm.selectConversation(conv)
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
+                            .transition(.asymmetric(
+                                insertion: .opacity,
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
                         }
                     }
                 }
@@ -438,6 +456,76 @@ private struct DMConversationListView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 20)
             }
+        }
+        .overlay(alignment: .bottom) {
+            if let pending = vm.pendingDeletion {
+                DMUndoDeleteBanner(pending: pending, onUndo: {
+                    vm.undoDeleteConversation()
+                })
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.34, dampingFraction: 0.80), value: vm.pendingDeletion?.id)
+    }
+}
+
+private struct DMUndoDeleteBanner: View {
+    let pending: PendingDMDeletion
+    let onUndo: () -> Void
+
+    @ObservedObject private var theme = ThemeManager.shared
+    @ObservedObject private var loc = LocalizationManager.shared
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let remaining = max(0, pending.expiresAt.timeIntervalSince(context.date))
+            let progress = max(0, min(1, remaining / pending.duration))
+            let seconds = max(1, Int(ceil(remaining)))
+
+            HStack(spacing: 10) {
+                // Circular countdown ring in accent color with remaining seconds inside
+                ZStack {
+                    Circle()
+                        .stroke(ThemeManager.accent.opacity(0.20), lineWidth: 2.5)
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(ThemeManager.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(seconds)")
+                        .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                        .foregroundColor(ThemeManager.accent)
+                }
+                .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(loc.t("messages_deleted_undo"))
+                        .font(theme.appFont(size: 12, weight: .semibold))
+                        .foregroundColor(theme.isLight ? ThemeManager.primaryText : .white)
+                        .lineLimit(1)
+                    Text(pending.conversation.displayName)
+                        .font(theme.appFont(size: 11, weight: .regular))
+                        .foregroundColor(theme.isLight ? ThemeManager.secondaryText : Color.white.opacity(0.65))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Button(action: onUndo) {
+                    Text(loc.t("messages_undo"))
+                        .font(theme.appFont(size: 12, weight: .semibold))
+                        .foregroundColor(ThemeManager.onAccent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(ThemeManager.accent))
+                }
+                .buttonStyle(.target)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .modifier(AdaptiveGlassModifier(isLiquid: theme.useLiquidGlass, shape: RoundedRectangle(cornerRadius: 14, style: .continuous)))
+            .shadow(color: Color.black.opacity(theme.isLight ? 0.10 : 0.35), radius: 12, x: 0, y: 4)
         }
     }
 }
@@ -504,6 +592,12 @@ private struct DMConversationRow: View {
                         
                         Spacer(minLength: 4)
                         
+                        if vm.mutedConversationIds.contains(conversation.id) {
+                            Image(systemName: "bell.slash.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(theme.isLight ? ThemeManager.secondaryText.opacity(0.65) : Color.white.opacity(0.40))
+                        }
+
                         // Timestamp
                         Text(formatTimestamp(conversation.sortTimestamp))
                             .font(.system(size: 11, weight: .regular))
@@ -551,13 +645,27 @@ private struct DMConversationRow: View {
         .buttonStyle(.target)
         .onHover { hover.isHovered = $0 }
         .contextMenu {
+            Button(action: { vm.toggleRead(for: conversation.id) }) {
+                Label(
+                    loc.t(conversation.unreadCount > 0 ? "messages_mark_read" : "messages_mark_unread"),
+                    systemImage: conversation.unreadCount > 0 ? "envelope.open" : "envelope.badge"
+                )
+            }
             Button(action: { vm.togglePin(for: conversation.id) }) {
                 Label(loc.t(conversation.isPinned ? "messages_unpin" : "messages_pin"), systemImage: "pin")
+            }
+            Button(action: { vm.toggleMute(for: conversation.id) }) {
+                let isMuted = vm.mutedConversationIds.contains(conversation.id)
+                Label(loc.t(isMuted ? "messages_unmute" : "messages_mute"), systemImage: isMuted ? "bell" : "bell.slash")
             }
             if let other = conversation.otherParticipant {
                 Button(action: { NavigationManager.shared.openProfile(other.asTweetUser) }) {
                     Label(other.formattedHandle, systemImage: "person.circle")
                 }
+            }
+            Divider()
+            Button(role: .destructive, action: { vm.deleteConversation(for: conversation.id) }) {
+                Label(loc.t("messages_delete"), systemImage: "trash")
             }
         }
     }

@@ -428,12 +428,47 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "标为已读",
             .traditionalChinese: "標為已讀"
         ],
+        "messages_mark_unread": [
+            .english: "Mark as Unread",
+            .japanese: "未読にする",
+            .korean: "읽지 않음으로 표시",
+            .simplifiedChinese: "标为未读",
+            .traditionalChinese: "標為未讀"
+        ],
+        "messages_mute": [
+            .english: "Mute",
+            .japanese: "ミュート",
+            .korean: "알림 끄기",
+            .simplifiedChinese: "静音",
+            .traditionalChinese: "靜音"
+        ],
+        "messages_unmute": [
+            .english: "Unmute",
+            .japanese: "ミュート解除",
+            .korean: "알림 켜기",
+            .simplifiedChinese: "取消静音",
+            .traditionalChinese: "取消靜音"
+        ],
         "messages_delete": [
             .english: "Delete",
             .japanese: "削除",
             .korean: "삭제",
             .simplifiedChinese: "删除",
             .traditionalChinese: "刪除"
+        ],
+        "messages_deleted_undo": [
+            .english: "Conversation deleted",
+            .japanese: "会話を削除しました",
+            .korean: "대화가 삭제됨",
+            .simplifiedChinese: "已删除对话",
+            .traditionalChinese: "已刪除對話"
+        ],
+        "messages_undo": [
+            .english: "Undo",
+            .japanese: "元に戻す",
+            .korean: "실행 취소",
+            .simplifiedChinese: "撤销",
+            .traditionalChinese: "復原"
         ],
         "messages_input_placeholder": [
             .english: "Message",
