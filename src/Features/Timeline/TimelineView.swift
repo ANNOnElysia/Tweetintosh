@@ -754,6 +754,8 @@ struct MainTimelineView: View {
             // The list's scroll view has no titlebar inset (unlike ScrollView), so the titlebar height is added here
             Color.clear
                 .frame(height: (nav.sidebarExpanded ? 36 : 64) + (viewModel.isRefreshing ? 40 : 0) + listMetrics.titlebarInset)
+                // The spinner's space opens and closes with the feed instead of moving it in a single frame
+                .animation(.easeOut(duration: 0.3), value: viewModel.isRefreshing)
                 .background(
                     ScrollViewAccessor { sv in
                         TimelineScrollCoordinator.shared.registerScrollView(sv)

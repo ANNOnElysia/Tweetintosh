@@ -514,6 +514,12 @@ struct TimelineTableView: NSViewRepresentable {
         private var topSpacerHeight: CGFloat = 0
         private var pagingState: TimelineViewModel.FeedPagingState = .idle
         private var measureTimer: Timer?
+        // The refresh spinner's space has to open and close with the feed, not move it in one frame. AppKit changes a row
+        // height at once even inside an NSAnimationContext, so this is stepped per frame like a row glide.
+        private var spacerTarget: CGFloat = 0
+        private var spacerGlide: (from: CGFloat, to: CGFloat, start: CFTimeInterval)?
+        private var spacerTimer: Timer?
+        private static let spacerDuration: CFTimeInterval = 0.3
         // Rows gliding to a new height after Show more / Show less
         private struct Glide { let id: String; let from: CGFloat; let to: CGFloat }
         private var glides: [Glide] = []
@@ -571,6 +577,9 @@ struct TimelineTableView: NSViewRepresentable {
             measureTimer = nil
             heightRefreshWork?.cancel()
             heightRefreshWork = nil
+            spacerTimer?.invalidate()
+            spacerTimer = nil
+            spacerGlide = nil
             prewarmPool.removeAll()
             if let boundsObserver {
                 NotificationCenter.default.removeObserver(boundsObserver)
@@ -812,13 +821,54 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         private func applyTopSpacer(_ height: CGFloat) {
-            guard height != topSpacerHeight else { return }
-            let isFirst = topSpacerHeight == 0
+            guard height != spacerTarget else { return }
+            spacerTarget = height
+            // The first layout has no row to resize yet
+            guard topSpacerHeight != 0 else {
+                topSpacerHeight = height
+                return
+            }
+            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+                finishSpacerGlide(at: height)
+                return
+            }
+            // Retargeting (a refresh that ends before the space has finished opening) starts from wherever the row is now
+            spacerGlide = (topSpacerHeight, height, CACurrentMediaTime())
+            stepSpacerGlide()
+            guard spacerTimer == nil else { return }
+            let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in self?.stepSpacerGlide() }
+            RunLoop.main.add(timer, forMode: .common)
+            spacerTimer = timer
+        }
+
+        private func stepSpacerGlide() {
+            guard let glide = spacerGlide else {
+                spacerTimer?.invalidate()
+                spacerTimer = nil
+                return
+            }
+            let t = min(1, (CACurrentMediaTime() - glide.start) / Self.spacerDuration)
+            let eased = 1 - pow(1 - t, 3)
+            let height = t >= 1 ? glide.to : (glide.from + (glide.to - glide.from) * CGFloat(eased)).rounded()
+            if height != topSpacerHeight {
+                topSpacerHeight = height
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: 0))
+                }
+            }
+            guard t >= 1 else { return }
+            finishSpacerGlide(at: glide.to)
+        }
+
+        private func finishSpacerGlide(at height: CGFloat) {
+            spacerGlide = nil
+            spacerTimer?.invalidate()
+            spacerTimer = nil
+            guard topSpacerHeight != height else { return }
             topSpacerHeight = height
-            guard !isFirst else { return }
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.3
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                context.duration = 0
                 tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: 0))
             }
         }
