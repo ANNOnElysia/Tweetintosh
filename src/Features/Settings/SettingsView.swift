@@ -908,20 +908,29 @@ struct SettingsView: View {
                         .font(theme.appFont(size: 13))
                         .foregroundColor(ThemeManager.primaryText)
                     Spacer(minLength: 12)
-                    Picker("", selection: $theme.themeColor) {
+                    // A system Picker draws the selected row's image with the menu's selection tint, which turns the
+                    // colour swatch white. Keep the swatch on the button and leave the rows text-only.
+                    Menu {
                         ForEach(AppThemeColor.allCases) { color in
-                            Label {
+                            Toggle(isOn: Binding(
+                                get: { theme.themeColor == color },
+                                set: { if $0 { theme.themeColor = color } }
+                            )) {
                                 Text(loc.t(color.displayNameKey))
-                            } icon: {
-                                Image(systemName: "circle.fill")
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(color.accentColor)
                             }
-                            .tag(color)
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(theme.themeColor.accentColor)
+                                .frame(width: 9, height: 9)
+                            Text(loc.t(theme.themeColor.displayNameKey))
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(ThemeManager.tertiaryText)
                         }
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
+                    .menuStyle(.button)
                     .fixedSize()
                 }
 
