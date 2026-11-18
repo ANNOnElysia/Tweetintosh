@@ -119,6 +119,7 @@ extension View {
     // Pass false where the row currently opens nothing, so a preview doesn't claim an action it won't take. It only
     // withholds the hand: a subview's own pointer style, such as a link inside the row, still applies.
     func navigationPointer(_ isActive: Bool = true) -> some View {
-        self
+        // Keep the hover receiver alive when the cursor changes; switching view branches replaces it mid-hover.
+        pointerStyle(isActive ? .link : nil)
     }
 }
