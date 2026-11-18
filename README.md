@@ -72,7 +72,7 @@ Tweetintosh 专注于桌面端的使用效率、快捷键导航以及原生系�
 
 ### Requirements / 环境要求
 - macOS 15.0 or later
-- Swift command-line tools
+- Full Xcode 27.2 toolchain with the macOS 27 SDK; Command Line Tools alone cannot expand the Observation macros
 
 ### Build
 ```bash
@@ -81,6 +81,20 @@ cd Tweetintosh
 ./build.sh
 open Tweetintosh.app
 ```
+
+### Automated packages / 自动打包
+
+GitHub Actions builds and validates an Apple silicon (`arm64`) app and DMG for pull requests, `main` pushes and
+manual runs. Download packages from the successful **CI** run's **Artifacts** section, or use **Run workflow** to
+request a build. A version tag creates a draft GitHub Release after validation. Packages use ad-hoc signing;
+Developer ID signing, notarisation and the Sparkle update feed require the separate release procedure.
+
+GitHub Actions 会在 PR、`main` 推送及手动触发时编译并验证 Apple silicon（`arm64`）应用和 DMG。
+在成功的 **CI** 运行页面的 **Artifacts** 区域下载打包产物，或通过 **Run workflow** 手动打包。
+推送版本标签后，CI 会在检查通过时创建 GitHub Release 草稿。产物使用 ad-hoc 签名；Developer ID 签名、
+公证及 Sparkle 更新源仍按独立的发布流程处理。
+
+See [RELEASING.md](RELEASING.md#ci-builds-and-packaging) for triggers, required checks, version tags and signing details.
 
 ---
 

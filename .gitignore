@@ -11,6 +11,7 @@
 # Compiled Application Bundle & Installers (Rebuildable via ./build.sh)
 Tweetintosh.app/
 *.dmg
+dist/
 
 # Editor & Temporary Files
 *.swp

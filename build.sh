@@ -68,12 +68,15 @@ OLD_APP_DIR="$BASE_DIR/.build/staging/Tweetintosh.old.app"
 rm -rf "$OLD_APP_DIR"
 [ -d "$FINAL_APP_DIR" ] && mv "$FINAL_APP_DIR" "$OLD_APP_DIR"
 mv "$APP_DIR" "$FINAL_APP_DIR"
+rm -rf "$OLD_APP_DIR"
 touch "$FINAL_APP_DIR"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$FINAL_APP_DIR"
 
-# 7. Clean intermediate SPM build cache to keep local disk clean
-echo "-> Cleaning intermediate SPM build cache..."
-rm -rf "$BASE_DIR/.build"
+# 7. Keep the build cache only when requested (CI uses it for release tests)
+if [ "${KEEP_BUILD_DIR:-0}" != "1" ]; then
+    echo "-> Cleaning intermediate SPM build cache..."
+    rm -rf "$BASE_DIR/.build"
+fi
 
 echo "=== Build succeeded! ==="
 echo "Application created at: $FINAL_APP_DIR"
