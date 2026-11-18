@@ -248,6 +248,19 @@ final class ThemeManager: ObservableObject {
             UserDefaults.standard.set(showVideosTab, forKey: "Tweetintosh_ShowVideosTab")
         }
     }
+
+    // Customizable trailing swipe actions on DM conversation rows (inner = left circle, outer = right/full-swipe pill).
+    @Published var dmSwipeInnerAction: DMSwipeAction {
+        didSet {
+            UserDefaults.standard.set(dmSwipeInnerAction.rawValue, forKey: "Tweetintosh_DMSwipeInnerAction")
+        }
+    }
+
+    @Published var dmSwipeOuterAction: DMSwipeAction {
+        didSet {
+            UserDefaults.standard.set(dmSwipeOuterAction.rawValue, forKey: "Tweetintosh_DMSwipeOuterAction")
+        }
+    }
     
     // How large post text is drawn, as a step along postTextScales: View → Bigger, Smaller and Actual Size
     static let postTextScales: [CGFloat] = [0.85, 0.92, 1, 1.1, 1.2, 1.35, 1.5]
@@ -385,6 +398,10 @@ final class ThemeManager: ObservableObject {
         self.autoplayMedia = UserDefaults.standard.object(forKey: "Tweetintosh_AutoplayMedia") as? Bool ?? true
         self.abbreviateCounts = UserDefaults.standard.object(forKey: "Tweetintosh_AbbreviateCounts") as? Bool ?? true
         self.showVideosTab = UserDefaults.standard.object(forKey: "Tweetintosh_ShowVideosTab") as? Bool ?? false
+        self.dmSwipeInnerAction = UserDefaults.standard.string(forKey: "Tweetintosh_DMSwipeInnerAction")
+            .flatMap(DMSwipeAction.init(rawValue:)) ?? .mute
+        self.dmSwipeOuterAction = UserDefaults.standard.string(forKey: "Tweetintosh_DMSwipeOuterAction")
+            .flatMap(DMSwipeAction.init(rawValue:)) ?? .delete
         let savedStep = UserDefaults.standard.object(forKey: "Tweetintosh_PostTextSize") as? Int ?? Self.actualPostTextStep
         self.postTextStep = Self.postTextScales.indices.contains(savedStep) ? savedStep : Self.actualPostTextStep
 

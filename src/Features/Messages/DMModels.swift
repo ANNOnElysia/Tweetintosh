@@ -26,6 +26,7 @@ final class DMAccountSession {
     private var conversationKeys: [String: Data] = [:]
     private var decryptedMessages: [String: DMDecodedContent] = [:]
     private var pins: Set<String>
+    private var mutes: Set<String>
 
     init(accountId: String?, credentials: AuthCredentials?, defaults: UserDefaults = .standard) {
         self.accountId = accountId
@@ -34,6 +35,7 @@ final class DMAccountSession {
         self.defaults = defaults
         // The old global pin list has no owner, so it cannot safely be inherited by any account.
         pins = accountId.map { Set(defaults.stringArray(forKey: "com.anno.tweetintosh.dm.pinned.\($0)") ?? []) } ?? []
+        mutes = accountId.map { Set(defaults.stringArray(forKey: "com.anno.tweetintosh.dm.muted.\($0)") ?? []) } ?? []
     }
 
     var credentials: AuthCredentials? {
@@ -77,6 +79,21 @@ final class DMAccountSession {
         let saved = Array(pins)
         lock.unlock()
         defaults.set(saved, forKey: "com.anno.tweetintosh.dm.pinned.\(accountId)")
+    }
+
+    var mutedConversationIds: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return mutes
+    }
+
+    func toggleMute(_ conversationId: String) {
+        guard let accountId else { return }
+        lock.lock()
+        if mutes.contains(conversationId) { mutes.remove(conversationId) } else { mutes.insert(conversationId) }
+        let saved = Array(mutes)
+        lock.unlock()
+        defaults.set(saved, forKey: "com.anno.tweetintosh.dm.muted.\(accountId)")
     }
 
     @discardableResult
@@ -614,4 +631,16 @@ enum DMFilter: String, CaseIterable, Identifiable {
         case .requests: return "person.badge.shield.checkmark"
         }
     }
+}
+
+/// Customizable trailing swipe actions for DM conversation rows, persisted in ThemeManager for Settings configuration.
+enum DMSwipeAction: String, CaseIterable, Identifiable {
+    case toggleRead = "toggleRead"
+    case pin = "pin"
+    case mute = "mute"
+    case delete = "delete"
+
+    var id: String { rawValue }
+
+    var isDestructive: Bool { self == .delete }
 }

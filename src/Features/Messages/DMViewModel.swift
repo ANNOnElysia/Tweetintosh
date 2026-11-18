@@ -48,6 +48,10 @@ final class DMViewModel: ObservableObject {
     private var hasFetchedInbox = false
     private var cacheSubscription: AnyCancellable?
     @Published private(set) var pinnedConversationIds: Set<String> = []
+    @Published private(set) var mutedConversationIds: Set<String> = []
+    @Published var activeSwipeConversationId: String? = nil
+    @Published var pendingDeletion: PendingDMDeletion? = nil
+    private var pendingDeletionWorkItem: DispatchWorkItem?
 
     private static func makeSession() -> DMAccountSession {
         let accountId = AccountManager.shared.activeId
@@ -73,6 +77,11 @@ final class DMViewModel: ObservableObject {
     private init() {
         session = Self.makeSession()
         pinnedConversationIds = session.pinnedConversationIds
+        mutedConversationIds = session.mutedConversationIds
+        activeSwipeConversationId = nil
+        pendingDeletionWorkItem?.cancel()
+        pendingDeletionWorkItem = nil
+        pendingDeletion = nil
 
         // Show the chats as they were last seen straight away; the inbox fetch then brings them up to date.
         cacheOwnerId = session.accountId
@@ -89,6 +98,11 @@ final class DMViewModel: ObservableObject {
         // Old requests keep their old session; none can fill the replacement session's caches.
         session = Self.makeSession()
         pinnedConversationIds = session.pinnedConversationIds
+        mutedConversationIds = session.mutedConversationIds
+        activeSwipeConversationId = nil
+        pendingDeletionWorkItem?.cancel()
+        pendingDeletionWorkItem = nil
+        pendingDeletion = nil
         conversations = []
         messagesByConv = [:]
         selectedConversationId = nil
@@ -820,5 +834,111 @@ final class DMViewModel: ObservableObject {
         selectedConversationIds.removeAll()
         isEditMode = false
     }
+
+    // MARK: - Conversation Swipe & Row Actions
+
+    func toggleRead(for conversationId: String) {
+        guard let idx = conversations.firstIndex(where: { $0.id == conversationId }) else { return }
+        conversations[idx].unreadCount = conversations[idx].unreadCount > 0 ? 0 : 1
+        saveCache(owner: cacheOwnerId, conversations: conversations, messages: messagesByConv)
+    }
+
+    func toggleMute(for conversationId: String) {
+        session.toggleMute(conversationId)
+        mutedConversationIds = session.mutedConversationIds
+    }
+
+    func deleteConversation(for conversationId: String) {
+        guard let index = conversations.firstIndex(where: { $0.id == conversationId }) else { return }
+        commitPendingDeletion()
+
+        let removedConv = conversations[index]
+        let removedMsgs = messagesByConv[conversationId] ?? []
+        let wasSelected = selectedConversationId == conversationId
+
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.78)) {
+            conversations.remove(at: index)
+            messagesByConv.removeValue(forKey: conversationId)
+            selectedConversationIds.remove(conversationId)
+            if wasSelected {
+                selectedConversationId = nil
+            }
+            if activeSwipeConversationId == conversationId {
+                activeSwipeConversationId = nil
+            }
+            let duration: TimeInterval = 5.0
+            pendingDeletion = PendingDMDeletion(
+                id: conversationId,
+                conversation: removedConv,
+                messages: removedMsgs,
+                wasSelected: wasSelected,
+                expiresAt: Date().addingTimeInterval(duration),
+                duration: duration
+            )
+        }
+
+        let work = DispatchWorkItem { [weak self] in
+            self?.commitPendingDeletion()
+        }
+        pendingDeletionWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
+    }
+
+    func undoDeleteConversation() {
+        guard let pending = pendingDeletion else { return }
+        pendingDeletionWorkItem?.cancel()
+        pendingDeletionWorkItem = nil
+
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.78)) {
+            if !conversations.contains(where: { $0.id == pending.id }) {
+                conversations.append(pending.conversation)
+            }
+            if !pending.messages.isEmpty {
+                messagesByConv[pending.id] = pending.messages
+            }
+            if pending.wasSelected {
+                selectedConversationId = pending.id
+            }
+            pendingDeletion = nil
+        }
+    }
+
+    func commitPendingDeletion() {
+        pendingDeletionWorkItem?.cancel()
+        pendingDeletionWorkItem = nil
+        guard pendingDeletion != nil else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            pendingDeletion = nil
+        }
+        saveCache(owner: cacheOwnerId, conversations: conversations, messages: messagesByConv)
+    }
+
+    func performSwipeAction(_ action: DMSwipeAction, on conversation: DMConversation) {
+        switch action {
+        case .toggleRead:
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                toggleRead(for: conversation.id)
+            }
+        case .pin:
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.78)) {
+                togglePin(for: conversation.id)
+            }
+        case .mute:
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                toggleMute(for: conversation.id)
+            }
+        case .delete:
+            deleteConversation(for: conversation.id)
+        }
+    }
+}
+
+struct PendingDMDeletion: Identifiable {
+    let id: String
+    let conversation: DMConversation
+    let messages: [DMMessage]
+    let wasSelected: Bool
+    let expiresAt: Date
+    let duration: TimeInterval
 }
 
