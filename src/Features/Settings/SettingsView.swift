@@ -543,9 +543,6 @@ private struct ModelPickerPopover: View {
 
     var body: some View {
         let filter = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let recommended = filter.isEmpty
-            ? catalog.recommended
-            : catalog.recommended.filter { $0.searchKey.contains(filter) }
         let models = filter.isEmpty
             ? catalog.models
             : catalog.models.filter { $0.searchKey.contains(filter) }
@@ -559,38 +556,26 @@ private struct ModelPickerPopover: View {
                 Divider()
             }
 
-            List {
-                if !recommended.isEmpty {
-                    Section {
-                        ForEach(recommended) { option in
-                            row(option)
-                        }
-                    } header: {
-                        header(loc.t("translation_recommended_models"))
+            if catalog.models.isEmpty {
+                Text(loc.t("translation_models_empty"))
+                    .font(theme.appFont(size: 11.5))
+                    .foregroundColor(ThemeManager.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(models) { option in
+                        row(option)
                     }
                 }
-                if !models.isEmpty {
-                    Section {
-                        ForEach(models) { option in
-                            row(option)
-                        }
-                    } header: {
-                        header(loc.t("translation_fetched_models"))
-                    }
-                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 24)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, 24)
         }
         .frame(width: 280, height: 260)
-    }
-
-    private func header(_ title: String) -> some View {
-        Text(title)
-            .font(theme.appFont(size: 11, weight: .semibold))
-            .foregroundColor(ThemeManager.secondaryText)
-            .textCase(nil)
     }
 
     private func row(_ option: ModelOption) -> some View {
@@ -609,7 +594,7 @@ private struct ModelPickerPopover: View {
                 }
                 .frame(width: 12, height: 12)
 
-                Text(option.label)
+                Text(option.id)
                     .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineLimit(1)
