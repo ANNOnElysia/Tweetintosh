@@ -530,8 +530,7 @@ private struct TranslationSettingsCard: View {
     }
 }
 
-/// The model picker's contents. The filter text lives here so typing redraws only the popover, and the catalog
-/// arrives sorted so opening the popover builds only the rows it can show.
+/// The popover owns its filter so typing redraws only the picker. The catalog arrives sorted from the endpoint.
 private struct ModelPickerPopover: View {
     let catalog: ModelCatalog
     let selectedID: String
@@ -543,9 +542,6 @@ private struct ModelPickerPopover: View {
 
     var body: some View {
         let filter = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let recommended = filter.isEmpty
-            ? catalog.recommended
-            : catalog.recommended.filter { $0.searchKey.contains(filter) }
         let models = filter.isEmpty
             ? catalog.models
             : catalog.models.filter { $0.searchKey.contains(filter) }
@@ -554,43 +550,33 @@ private struct ModelPickerPopover: View {
             if catalog.models.count > 8 || !filter.isEmpty {
                 TextField(loc.t("settings_filter_placeholder"), text: $query)
                     .textFieldStyle(.roundedBorder)
+                    // Model IDs are literal strings, so opening the filter does not need Writing Tools.
+                    .writingToolsBehavior(.disabled)
                     .font(theme.appFont(size: 12))
                     .padding(8)
                 Divider()
             }
 
-            List {
-                if !recommended.isEmpty {
-                    Section {
-                        ForEach(recommended) { option in
-                            row(option)
-                        }
-                    } header: {
-                        header(loc.t("translation_recommended_models"))
-                    }
-                }
-                if !models.isEmpty {
-                    Section {
+            if catalog.models.isEmpty {
+                Text(loc.t("translation_models_empty"))
+                    .font(theme.appFont(size: 11.5))
+                    .foregroundColor(ThemeManager.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // List measures offscreen rows during popover presentation, even with a fixed viewport.
+                ScrollView {
+                    LazyVStack(spacing: 0) {
                         ForEach(models) { option in
                             row(option)
                         }
-                    } header: {
-                        header(loc.t("translation_fetched_models"))
                     }
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, 24)
         }
         .frame(width: 280, height: 260)
-    }
-
-    private func header(_ title: String) -> some View {
-        Text(title)
-            .font(theme.appFont(size: 11, weight: .semibold))
-            .foregroundColor(ThemeManager.secondaryText)
-            .textCase(nil)
     }
 
     private func row(_ option: ModelOption) -> some View {
@@ -609,19 +595,17 @@ private struct ModelPickerPopover: View {
                 }
                 .frame(width: 12, height: 12)
 
-                Text(option.label)
+                Text(option.id)
                     .font(theme.appFont(size: 12))
                     .foregroundColor(ThemeManager.primaryText)
                     .lineLimit(1)
                 Spacer()
             }
+            .padding(.horizontal, 8)
+            .frame(height: 36)
             .contentShape(Rectangle())
         }
         .buttonStyle(.target)
-        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .frame(height: 36)
     }
 }
 

@@ -26,35 +26,21 @@ enum TranslationEngine: String, CaseIterable, Identifiable {
 /// instead of lowercasing every model on every keystroke.
 struct ModelOption: Identifiable, Hashable {
     let id: String
-    let label: String
     let searchKey: String
 
-    init(id: String, label: String) {
+    init(id: String) {
         self.id = id
-        self.label = label
-        // A preset's label carries its family ("Claude · …"), which users search for, while a fetched model's label
-        // is its identifier again; joining the two would double every fetched model's key.
-        self.searchKey = label == id ? id.lowercased() : "\(id) \(label)".lowercased()
+        self.searchKey = id.lowercased()
     }
 }
 
-/// Everything the model picker shows, sorted and grouped when `/models` answers. The picker reads this straight, so
-/// opening it sorts and filters nothing.
+/// Everything the model picker shows: only the identifiers the user's endpoint returned. The picker reads this
+/// straight, so opening it sorts and filters nothing.
 struct ModelCatalog {
-    let recommended: [ModelOption]
     let models: [ModelOption]
 
-    /// Curated list used before `/models` has been fetched, or when the endpoint's models match no known family.
-    static let fallback = ModelCatalog(
-        recommended: [
-            ModelOption(id: "deepseek-chat", label: "DeepSeek · deepseek-chat"),
-            ModelOption(id: "gpt-4.1-mini", label: "OpenAI · gpt-4.1-mini"),
-            ModelOption(id: "gpt-4o-mini", label: "OpenAI · gpt-4o-mini"),
-            ModelOption(id: "claude-haiku-4-5", label: "Claude · claude-haiku-4-5"),
-            ModelOption(id: "gemini-2.5-flash", label: "Gemini · gemini-2.5-flash"),
-        ],
-        models: []
-    )
+    /// What the picker holds before `/models` answers; there is nothing to offer until the user verifies.
+    static let empty = ModelCatalog(models: [])
 }
 
 final class TranslationSettingsManager: ObservableObject {
@@ -76,7 +62,7 @@ final class TranslationSettingsManager: ObservableObject {
     @Published var modelName: String {
         didSet { UserDefaults.standard.set(modelName, forKey: Keys.modelName) }
     }
-    @Published private(set) var catalog = ModelCatalog.fallback
+    @Published private(set) var catalog = ModelCatalog.empty
     @Published var isVerifying: Bool = false
     @Published var verificationStatus: VerificationStatus? = nil
 
@@ -92,7 +78,7 @@ final class TranslationSettingsManager: ObservableObject {
         let numbers: [Int]
     }
 
-    /// Sorts the fetched identifiers and picks the recommended tiers once, when the endpoint answers.
+    /// Sorts the fetched identifiers once, when the endpoint answers.
     private static func makeCatalog(from ids: [String]) -> ModelCatalog {
         let keyed = Set(ids).map {
             KeyedModel(id: $0, searchKey: $0.lowercased(), numbers: extractNumbers($0))
@@ -104,39 +90,7 @@ final class TranslationSettingsManager: ObservableObject {
             return versionNumbersDescending(lhs, rhs)
         }
 
-        let families: [(name: String, matches: (String) -> Bool)] = [
-            ("DeepSeek", { s in
-                s.contains("deepseek") && !s.contains("r1") && !s.contains("reasoner")
-            }),
-            ("OpenAI", { s in
-                (s.contains("gpt") || s.hasPrefix("o")) && (s.contains("mini") || s.contains("nano"))
-                    && !s.contains("audio") && !s.contains("realtime") && !s.contains("tts")
-                    && !s.contains("transcribe") && !s.contains("image") && !s.contains("search")
-            }),
-            ("Claude", { s in
-                s.contains("claude") && s.contains("haiku")
-            }),
-            ("Gemini", { s in
-                s.contains("gemini") && s.contains("flash")
-                    && !s.contains("image") && !s.contains("tts") && !s.contains("live")
-            }),
-        ]
-
-        var recommended: [ModelOption] = []
-        for family in families {
-            let candidates = sorted
-                .filter { family.matches($0.searchKey) }
-                .sorted { versionNumbersDescending($0, $1) }
-                .prefix(2)
-            for model in candidates {
-                recommended.append(ModelOption(id: model.id, label: "\(family.name) · \(model.id)"))
-            }
-        }
-
-        return ModelCatalog(
-            recommended: recommended.isEmpty ? ModelCatalog.fallback.recommended : recommended,
-            models: sorted.map { ModelOption(id: $0.id, label: $0.id) }
-        )
+        return ModelCatalog(models: sorted.map { ModelOption(id: $0.id) })
     }
 
     var effectiveTargetLanguage: AppLanguage {
@@ -238,8 +192,8 @@ final class TranslationSettingsManager: ObservableObject {
                 let ids = items.compactMap { $0["id"] as? String }
                 catalog = Self.makeCatalog(from: ids)
                 if !catalog.models.isEmpty && !catalog.models.contains(where: { $0.id == modelName }) {
-                    if let firstRecommended = catalog.recommended.first?.id {
-                        modelName = firstRecommended
+                    if let firstModel = catalog.models.first?.id {
+                        modelName = firstModel
                     }
                 }
                 verificationStatus = .success(

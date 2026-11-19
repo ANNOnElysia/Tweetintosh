@@ -1863,6 +1863,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "翻译失败：{error}",
             .traditionalChinese: "翻譯失敗：{error}"
         ],
+        "translation_models_empty": [
+            .english: "No models yet. Verify the endpoint to load its list.",
+            .japanese: "モデルがまだありません。エンドポイントを検証して一覧を読み込んでください。",
+            .korean: "아직 모델이 없습니다. 엔드포인트를 확인해 목록을 불러오세요.",
+            .simplifiedChinese: "还没有模型。先验证接口以拉取模型列表。",
+            .traditionalChinese: "還沒有模型。先驗證介面以拉取模型列表。"
+        ],
         "translation_verify_fetch": [
             .english: "Verify & Fetch Models",
             .japanese: "検証してモデルを取得",
@@ -1883,20 +1890,6 @@ final class LocalizationManager: ObservableObject {
             .korean: "연결됨 ({count}개 모델)",
             .simplifiedChinese: "已连接（{count} 个模型）",
             .traditionalChinese: "已連線（{count} 個模型）"
-        ],
-        "translation_recommended_models": [
-            .english: "Recommended (Flash / Fast)",
-            .japanese: "おすすめ（高速・軽量モデル）",
-            .korean: "추천 (고속 / 경량 모델)",
-            .simplifiedChinese: "推荐轻量高速模型",
-            .traditionalChinese: "推薦輕量高速模型"
-        ],
-        "translation_fetched_models": [
-            .english: "Available from Endpoint",
-            .japanese: "エンドポイントから取得",
-            .korean: "엔드포인트에서 가져온 모델",
-            .simplifiedChinese: "接口返回的模型",
-            .traditionalChinese: "介面回傳的模型"
         ],
         "translation_invalid_base_url": [
             .english: "Invalid API Base URL",
