@@ -971,11 +971,6 @@ struct SettingsView: View {
                 Toggle(loc.t("use_fixupx_links"), isOn: $theme.useFixupXLinks)
                     .toggleStyle(GlassCapsuleToggleStyle())
                     .foregroundColor(ThemeManager.primaryText)
-
-                Text(loc.t("use_fixupx_links_desc"))
-                    .font(theme.appFont(size: 12))
-                    .foregroundColor(ThemeManager.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
                 
                 if theme.useLiquidGlass {
                     Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
