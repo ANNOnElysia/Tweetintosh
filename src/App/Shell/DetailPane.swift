@@ -423,7 +423,7 @@ struct PaneHeader: View {
 
     private func copyLink(_ post: Tweet) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("https://x.com/\(post.author.screenName)/status/\(post.id)", forType: .string)
+        NSPasteboard.general.setString(post.sharingLink, forType: .string)
         NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
         withAnimation { copiedPostID = post.id }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

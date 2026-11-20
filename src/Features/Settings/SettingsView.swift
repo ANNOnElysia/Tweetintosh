@@ -967,6 +967,10 @@ struct SettingsView: View {
                 Toggle(loc.t("abbreviate_counts"), isOn: $theme.abbreviateCounts.animation(.spring(response: 0.35, dampingFraction: 0.8)))
                     .toggleStyle(GlassCapsuleToggleStyle())
                     .foregroundColor(ThemeManager.primaryText)
+
+                Toggle(loc.t("use_fixupx_links"), isOn: $theme.useFixupXLinks)
+                    .toggleStyle(GlassCapsuleToggleStyle())
+                    .foregroundColor(ThemeManager.primaryText)
                 
                 if theme.useLiquidGlass {
                     Toggle(isOn: $theme.showVideosTab.animation(.spring(response: 0.35, dampingFraction: 0.8))) {

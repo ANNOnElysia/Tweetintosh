@@ -264,7 +264,7 @@ private struct TweetMenuContentView: View {
                 isDestructive: false
             ) {
                 onDismiss()
-                let url = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
+                let url = tweet.sharingLink
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url, forType: .string)
                 NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
@@ -279,7 +279,7 @@ private struct TweetMenuContentView: View {
                 isDestructive: false
             ) {
                 onDismiss()
-                let urlStr = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
+                let urlStr = tweet.sharingLink
                 if let url = URL(string: urlStr) {
                     let picker = NSSharingServicePicker(items: [url])
                     if let window = NSApp.keyWindow, let contentView = window.contentView {

@@ -305,7 +305,7 @@ struct TweetActions {
     var bookmark: (Tweet) -> Void = { TimelineViewModel.shared.toggleBookmark(for: $0) }
     var share: (Tweet) -> Void = { tweet in
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("https://x.com/\(tweet.author.screenName)/status/\(tweet.id)", forType: .string)
+        NSPasteboard.general.setString(tweet.sharingLink, forType: .string)
         AppToastManager.shared.show(LocalizationManager.shared.t("link_copied"), icon: "checkmark.circle.fill")
     }
 }

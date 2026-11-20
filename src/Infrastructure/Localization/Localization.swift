@@ -2809,6 +2809,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "简化显示浏览量 (K / M / B)",
             .traditionalChinese: "簡化顯示瀏覽量 (K / M / B)"
         ],
+        "use_fixupx_links": [
+            .english: "Share with fixupx.com Links",
+            .japanese: "fixupx.comのリンクで共有",
+            .korean: "fixupx.com 링크로 공유",
+            .simplifiedChinese: "使用 fixupx.com 链接分享",
+            .traditionalChinese: "使用 fixupx.com 連結分享"
+        ],
         "show_videos_tab": [
             .english: "Video Feed",
             .japanese: "動画フィード",

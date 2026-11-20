@@ -241,6 +241,12 @@ final class ThemeManager: ObservableObject {
         }
     }
 
+    @Published var useFixupXLinks: Bool {
+        didSet {
+            UserDefaults.standard.set(useFixupXLinks, forKey: "Tweetintosh_UseFixupXLinks")
+        }
+    }
+
     // The Videos tab, X's full-screen video feed. Off until the reader turns it on: it plays video continuously and
     // downloads ahead, which not everyone wants from a timeline app.
     @Published var showVideosTab: Bool {
@@ -398,6 +404,7 @@ final class ThemeManager: ObservableObject {
         self.autoplayMedia = UserDefaults.standard.object(forKey: "Tweetintosh_AutoplayMedia") as? Bool ?? true
         self.abbreviateCounts = UserDefaults.standard.object(forKey: "Tweetintosh_AbbreviateCounts") as? Bool ?? true
         self.showVideosTab = UserDefaults.standard.object(forKey: "Tweetintosh_ShowVideosTab") as? Bool ?? false
+        self.useFixupXLinks = UserDefaults.standard.bool(forKey: "Tweetintosh_UseFixupXLinks")
         self.dmSwipeInnerAction = UserDefaults.standard.string(forKey: "Tweetintosh_DMSwipeInnerAction")
             .flatMap(DMSwipeAction.init(rawValue:)) ?? .mute
         self.dmSwipeOuterAction = UserDefaults.standard.string(forKey: "Tweetintosh_DMSwipeOuterAction")

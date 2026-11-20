@@ -274,7 +274,7 @@ final class MediaActions {
                 items.append(u)
             }
         }
-        if let tweet = tweet, let tweetUrl = URL(string: "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)") {
+        if let tweet = tweet, let tweetUrl = URL(string: tweet.sharingLink) {
             items.append(tweetUrl)
         }
         guard !items.isEmpty else { return }
