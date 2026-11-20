@@ -466,7 +466,7 @@ final class VideoLightboxManager: ObservableObject {
     
     func copyTweetLink() {
         guard let tweet = currentTweet else { return }
-        let link = "https://x.com/\(tweet.author.screenName)/status/\(tweet.id)"
+        let link = tweet.sharingLink
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(link, forType: .string)
         showToastMessage(LocalizationManager.shared.t("video_link_copied"))

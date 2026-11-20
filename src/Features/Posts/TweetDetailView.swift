@@ -1021,7 +1021,7 @@ struct TweetDetailView: View {
     }
     
     private func copyTweetLink() {
-        let url = "https://x.com/\(viewModel.focalTweet.author.screenName)/status/\(viewModel.focalTweet.id)"
+        let url = viewModel.focalTweet.sharingLink
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url, forType: .string)
         

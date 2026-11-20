@@ -2809,6 +2809,20 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "简化显示浏览量 (K / M / B)",
             .traditionalChinese: "簡化顯示瀏覽量 (K / M / B)"
         ],
+        "use_fixupx_links": [
+            .english: "Share with fixupx.com Links",
+            .japanese: "fixupx.comのリンクで共有",
+            .korean: "fixupx.com 링크로 공유",
+            .simplifiedChinese: "使用 fixupx.com 链接分享",
+            .traditionalChinese: "使用 fixupx.com 連結分享"
+        ],
+        "use_fixupx_links_desc": [
+            .english: "Replace x.com with fixupx.com when copying or sharing post links for better previews.",
+            .japanese: "ポストのリンクをコピー・共有する際にx.comをfixupx.comに置き換え、プレビューを改善します。",
+            .korean: "게시물 링크를 복사하거나 공유할 때 x.com을 fixupx.com으로 바꿔 미리보기를 개선합니다.",
+            .simplifiedChinese: "复制或分享推文链接时，将 x.com 替换为 fixupx.com，以改善链接预览。",
+            .traditionalChinese: "複製或分享貼文連結時，將 x.com 替換為 fixupx.com，以改善連結預覽。"
+        ],
         "show_videos_tab": [
             .english: "Video Feed",
             .japanese: "動画フィード",
