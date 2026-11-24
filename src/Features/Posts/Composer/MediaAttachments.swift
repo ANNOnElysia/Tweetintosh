@@ -8,6 +8,7 @@
 
 import AppKit
 import AVFoundation
+import ImageIO
 import UniformTypeIdentifiers
 
 enum AttachmentKind {
@@ -163,22 +164,18 @@ enum MediaAttachments {
                                       thumbnail: videoThumbnail(url), isTemporaryCopy: false)
         }
         if type == .heic || type.identifier == "public.heif" {
-            guard let image = NSImage(contentsOf: url), let jpeg = jpegData(from: image) else { throw MediaAttachmentError.unreadable(name) }
-            let copy = FileManager.default.temporaryDirectory
-                .appendingPathComponent(url.deletingPathExtension().lastPathComponent + "-\(UUID().uuidString.prefix(6)).jpg")
-            try jpeg.write(to: copy)
-            guard jpeg.count <= AttachmentKind.image.maxBytes else {
-                try? FileManager.default.removeItem(at: copy)
-                throw MediaAttachmentError.tooLarge(name, AttachmentKind.image.maxBytes)
-            }
-            return ComposerAttachment(url: copy, kind: .image, mimeType: "image/jpeg", byteCount: jpeg.count,
-                                      thumbnail: image, isTemporaryCopy: true)
+            return try makeHEICAttachment(from: url, name: name)
         }
         if type.conforms(to: .jpeg) || type.conforms(to: .png) || type.conforms(to: .webP) {
-            guard size <= AttachmentKind.image.maxBytes else { throw MediaAttachmentError.tooLarge(name, AttachmentKind.image.maxBytes) }
-            let mime = type.conforms(to: .png) ? "image/png" : (type.conforms(to: .webP) ? "image/webp" : "image/jpeg")
-            return ComposerAttachment(url: url, kind: .image, mimeType: mime, byteCount: size,
-                                      thumbnail: NSImage(contentsOf: url), isTemporaryCopy: false)
+            if size <= AttachmentKind.image.maxBytes {
+                let mime = type.conforms(to: .png) ? "image/png" : (type.conforms(to: .webP) ? "image/webp" : "image/jpeg")
+                return ComposerAttachment(url: url, kind: .image, mimeType: mime, byteCount: size,
+                                          thumbnail: NSImage(contentsOf: url), isTemporaryCopy: false)
+            }
+            guard ThemeManager.shared.autoCompressImages else {
+                throw MediaAttachmentError.tooLarge(name, AttachmentKind.image.maxBytes)
+            }
+            return try compressedAttachment(from: url, name: name, maxBytes: AttachmentKind.image.maxBytes)
         }
         throw MediaAttachmentError.unsupported(name)
     }
@@ -190,14 +187,199 @@ enum MediaAttachments {
         guard current.count < maxImages else { throw MediaAttachmentError.tooManyImages }
     }
 
+    // MARK: Image Compression
+
+    // HEIC is always transcoded to JPEG because X does not accept HEIC directly; when the result still exceeds X's
+    // limit, fall through to the same low-loss compression ladder if auto-compression is enabled.
+    private static func makeHEICAttachment(from url: URL, name: String) throws -> ComposerAttachment {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = decodedImage(from: source, maxPixelSize: nil),
+              let jpeg = encode(image, as: .jpeg, quality: 0.92) else {
+            throw MediaAttachmentError.unreadable(name)
+        }
+        if jpeg.count <= AttachmentKind.image.maxBytes {
+            let copy = temporaryFileURL(baseName: url.deletingPathExtension().lastPathComponent, ext: "jpg")
+            try jpeg.write(to: copy)
+            return ComposerAttachment(url: copy, kind: .image, mimeType: "image/jpeg", byteCount: jpeg.count,
+                                      thumbnail: NSImage(cgImage: image, size: .zero), isTemporaryCopy: true)
+        }
+        guard ThemeManager.shared.autoCompressImages else {
+            throw MediaAttachmentError.tooLarge(name, AttachmentKind.image.maxBytes)
+        }
+        return try compressedAttachment(from: url, name: name, maxBytes: AttachmentKind.image.maxBytes)
+    }
+
+    // Re-encodes an oversized static image with ImageIO so colour profiles (such as Display P3) and EXIF orientation
+    // stay intact. Keeps full resolution first and only steps down dimensions when quality alone cannot meet the limit.
+    private static func compressedAttachment(from url: URL, name: String, maxBytes: Int) throws -> ComposerAttachment {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let fullImage = decodedImage(from: source, maxPixelSize: nil) else {
+            throw MediaAttachmentError.unreadable(name)
+        }
+
+        let originalMaxEdge = max(fullImage.width, fullImage.height)
+        let transparent = hasTransparency(fullImage)
+        var encoded: (data: Data, mimeType: String, ext: String)?
+
+        if transparent {
+            // Preserve transparency when possible: re-encode PNG at full size first, then step down resolution.
+            if let png = encode(fullImage, as: .png, quality: nil), png.count <= maxBytes {
+                encoded = (png, "image/png", "png")
+            } else {
+                for maxEdge in [4096, 3072, 2560, 2048, 1600, 1280] where maxEdge < originalMaxEdge {
+                    if let scaled = decodedImage(from: source, maxPixelSize: maxEdge),
+                       let png = encode(scaled, as: .png, quality: nil),
+                       png.count <= maxBytes {
+                        encoded = (png, "image/png", "png")
+                        break
+                    }
+                }
+            }
+        }
+
+        if encoded == nil {
+            let jpegSource = transparent ? flattenOntoWhite(fullImage) : fullImage
+            for quality in [0.92, 0.86, 0.80, 0.74] {
+                if let jpeg = encode(jpegSource, as: .jpeg, quality: quality), jpeg.count <= maxBytes {
+                    encoded = (jpeg, "image/jpeg", "jpg")
+                    break
+                }
+            }
+        }
+
+        if encoded == nil {
+            for maxEdge in [4096, 3072, 2560, 2048, 1600] where maxEdge < originalMaxEdge {
+                guard let scaled = decodedImage(from: source, maxPixelSize: maxEdge) else { continue }
+                let jpegSource = transparent ? flattenOntoWhite(scaled) : scaled
+                for quality in [0.88, 0.80, 0.72] {
+                    if let jpeg = encode(jpegSource, as: .jpeg, quality: quality), jpeg.count <= maxBytes {
+                        encoded = (jpeg, "image/jpeg", "jpg")
+                        break
+                    }
+                }
+                if encoded != nil { break }
+            }
+        }
+
+        if encoded == nil {
+            let fallbackImage: CGImage
+            if originalMaxEdge > 2048, let scaled = decodedImage(from: source, maxPixelSize: 2048) {
+                fallbackImage = transparent ? flattenOntoWhite(scaled) : scaled
+            } else {
+                fallbackImage = transparent ? flattenOntoWhite(fullImage) : fullImage
+            }
+            for quality in [0.65, 0.55] {
+                if let jpeg = encode(fallbackImage, as: .jpeg, quality: quality), jpeg.count <= maxBytes {
+                    encoded = (jpeg, "image/jpeg", "jpg")
+                    break
+                }
+            }
+        }
+
+        guard let result = encoded else {
+            throw MediaAttachmentError.tooLarge(name, maxBytes)
+        }
+
+        let copy = temporaryFileURL(baseName: url.deletingPathExtension().lastPathComponent, ext: result.ext)
+        try result.data.write(to: copy)
+        return ComposerAttachment(url: copy, kind: .image, mimeType: result.mimeType, byteCount: result.data.count,
+                                  thumbnail: NSImage(cgImage: fullImage, size: .zero), isTemporaryCopy: true)
+    }
+
+    private static func temporaryFileURL(baseName: String, ext: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(baseName)-\(UUID().uuidString.prefix(6)).\(ext)")
+    }
+
+    // Decodes with the EXIF orientation transform baked in so rotated camera photos remain upright after re-encoding.
+    private static func decodedImage(from source: CGImageSource, maxPixelSize: Int?) -> CGImage? {
+        let targetMax: Int
+        if let maxPixelSize = maxPixelSize {
+            targetMax = maxPixelSize
+        } else if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let width = props[kCGImagePropertyPixelWidth] as? Int,
+                  let height = props[kCGImagePropertyPixelHeight] as? Int,
+                  max(width, height) > 0 {
+            targetMax = max(width, height)
+        } else {
+            return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: targetMax
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    private static func encode(_ image: CGImage, as type: UTType, quality: Double?) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        var properties: [CFString: Any] = [:]
+        if let quality = quality {
+            properties[kCGImageDestinationLossyCompressionQuality] = quality
+        }
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
+    }
+
+    private static func hasTransparency(_ image: CGImage) -> Bool {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return false
+        default:
+            break
+        }
+        // macOS screenshots are saved as RGBA PNGs even when every pixel is opaque, so sample the alpha channel in a
+        // small RGBA bitmap to distinguish genuine transparency from an unused alpha byte.
+        let width = min(image.width, 512)
+        let height = min(image.height, 512)
+        guard width > 0, height > 0 else { return false }
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &rgba,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return false }
+        context.setBlendMode(.copy)
+        context.interpolationQuality = .low
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        for offset in stride(from: 3, to: rgba.count, by: 4) where rgba[offset] < 255 {
+            return true
+        }
+        return false
+    }
+
+    // Composites a transparent image onto white before JPEG fallback so transparent regions do not turn black.
+    private static func flattenOntoWhite(_ image: CGImage) -> CGImage {
+        let colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return image }
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(rect)
+        context.draw(image, in: rect)
+        return context.makeImage() ?? image
+    }
+
     private static func pngData(from image: NSImage) -> Data? {
         guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .png, properties: [:])
-    }
-
-    private static func jpegData(from image: NSImage) -> Data? {
-        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
-        return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
     }
 
     private static func videoThumbnail(_ url: URL) -> NSImage? {

@@ -2809,6 +2809,13 @@ final class LocalizationManager: ObservableObject {
             .simplifiedChinese: "简化显示浏览量 (K / M / B)",
             .traditionalChinese: "簡化顯示瀏覽量 (K / M / B)"
         ],
+        "auto_compress_images": [
+            .english: "Auto-Compress Oversized Images",
+            .japanese: "大きすぎる画像を自動圧縮",
+            .korean: "용량이 큰 이미지 자동 압축",
+            .simplifiedChinese: "自动压缩超大图片",
+            .traditionalChinese: "自動壓縮超大圖片"
+        ],
         "use_fixupx_links": [
             .english: "Share with fixupx.com Links",
             .japanese: "fixupx.comのリンクで共有",

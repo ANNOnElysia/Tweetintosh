@@ -235,6 +235,13 @@ final class ThemeManager: ObservableObject {
         }
     }
 
+    // Automatically re-encode oversized static images with low-loss compression so they fit X's 5 MiB limit
+    @Published var autoCompressImages: Bool {
+        didSet {
+            UserDefaults.standard.set(autoCompressImages, forKey: "Tweetintosh_AutoCompressImages")
+        }
+    }
+
     @Published var abbreviateCounts: Bool {
         didSet {
             UserDefaults.standard.set(abbreviateCounts, forKey: "Tweetintosh_AbbreviateCounts")
@@ -402,6 +409,7 @@ final class ThemeManager: ObservableObject {
         }
         
         self.autoplayMedia = UserDefaults.standard.object(forKey: "Tweetintosh_AutoplayMedia") as? Bool ?? true
+        self.autoCompressImages = UserDefaults.standard.object(forKey: "Tweetintosh_AutoCompressImages") as? Bool ?? true
         self.abbreviateCounts = UserDefaults.standard.object(forKey: "Tweetintosh_AbbreviateCounts") as? Bool ?? true
         self.showVideosTab = UserDefaults.standard.object(forKey: "Tweetintosh_ShowVideosTab") as? Bool ?? false
         self.useFixupXLinks = UserDefaults.standard.bool(forKey: "Tweetintosh_UseFixupXLinks")

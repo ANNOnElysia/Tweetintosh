@@ -103,12 +103,18 @@ extension MediaAttachments {
     // Adds chosen, pasted or dropped files, checking each against the supported formats and X's limits. Answers with
     // what went wrong, if anything did.
     static func add(_ urls: [URL], to attachments: inout [ComposerAttachment], pasted: Bool) -> String? {
+        let tempDir = FileManager.default.temporaryDirectory.standardizedFileURL.path
         var problem: String?
         for url in urls {
+            let isTempInput = url.standardizedFileURL.path.hasPrefix(tempDir)
             do {
                 var attachment = try makeAttachment(from: url)
+                // If compression or format conversion produced a new temp file from a pasted temp image, remove the superseded original
+                if pasted && isTempInput && attachment.url != url {
+                    try? FileManager.default.removeItem(at: url)
+                }
                 // A pasted image only exists as the temporary file made for it, which goes with the attachment
-                if pasted && !attachment.isTemporaryCopy { attachment = attachment.asTemporaryCopy() }
+                if pasted && isTempInput && !attachment.isTemporaryCopy { attachment = attachment.asTemporaryCopy() }
                 do {
                     try validateAdding(attachment, to: attachments)
                 } catch {
@@ -117,7 +123,7 @@ extension MediaAttachments {
                 }
                 attachments.append(attachment)
             } catch {
-                if pasted { try? FileManager.default.removeItem(at: url) }
+                if pasted && isTempInput { try? FileManager.default.removeItem(at: url) }
                 problem = error.localizedDescription
             }
         }

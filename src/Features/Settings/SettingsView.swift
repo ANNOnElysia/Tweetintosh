@@ -968,6 +968,10 @@ struct SettingsView: View {
                     .toggleStyle(GlassCapsuleToggleStyle())
                     .foregroundColor(ThemeManager.primaryText)
 
+                Toggle(loc.t("auto_compress_images"), isOn: $theme.autoCompressImages.animation(.spring(response: 0.35, dampingFraction: 0.8)))
+                    .toggleStyle(GlassCapsuleToggleStyle())
+                    .foregroundColor(ThemeManager.primaryText)
+
                 Toggle(loc.t("use_fixupx_links"), isOn: $theme.useFixupXLinks)
                     .toggleStyle(GlassCapsuleToggleStyle())
                     .foregroundColor(ThemeManager.primaryText)
